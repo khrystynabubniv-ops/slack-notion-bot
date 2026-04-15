@@ -6,18 +6,31 @@ import { registerNewTaskCommand } from './handlers/newTask.js'
 import { registerSubmissionHandlers } from './handlers/submission.js'
 import { startPolling } from './notion/pollStatus.js'
 
-const app = new App({
-  token: process.env.SLACK_BOT_TOKEN,
-  signingSecret: process.env.SLACK_SIGNING_SECRET,
-  socketMode: false,
-})
+const token = process.env.SLACK_BOT_TOKEN
+const signingSecret = process.env.SLACK_SIGNING_SECRET
 
-registerNewTaskCommand(app)
-registerSubmissionHandlers(app)
+if (!token || token === 'placeholder') {
+  console.log('⚠️  SLACK_BOT_TOKEN not set — waiting for approval. Server starting in stub mode.')
+  const { createServer } = await import('http')
+  const server = createServer((req, res) => {
+    res.writeHead(200)
+    res.end('Bot is waiting for Slack token approval.')
+  })
+  server.listen(process.env.PORT || 3000, () => {
+    console.log(`🕐 Stub server running on port ${process.env.PORT || 3000}`)
+  })
+} else {
+  const app = new App({
+    token,
+    signingSecret,
+    socketMode: false,
+  })
 
-;(async () => {
+  registerNewTaskCommand(app)
+  registerSubmissionHandlers(app)
+
   const port = process.env.PORT || 3000
   await app.start(port)
   console.log(`⚡ Bot is running on port ${port}`)
   startPolling(app.client)
-})()
+}
