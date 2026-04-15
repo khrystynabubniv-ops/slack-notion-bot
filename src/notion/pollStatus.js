@@ -45,3 +45,12 @@ export async function startPolling(slackClient) {
           newStatus: current,
           pageUrl: `https://notion.so/${task.pageId.replace(/-/g, '')}`,
         })
+
+        await updateStatus(task.pageId, current)
+        console.log(`✅ Status updated: ${task.taskName} → ${current}`)
+      }
+    } catch (err) {
+      console.error('Polling error:', err)
+    }
+  }, 3 * 60 * 1000)
+}
