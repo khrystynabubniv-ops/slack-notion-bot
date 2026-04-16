@@ -7,9 +7,10 @@ import { registerSubmissionHandlers } from './handlers/submission.js'
 import { startPolling } from './notion/pollStatus.js'
 
 const token = process.env.SLACK_BOT_TOKEN
+console.log('TOKEN CHECK:', token ? `starts with ${token.substring(0, 8)}...` : 'MISSING')
 const signingSecret = process.env.SLACK_SIGNING_SECRET
 
-if (!token || token === 'placeholder') {
+if (!token || token.trim() === '' || token.trim() === 'placeholder') {
   console.log('⚠️  SLACK_BOT_TOKEN not set — waiting for approval. Server starting in stub mode.')
   const { createServer } = await import('http')
   const server = createServer((req, res) => {
