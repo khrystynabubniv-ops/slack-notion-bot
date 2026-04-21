@@ -34,8 +34,9 @@ export async function startPolling(slackClient) {
 
       for (const task of trackedTasks) {
         const current = currentStatuses[task.pageId]
-        if (!current) continue
-        if (current === task.lastStatus) continue
+      if (!current) continue
+      if (!task.lastStatus) continue
+      if (current === task.lastStatus) continue
 
         await sendStatusUpdate({
           slackClient,
