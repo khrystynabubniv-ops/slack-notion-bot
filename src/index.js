@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import pkg from '@slack/bolt'
-const { App } = pkg
+const { App, ExpressReceiver } = pkg
 import { registerNewTaskCommand } from './handlers/newTask.js'
 import { registerSubmissionHandlers } from './handlers/submission.js'
 import { registerHomeTab } from './slack/home.js'
@@ -37,8 +37,6 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
     console.log(`🕐 Stub server running on port ${process.env.PORT || 3000}`)
   })
 } else {
-  const { ExpressReceiver } = pkg
-
   const receiver = new ExpressReceiver({ signingSecret })
 
   receiver.router.post('/', (req, res, next) => {
@@ -50,16 +48,6 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
   })
 
   const app = new App({ token, receiver })
-
-  registerHomeTab(app)
-  registerNewTaskCommand(app)
-  registerSubmissionHandlers(app)
-
-  const port = process.env.PORT || 3000
-  await app.start(port)
-  console.log(`⚡ Bot is running on port ${port}`)
-  startPolling(app.client)
-}
 
   registerHomeTab(app)
   registerNewTaskCommand(app)
