@@ -48,6 +48,8 @@ export function registerSubmissionHandlers(app) {
     const artifacts = {}
 
     const format = values.format_block?.format?.selected_option?.value
+    const videoFormat = values.video_format_block?.video_format?.selected_option?.value
+    const printType = values.print_type_block?.print_type?.selected_option?.value
     const platform = values.platform_block?.platform?.selected_option?.value
 
     const fieldMapping = {
@@ -129,19 +131,38 @@ export function registerSubmissionHandlers(app) {
     }
 
     try {
+      let slackPersonName = userName
+
+      try {
+        const userInfo = await client.users.info({ user: userId })
+        const profile = userInfo.user?.profile
+
+        slackPersonName =
+          profile?.real_name ||
+          profile?.display_name ||
+          userInfo.user?.real_name ||
+          userName ||
+          userId
+      } catch (slackUserErr) {
+        console.error('Slack users.info failed, fallback to body.user.name:', slackUserErr)
+      }
+
       const { pageId, pageUrl } = await createNotionPage({
         name: name || taskTypeLabel,
         priority,
         deadline,
         format,
+        videoFormat,
+        printType,
         platform,
-        type: getNotionType(taskType),
+        taskType,
         context,
         style,
         antiref,
         canEditText,
         specificFields,
         artifacts,
+        slackPersonName,
       })
 
       notionCreated = true
@@ -226,45 +247,4 @@ export function registerSubmissionHandlers(app) {
       }
     }
   })
-}
-
-function getNotionType(taskType) {
-  const map = {
-    static_simple: 'Brand Design',
-    static_complex: 'Brand Design',
-    carousel: 'Brand Design',
-    promo_creo_static: 'Brand Design',
-    promo_creo_mix: 'Brand Design',
-    promo_creo_video: 'Brand Design',
-    resize: 'Brand Design',
-    video_simple: 'Brand Design',
-    video_complex: 'Brand Design',
-    print_materials: 'Brand Design',
-    pres_edit: 'Brand Design',
-    pres_template: 'Brand Design',
-    pres_wow: 'Brand Design',
-    ai_static_simple: 'Brand Design',
-    ai_static_complex: 'Brand Design',
-    ai_dynamic_simple: 'Brand Design',
-    ai_dynamic_complex: 'Brand Design',
-    landing_template: 'Brand Design',
-    landing_wow: 'Brand Design',
-    blog: 'Brand Design',
-    digest_simple: 'Brand Design',
-    digest_wow: 'Brand Design',
-    email_digest: 'Brand Design',
-    merch_simple: 'Brand Design',
-    merch_ref: 'Brand Design',
-    merch_research: 'Brand Design',
-    identity: 'Brand Design',
-    logo: 'Brand Design',
-    photo_simple: 'Brand Design',
-    photo_complex: 'Brand Design',
-    tv_announce: 'Brand Design',
-    tv_static: 'Brand Design',
-    event_simple: 'Event',
-    event_complex: 'Event',
-    other: 'Brand Design',
-  }
-  return map[taskType] || 'Brand Design'
 }

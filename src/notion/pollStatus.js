@@ -6,19 +6,26 @@ const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const DATABASE_ID = process.env.NOTION_DATABASE_ID
 
 async function getCurrentStatuses() {
-  const response = await notion.databases.query({
-    database_id: DATABASE_ID,
-    filter: {
-      property: 'Status',
-      status: { does_not_equal: 'Done' },
-    },
-  })
-
   const statuses = {}
-  for (const page of response.results) {
-    const status = page.properties.Status?.status?.name
-    if (status) statuses[page.id] = status
+
+  let hasMore = true
+  let startCursor
+
+  while (hasMore) {
+    const response = await notion.databases.query({
+      database_id: DATABASE_ID,
+      start_cursor: startCursor,
+    })
+
+    for (const page of response.results) {
+      const status = page.properties.Status?.status?.name
+      if (status) statuses[page.id] = status
+    }
+
+    hasMore = response.has_more
+    startCursor = response.next_cursor ?? undefined
   }
+
   return statuses
 }
 
@@ -34,9 +41,9 @@ export async function startPolling(slackClient) {
 
       for (const task of trackedTasks) {
         const current = currentStatuses[task.pageId]
-      if (!current) continue
-      if (!task.lastStatus) continue
-      if (current === task.lastStatus) continue
+        if (!current) continue
+        if (!task.lastStatus) continue
+        if (current === task.lastStatus) continue
 
         await sendStatusUpdate({
           slackClient,

@@ -1,7 +1,51 @@
 import { Client } from '@notionhq/client'
+import {
+  DEFAULT_ACTIVITY_TYPE,
+  DEFAULT_OWNER_ID,
+  DEFAULT_TEAM,
+  getTaskTypeRelationId,
+  resolveFormat,
+  resolvePlatform,
+} from './taskConfig.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const DATABASE_ID = process.env.NOTION_DATABASE_ID
+let databaseSchemaPromise = null
+
+async function getDatabaseProperties() {
+  if (!databaseSchemaPromise) {
+    databaseSchemaPromise = notion.databases
+      .retrieve({ database_id: DATABASE_ID })
+      .then((database) => database.properties || {})
+      .catch((error) => {
+        databaseSchemaPromise = null
+        throw error
+      })
+  }
+
+  return databaseSchemaPromise
+}
+
+function buildSlackPersonProperty(propertyConfig, slackPersonName) {
+  if (!propertyConfig || !slackPersonName) return null
+
+  switch (propertyConfig.type) {
+    case 'title':
+      return {
+        title: [{ text: { content: slackPersonName.slice(0, 2000) } }],
+      }
+    case 'rich_text':
+      return {
+        rich_text: [{ text: { content: slackPersonName.slice(0, 2000) } }],
+      }
+    case 'select':
+      return {
+        select: { name: slackPersonName.slice(0, 100) },
+      }
+    default:
+      return null
+  }
+}
 
 function buildDescription({ context, style, antiref, canEditText, specificFields, artifacts }) {
   const lines = []
@@ -33,17 +77,23 @@ export async function createNotionPage({
   priority,
   deadline,
   format,
+  videoFormat,
+  printType,
   platform,
-  team,
-  type,
+  taskType,
   context,
   style,
   antiref,
   canEditText,
   specificFields = {},
   artifacts = {},
+  slackPersonName,
 }) {
   const description = buildDescription({ context, style, antiref, canEditText, specificFields, artifacts })
+  const taskTypeRelationId = getTaskTypeRelationId(taskType)
+  const notionFormat = resolveFormat({ taskType, format, videoFormat, printType })
+  const notionPlatform = resolvePlatform(platform)
+  const databaseProperties = await getDatabaseProperties()
 
   const properties = {
     Name: {
@@ -55,14 +105,25 @@ export async function createNotionPage({
     'Design needed': {
       checkbox: true,
     },
+    Team: {
+      select: { name: DEFAULT_TEAM },
+    },
+    Owner: {
+      people: [{ id: DEFAULT_OWNER_ID }],
+    },
+    Type: {
+      select: { name: DEFAULT_ACTIVITY_TYPE },
+    },
   }
 
   if (priority) properties.Priority = { select: { name: priority } }
   if (deadline) properties.Deadline = { date: { start: deadline } }
-  if (format) properties.Format = { select: { name: format } }
-  if (platform) properties.Platform = { select: { name: platform } }
-  if (team) properties.Team = { select: { name: team } }
-  if (type) properties.Type = { select: { name: type } }
+  if (notionFormat) properties.Format = { select: { name: notionFormat } }
+  if (notionPlatform) properties.Platform = { select: { name: notionPlatform } }
+  if (taskTypeRelationId) properties['Task Type'] = { relation: [{ id: taskTypeRelationId }] }
+
+  const slackPersonProperty = buildSlackPersonProperty(databaseProperties['Slack Person'], slackPersonName)
+  if (slackPersonProperty) properties['Slack Person'] = slackPersonProperty
 
   if (description) {
     properties.Description = {
