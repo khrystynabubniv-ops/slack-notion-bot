@@ -4,6 +4,7 @@ const { App } = pkg
 
 import { registerNewTaskCommand } from './handlers/newTask.js'
 import { registerSubmissionHandlers } from './handlers/submission.js'
+import { registerHomeTab } from './slack/home.js'
 import { startPolling } from './notion/pollStatus.js'
 
 const token = process.env.SLACK_BOT_TOKEN
@@ -27,6 +28,7 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
     socketMode: false,
   })
 
+  registerHomeTab(app)
   registerNewTaskCommand(app)
   registerSubmissionHandlers(app)
 
