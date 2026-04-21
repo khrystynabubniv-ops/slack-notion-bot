@@ -46,7 +46,7 @@ function baseBlocks() {
         type: 'plain_text_input',
         action_id: 'context',
         multiline: true,
-        placeholder: { type: 'plain_text', text: 'Це для Instagram-посту до Дня компанії. Основна емоція — гордість і тепло. Ресурс — сторіс та пост.' },
+        placeholder: { type: 'plain_text', text: 'Це для Instagram-посту до Дня компанії. Основна емоція — гордість і тепло.' },
       },
     },
     {
@@ -91,19 +91,17 @@ function baseBlocks() {
   ]
 }
 
-// Роздільник між базовими і специфічними полями
 function divider() {
   return { type: 'divider' }
 }
 
-// Специфічні поля по типах
 const specificBlocks = {
 
   static_simple: [
     {
       type: 'input',
       block_id: 'format_block',
-      label: { type: 'plain_text', text: '📐 Формат і платформа *' },
+      label: { type: 'plain_text', text: '📐 Формат *' },
       element: {
         type: 'static_select',
         action_id: 'format',
@@ -153,17 +151,6 @@ const specificBlocks = {
         type: 'plain_text_input',
         action_id: 'size',
         placeholder: { type: 'plain_text', text: '1080×1080 / квадрат / горизонталь' },
-      },
-    },
-    {
-      type: 'input',
-      block_id: 'accent_block',
-      label: { type: 'plain_text', text: '🎯 Основний акцент' },
-      optional: true,
-      element: {
-        type: 'plain_text_input',
-        action_id: 'accent',
-        placeholder: { type: 'plain_text', text: 'фото спікера / заголовок / логотип' },
       },
     },
     {
@@ -289,21 +276,6 @@ const specificBlocks = {
     },
     {
       type: 'input',
-      block_id: 'format_block',
-      label: { type: 'plain_text', text: '📐 Формат' },
-      optional: true,
-      element: {
-        type: 'static_select',
-        action_id: 'format',
-        placeholder: { type: 'plain_text', text: 'Вибери...' },
-        options: [
-          { text: { type: 'plain_text', text: 'Carousel' }, value: 'Carousel' },
-        ],
-        initial_option: { text: { type: 'plain_text', text: 'Carousel' }, value: 'Carousel' },
-      },
-    },
-    {
-      type: 'input',
       block_id: 'platform_block',
       label: { type: 'plain_text', text: '📱 Платформа' },
       optional: true,
@@ -326,63 +298,6 @@ const specificBlocks = {
         type: 'plain_text_input',
         action_id: 'artifact_drive',
         placeholder: { type: 'plain_text', text: 'drive.google.com/...' },
-      },
-    },
-  ],
-
-  promo_template: [
-    {
-      type: 'input',
-      block_id: 'slides_text_block',
-      label: { type: 'plain_text', text: '📝 Текст для розміщення *' },
-      element: {
-        type: 'plain_text_input',
-        action_id: 'slides_text',
-        multiline: true,
-        placeholder: { type: 'plain_text', text: 'Junior Python Developer · Remote · до 15 травня' },
-      },
-    },
-    {
-      type: 'input',
-      block_id: 'platform_block',
-      label: { type: 'plain_text', text: '📱 Платформа *' },
-      element: {
-        type: 'static_select',
-        action_id: 'platform',
-        placeholder: { type: 'plain_text', text: 'Вибери...' },
-        options: [
-          { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
-          { text: { type: 'plain_text', text: 'LinkedIn' }, value: 'LinkedIn' },
-        ],
-      },
-    },
-  ],
-
-  promo_new: [
-    {
-      type: 'input',
-      block_id: 'vacancy_block',
-      label: { type: 'plain_text', text: '💼 Назва вакансії та ключові умови *' },
-      element: {
-        type: 'plain_text_input',
-        action_id: 'vacancy',
-        multiline: true,
-        placeholder: { type: 'plain_text', text: 'Junior Designer · Київ/Remote · до 1 травня · досвід від 1 року' },
-      },
-    },
-    {
-      type: 'input',
-      block_id: 'platform_block',
-      label: { type: 'plain_text', text: '📱 Платформа' },
-      optional: true,
-      element: {
-        type: 'static_select',
-        action_id: 'platform',
-        placeholder: { type: 'plain_text', text: 'Вибери...' },
-        options: [
-          { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
-          { text: { type: 'plain_text', text: 'LinkedIn' }, value: 'LinkedIn' },
-        ],
       },
     },
   ],
@@ -410,6 +325,184 @@ const specificBlocks = {
       },
     },
   ],
+
+  // ── НОВА КАТЕГОРІЯ: Promo Creatives ──────────────────────────────────────
+
+  promo_creo_static: [
+    {
+      type: 'input',
+      block_id: 'slides_text_block',
+      label: { type: 'plain_text', text: '📝 Текст для розміщення *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'slides_text',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Junior Python Developer · Remote · до 15 травня' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'platform_block',
+      label: { type: 'plain_text', text: '📱 Платформа *' },
+      element: {
+        type: 'static_select',
+        action_id: 'platform',
+        placeholder: { type: 'plain_text', text: 'Вибери...' },
+        options: [
+          { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
+          { text: { type: 'plain_text', text: 'LinkedIn' }, value: 'LinkedIn' },
+          { text: { type: 'plain_text', text: 'Facebook' }, value: 'Facebook' },
+          { text: { type: 'plain_text', text: 'TikTok' }, value: 'TikTok' },
+          { text: { type: 'plain_text', text: 'Meta (всі платформи)' }, value: 'Meta' },
+        ],
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'promo_desc_block',
+      label: { type: 'plain_text', text: '💡 Що саме за задача (уточни)' },
+      optional: true,
+      element: {
+        type: 'plain_text_input',
+        action_id: 'promo_desc',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Промо для вакансії, є шаблон у Figma — треба підставити текст' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'artifact_figma_block',
+      label: { type: 'plain_text', text: '📎 Посилання на шаблон (Figma)' },
+      optional: true,
+      element: {
+        type: 'plain_text_input',
+        action_id: 'artifact_figma',
+        placeholder: { type: 'plain_text', text: 'figma.com/file/...' },
+      },
+    },
+  ],
+
+  promo_creo_mix: [
+    {
+      type: 'input',
+      block_id: 'promo_desc_block',
+      label: { type: 'plain_text', text: '💡 Що саме за задача, яка ідея *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'promo_desc',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Промо для стажування — нова концепція, поєднання статики і анімації' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'platform_block',
+      label: { type: 'plain_text', text: '📱 Платформа *' },
+      element: {
+        type: 'static_select',
+        action_id: 'platform',
+        placeholder: { type: 'plain_text', text: 'Вибери...' },
+        options: [
+          { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
+          { text: { type: 'plain_text', text: 'LinkedIn' }, value: 'LinkedIn' },
+          { text: { type: 'plain_text', text: 'Facebook' }, value: 'Facebook' },
+          { text: { type: 'plain_text', text: 'TikTok' }, value: 'TikTok' },
+          { text: { type: 'plain_text', text: 'Meta (всі платформи)' }, value: 'Meta' },
+        ],
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'artifact_ref_block',
+      label: { type: 'plain_text', text: '📎 Референси стилю' },
+      optional: true,
+      element: {
+        type: 'plain_text_input',
+        action_id: 'artifact_ref',
+        placeholder: { type: 'plain_text', text: 'pinterest.com/... або посилання на приклади' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'artifact_drive_block',
+      label: { type: 'plain_text', text: '📎 Текст, фото, матеріали (Google Drive)' },
+      optional: true,
+      element: {
+        type: 'plain_text_input',
+        action_id: 'artifact_drive',
+        placeholder: { type: 'plain_text', text: 'drive.google.com/...' },
+      },
+    },
+  ],
+
+  promo_creo_video: [
+    {
+      type: 'input',
+      block_id: 'promo_desc_block',
+      label: { type: 'plain_text', text: '💡 Що саме за задача, яка ідея *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'promo_desc',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Відео промо для вакансії, Reels 15 сек, динамічно з музикою' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'video_format_block',
+      label: { type: 'plain_text', text: '🎬 Формат відео *' },
+      element: {
+        type: 'static_select',
+        action_id: 'video_format',
+        placeholder: { type: 'plain_text', text: 'Вибери...' },
+        options: [
+          { text: { type: 'plain_text', text: 'Reels / вертикальний (9:16)' }, value: 'Reels' },
+          { text: { type: 'plain_text', text: 'Квадрат (1:1)' }, value: 'Square' },
+          { text: { type: 'plain_text', text: 'Горизонталь (16:9)' }, value: 'Horizontal' },
+        ],
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'platform_block',
+      label: { type: 'plain_text', text: '📱 Платформа *' },
+      element: {
+        type: 'static_select',
+        action_id: 'platform',
+        placeholder: { type: 'plain_text', text: 'Вибери...' },
+        options: [
+          { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
+          { text: { type: 'plain_text', text: 'TikTok' }, value: 'TikTok' },
+          { text: { type: 'plain_text', text: 'Facebook' }, value: 'Facebook' },
+          { text: { type: 'plain_text', text: 'Meta (всі платформи)' }, value: 'Meta' },
+        ],
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'artifact_video_block',
+      label: { type: 'plain_text', text: '📎 Відеоматеріал (Google Drive)' },
+      optional: true,
+      element: {
+        type: 'plain_text_input',
+        action_id: 'artifact_video',
+        placeholder: { type: 'plain_text', text: 'drive.google.com/...' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'artifact_music_block',
+      label: { type: 'plain_text', text: '📎 Музика (або напиши "підібрати самостійно")' },
+      optional: true,
+      element: {
+        type: 'plain_text_input',
+        action_id: 'artifact_music',
+        placeholder: { type: 'plain_text', text: '"підібрати самостійно" або drive.google.com/...' },
+      },
+    },
+  ],
+
+  // ── Монтаж / Анімація (перейменовано з video_*) ──────────────────────────
 
   video_simple: [
     {
@@ -455,11 +548,11 @@ const specificBlocks = {
     {
       type: 'input',
       block_id: 'artifact_video_block',
-      label: { type: 'plain_text', text: '📎 Посилання на відеоматеріал *' },
+      label: { type: 'plain_text', text: '📎 Відеоматеріал (Google Drive) *' },
       element: {
         type: 'plain_text_input',
         action_id: 'artifact_video',
-        placeholder: { type: 'plain_text', text: 'drive.google.com/... або dropbox.com/...' },
+        placeholder: { type: 'plain_text', text: 'drive.google.com/...' },
       },
     },
     {
@@ -516,7 +609,7 @@ const specificBlocks = {
     {
       type: 'input',
       block_id: 'artifact_video_block',
-      label: { type: 'plain_text', text: '📎 Посилання на відеоматеріал' },
+      label: { type: 'plain_text', text: '📎 Відеоматеріал (Google Drive)' },
       optional: true,
       element: {
         type: 'plain_text_input',
@@ -537,6 +630,112 @@ const specificBlocks = {
     },
   ],
 
+  // ── НОВА КАТЕГОРІЯ: Друковані матеріали ──────────────────────────────────
+
+  print_materials: [
+    {
+      type: 'input',
+      block_id: 'print_type_block',
+      label: { type: 'plain_text', text: '🖨 Тип друкованого матеріалу *' },
+      element: {
+        type: 'static_select',
+        action_id: 'print_type',
+        placeholder: { type: 'plain_text', text: 'Вибери...' },
+        options: [
+          { text: { type: 'plain_text', text: 'Постер' }, value: 'Постер' },
+          { text: { type: 'plain_text', text: 'Флаєр' }, value: 'Флаєр' },
+          { text: { type: 'plain_text', text: 'Брошура' }, value: 'Брошура' },
+          { text: { type: 'plain_text', text: 'Листівка' }, value: 'Листівка' },
+          { text: { type: 'plain_text', text: 'Дошка / банер' }, value: 'Дошка' },
+          { text: { type: 'plain_text', text: 'Інше' }, value: 'Інше' },
+        ],
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'print_size_block',
+      label: { type: 'plain_text', text: '📐 Розмір і орієнтація *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'print_size',
+        placeholder: { type: 'plain_text', text: 'A3, горизонталь / A4, вертикаль / 100×70 см' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'color_model_block',
+      label: { type: 'plain_text', text: '🎨 Кольорова модель *' },
+      element: {
+        type: 'static_select',
+        action_id: 'color_model',
+        placeholder: { type: 'plain_text', text: 'Вибери...' },
+        options: [
+          { text: { type: 'plain_text', text: 'CMYK (друк)' }, value: 'CMYK' },
+          { text: { type: 'plain_text', text: 'RGB (digital)' }, value: 'RGB' },
+        ],
+        initial_option: { text: { type: 'plain_text', text: 'CMYK (друк)' }, value: 'CMYK' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'message_block',
+      label: { type: 'plain_text', text: '💬 Текст і ключове повідомлення *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'message',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Заголовок, підзаголовок, CTA, контакти тощо' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'artifact_drive_block',
+      label: { type: 'plain_text', text: '📎 Фото, логотип, референси (Google Drive)' },
+      optional: true,
+      element: {
+        type: 'plain_text_input',
+        action_id: 'artifact_drive',
+        placeholder: { type: 'plain_text', text: 'drive.google.com/...' },
+      },
+    },
+  ],
+
+  // ── НОВА КАТЕГОРІЯ: Інше ─────────────────────────────────────────────────
+
+  other: [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: '💡 *Нетипова задача* — опиши детально що потрібно, дизайнер сам оцінить складність.',
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'other_desc_block',
+      label: { type: 'plain_text', text: '📝 Детальний опис задачі *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'other_desc',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Наприклад: оформити сторінку Notion для онбордингу, зробити символ для бізнесу FORMA, налаштувати профіль в Ashby...' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'artifact_drive_block',
+      label: { type: 'plain_text', text: '📎 Додаткові матеріали (Google Drive / Figma / посилання)' },
+      optional: true,
+      element: {
+        type: 'plain_text_input',
+        action_id: 'artifact_drive',
+        placeholder: { type: 'plain_text', text: 'drive.google.com/... або figma.com/...' },
+      },
+    },
+  ],
+
+  // ── Решта категорій — без змін ────────────────────────────────────────────
+
   pres_edit: [
     {
       type: 'input',
@@ -556,13 +755,13 @@ const specificBlocks = {
         type: 'plain_text_input',
         action_id: 'slide_list',
         multiline: true,
-        placeholder: { type: 'plain_text', text: 'Слайд 3: замінити фото\nСлайд 7: оновити дату\nСлайд 12: прибрати блок' },
+        placeholder: { type: 'plain_text', text: 'Слайд 3: замінити фото\nСлайд 7: оновити дату' },
       },
     },
     {
       type: 'input',
       block_id: 'can_shorten_block',
-      label: { type: 'plain_text', text: '✂️ Можна скорочувати текст якщо слайд перегружений?' },
+      label: { type: 'plain_text', text: '✂️ Можна скорочувати текст?' },
       optional: true,
       element: {
         type: 'static_select',
@@ -666,7 +865,7 @@ const specificBlocks = {
         type: 'plain_text_input',
         action_id: 'ai_description',
         multiline: true,
-        placeholder: { type: 'plain_text', text: 'Жінка-програміст в офісі, стиль — кінематографічний, тепле світло, мінімум деталей' },
+        placeholder: { type: 'plain_text', text: 'Жінка-програміст в офісі, стиль — кінематографічний, тепле світло' },
       },
     },
     {
@@ -707,7 +906,7 @@ const specificBlocks = {
         type: 'plain_text_input',
         action_id: 'ai_description',
         multiline: true,
-        placeholder: { type: 'plain_text', text: 'Колаж: людина в костюмі астронавта в офісі, футуристичний стиль, для обкладинки дайджесту' },
+        placeholder: { type: 'plain_text', text: 'Колаж: людина в костюмі астронавта в офісі, футуристичний стиль' },
       },
     },
     {
@@ -838,18 +1037,6 @@ const specificBlocks = {
         action_id: 'slides_text',
         multiline: true,
         placeholder: { type: 'plain_text', text: 'Hero: Заголовок і підзаголовок\nПро нас: ...' },
-      },
-    },
-    {
-      type: 'input',
-      block_id: 'new_blocks_block',
-      label: { type: 'plain_text', text: '➕ Нові блоки (якщо є)' },
-      optional: true,
-      element: {
-        type: 'plain_text_input',
-        action_id: 'new_blocks',
-        multiline: true,
-        placeholder: { type: 'plain_text', text: 'Блок з відгуками: структура — фото + ім\'я + текст відгуку' },
       },
     },
     {
@@ -993,7 +1180,7 @@ const specificBlocks = {
       element: {
         type: 'plain_text_input',
         action_id: 'audience',
-        placeholder: { type: 'plain_text', text: 'Внутрішній дайджест для всіх співробітників, акцент на культуру' },
+        placeholder: { type: 'plain_text', text: 'Внутрішній дайджест для всіх співробітників' },
       },
     },
     {
@@ -1004,7 +1191,7 @@ const specificBlocks = {
         type: 'plain_text_input',
         action_id: 'structure',
         multiline: true,
-        placeholder: { type: 'plain_text', text: 'Обкладинка → Головна новина → Люди місяця → Події → Вакансії' },
+        placeholder: { type: 'plain_text', text: 'Обкладинка → Головна новина → Люди місяця → події' },
       },
     },
     {
@@ -1198,7 +1385,7 @@ const specificBlocks = {
         type: 'plain_text_input',
         action_id: 'business',
         multiline: true,
-        placeholder: { type: 'plain_text', text: 'Платформа для пошуку стажувань для студентів у великих компаніях' },
+        placeholder: { type: 'plain_text', text: 'Платформа для пошуку стажувань для студентів' },
       },
     },
     {
@@ -1231,17 +1418,6 @@ const specificBlocks = {
         type: 'plain_text_input',
         action_id: 'competitors',
         placeholder: { type: 'plain_text', text: 'Work.ua, Rabota.ua, LinkedIn Jobs' },
-      },
-    },
-    {
-      type: 'input',
-      block_id: 'artifact_drive_block',
-      label: { type: 'plain_text', text: '📎 Наявні матеріали' },
-      optional: true,
-      element: {
-        type: 'plain_text_input',
-        action_id: 'artifact_drive',
-        placeholder: { type: 'plain_text', text: 'drive.google.com/...' },
       },
     },
   ],
@@ -1323,7 +1499,7 @@ const specificBlocks = {
         type: 'plain_text_input',
         action_id: 'what_to_fix',
         multiline: true,
-        placeholder: { type: 'plain_text', text: 'Переодягнути людину в ділове вбрання, замінити фон на офісний, прибрати зморшки' },
+        placeholder: { type: 'plain_text', text: 'Переодягнути людину в ділове вбрання, замінити фон' },
       },
     },
     {
@@ -1372,11 +1548,11 @@ const specificBlocks = {
     {
       type: 'input',
       block_id: 'artifact_photo_block',
-      label: { type: 'plain_text', text: '📎 Фото людини (Google Drive або зі Slack) *' },
+      label: { type: 'plain_text', text: '📎 Фото людини (Google Drive) *' },
       element: {
         type: 'plain_text_input',
         action_id: 'artifact_photo',
-        placeholder: { type: 'plain_text', text: 'drive.google.com/... або посилання на фото у Slack' },
+        placeholder: { type: 'plain_text', text: 'drive.google.com/...' },
       },
     },
   ],
@@ -1402,17 +1578,6 @@ const specificBlocks = {
         type: 'plain_text_input',
         action_id: 'qr',
         placeholder: { type: 'plain_text', text: 'forms.google.com/...' },
-      },
-    },
-    {
-      type: 'input',
-      block_id: 'artifact_logo_block',
-      label: { type: 'plain_text', text: '📎 Логотип (якщо потрібен)' },
-      optional: true,
-      element: {
-        type: 'plain_text_input',
-        action_id: 'artifact_logo',
-        placeholder: { type: 'plain_text', text: 'drive.google.com/...' },
       },
     },
   ],
@@ -1446,17 +1611,6 @@ const specificBlocks = {
         type: 'plain_text_input',
         action_id: 'carriers_list',
         placeholder: { type: 'plain_text', text: 'афіша A2, екран 1920×1080, Instagram stories' },
-      },
-    },
-    {
-      type: 'input',
-      block_id: 'character_block',
-      label: { type: 'plain_text', text: '🎭 Характер івенту' },
-      optional: true,
-      element: {
-        type: 'plain_text_input',
-        action_id: 'character',
-        placeholder: { type: 'plain_text', text: 'Технічний, стриманий, акцент на нетворкінг' },
       },
     },
     {
@@ -1501,7 +1655,7 @@ const specificBlocks = {
         type: 'plain_text_input',
         action_id: 'carriers_list',
         multiline: true,
-        placeholder: { type: 'plain_text', text: 'Екран 1920×1080, постер A1, мерч (футболка), сторіс, банер на сайт' },
+        placeholder: { type: 'plain_text', text: 'Екран 1920×1080, постер A1, мерч (футболка), сторіс' },
       },
     },
     {
@@ -1528,7 +1682,6 @@ const specificBlocks = {
   ],
 }
 
-// Головна функція — повертає блоки для конкретного типу задачі
 export function getModalBlocks(taskType) {
   const specific = specificBlocks[taskType] || []
   return [
