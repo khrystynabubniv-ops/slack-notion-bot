@@ -2,6 +2,8 @@ import { createNotionPage } from '../notion/createPage.js'
 import { saveTask } from '../redis/store.js'
 import { getModalBlocks } from './modalBlocks.js'
 
+const DESIGN_CHANNEL = process.env.DESIGN_CHANNEL_ID || 'C0ARG2KR5DX'
+
 export function registerSubmissionHandlers(app) {
 
   // Крок 1 — юзер вибрав тип задачі, відкриваємо форму з полями
@@ -30,6 +32,7 @@ export function registerSubmissionHandlers(app) {
     const { taskType, taskTypeLabel } = JSON.parse(view.private_metadata)
     const values = view.state.values
     const userId = body.user.id
+    const userName = body.user.name
 
     // Базові поля
     const name = values.name_block?.name?.value
@@ -40,17 +43,16 @@ export function registerSubmissionHandlers(app) {
     const antiref = values.antiref_block?.antiref?.value
     const canEditText = values.can_edit_block?.can_edit?.selected_option?.value
 
-    // Специфічні поля — збираємо все що є
     const specificFields = {}
     const artifacts = {}
 
-    // Формат і платформа → йдуть в properties Notion
     const format = values.format_block?.format?.selected_option?.value
     const platform = values.platform_block?.platform?.selected_option?.value
 
-    // Всі інші специфічні поля → в Description
     const fieldMapping = {
       size_block: '📐 Розміри',
+      print_size_block: '📐 Розмір і орієнтація',
+      print_type_block: '🖨 Тип друкованого матеріалу',
       message_block: '💬 Ключове повідомлення',
       accent_block: '🎯 Основний акцент',
       color_model_block: '🎨 Кольорова модель',
@@ -91,6 +93,8 @@ export function registerSubmissionHandlers(app) {
       can_shorten_block: '✂️ Можна скорочувати текст',
       vacancy_block: '💼 Назва вакансії та умови',
       formats_list_block: '📐 Перелік форматів',
+      promo_desc_block: '💡 Опис задачі',
+      other_desc_block: '📝 Опис задачі',
     }
 
     for (const [blockId, label] of Object.entries(fieldMapping)) {
@@ -102,7 +106,6 @@ export function registerSubmissionHandlers(app) {
       if (val) specificFields[label] = val
     }
 
-    // Артефакти (URL поля)
     const artifactMapping = {
       artifact_figma_block: 'Figma / макет',
       artifact_drive_block: 'Google Drive',
@@ -147,6 +150,7 @@ export function registerSubmissionHandlers(app) {
         taskName: name || taskTypeLabel,
       })
 
+      // Сповіщення замовнику
       await client.chat.postMessage({
         channel: userId,
         blocks: [
@@ -170,6 +174,41 @@ export function registerSubmissionHandlers(app) {
           },
         ],
       })
+
+      // Сповіщення у канал дизайнерів
+      await client.chat.postMessage({
+        channel: DESIGN_CHANNEL,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `🆕 *Нова задача від <@${userId}>*`,
+            },
+          },
+          {
+            type: 'section',
+            fields: [
+              { type: 'mrkdwn', text: `*Задача:*\n${name || taskTypeLabel}` },
+              { type: 'mrkdwn', text: `*Тип:*\n${taskTypeLabel}` },
+              { type: 'mrkdwn', text: `*Пріоритет:*\n${priority || 'не вказано'}` },
+              { type: 'mrkdwn', text: `*Дедлайн:*\n${deadline || 'не вказано'}` },
+            ],
+          },
+          {
+            type: 'actions',
+            elements: [
+              {
+                type: 'button',
+                text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
+                url: pageUrl,
+                style: 'primary',
+              },
+            ],
+          },
+        ],
+      })
+
     } catch (err) {
       console.error('Error creating task:', err)
       await client.chat.postMessage({
@@ -185,11 +224,13 @@ function getNotionType(taskType) {
     static_simple: 'Brand Design',
     static_complex: 'Brand Design',
     carousel: 'Brand Design',
-    promo_template: 'Brand Design',
-    promo_new: 'Brand Design',
+    promo_creo_static: 'Brand Design',
+    promo_creo_mix: 'Brand Design',
+    promo_creo_video: 'Brand Design',
     resize: 'Brand Design',
     video_simple: 'Brand Design',
     video_complex: 'Brand Design',
+    print_materials: 'Brand Design',
     pres_edit: 'Brand Design',
     pres_template: 'Brand Design',
     pres_wow: 'Brand Design',
@@ -214,6 +255,7 @@ function getNotionType(taskType) {
     tv_static: 'Brand Design',
     event_simple: 'Event',
     event_complex: 'Event',
+    other: 'Brand Design',
   }
   return map[taskType] || 'Brand Design'
 }
