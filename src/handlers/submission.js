@@ -130,7 +130,6 @@ export function registerSubmissionHandlers(app) {
 
     try {
       const { pageId, pageUrl } = await createNotionPage({
-        notionCreated = true
         name: name || taskTypeLabel,
         priority,
         deadline,
@@ -144,7 +143,10 @@ export function registerSubmissionHandlers(app) {
         specificFields,
         artifacts,
       })
-try {
+
+      notionCreated = true
+
+      try {
         await saveTask({
           pageId,
           slackUserId: userId,
@@ -223,6 +225,7 @@ try {
         })
       }
     }
+  })
 }
 
 function getNotionType(taskType) {
