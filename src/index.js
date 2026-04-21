@@ -37,11 +37,29 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
     console.log(`🕐 Stub server running on port ${process.env.PORT || 3000}`)
   })
 } else {
-  const app = new App({
-    token,
-    signingSecret,
-    socketMode: false,
+  const { ExpressReceiver } = pkg
+
+  const receiver = new ExpressReceiver({ signingSecret })
+
+  receiver.router.post('/', (req, res, next) => {
+    if (req.body?.type === 'url_verification') {
+      res.json({ challenge: req.body.challenge })
+    } else {
+      next()
+    }
   })
+
+  const app = new App({ token, receiver })
+
+  registerHomeTab(app)
+  registerNewTaskCommand(app)
+  registerSubmissionHandlers(app)
+
+  const port = process.env.PORT || 3000
+  await app.start(port)
+  console.log(`⚡ Bot is running on port ${port}`)
+  startPolling(app.client)
+}
 
   registerHomeTab(app)
   registerNewTaskCommand(app)
