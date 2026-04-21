@@ -12,14 +12,14 @@ export function registerSubmissionHandlers(app) {
     const taskTypeLabel = view.state.values.task_type_block.task_type.selected_option.text.text
 
     await ack({
-      response_action: 'push',
+      response_action: 'update',
       view: {
         type: 'modal',
         callback_id: 'submit_task',
         private_metadata: JSON.stringify({ taskType, taskTypeLabel }),
         title: { type: 'plain_text', text: '📋 Бриф задачі' },
         submit: { type: 'plain_text', text: 'Створити задачу' },
-        close: { type: 'plain_text', text: '← Назад' },
+        close: { type: 'plain_text', text: 'Скасувати' },
         blocks: getModalBlocks(taskType),
       },
     })
@@ -32,6 +32,7 @@ export function registerSubmissionHandlers(app) {
     const { taskType, taskTypeLabel } = JSON.parse(view.private_metadata)
     const values = view.state.values
     const userId = body.user.id
+    let notionCreated = false
     const userName = body.user.name
 
     // Базові поля
@@ -129,6 +130,7 @@ export function registerSubmissionHandlers(app) {
 
     try {
       const { pageId, pageUrl } = await createNotionPage({
+        notionCreated = true
         name: name || taskTypeLabel,
         priority,
         deadline,
@@ -142,13 +144,16 @@ export function registerSubmissionHandlers(app) {
         specificFields,
         artifacts,
       })
-
-      await saveTask({
-        pageId,
-        slackUserId: userId,
-        slackChannelId: userId,
-        taskName: name || taskTypeLabel,
-      })
+try {
+        await saveTask({
+          pageId,
+          slackUserId: userId,
+          slackChannelId: userId,
+          taskName: name || taskTypeLabel,
+        })
+      } catch (redisErr) {
+        console.error('Redis saveTask failed (non-critical):', redisErr)
+      }
 
       // Сповіщення замовнику
       await client.chat.postMessage({
@@ -211,12 +216,13 @@ export function registerSubmissionHandlers(app) {
 
     } catch (err) {
       console.error('Error creating task:', err)
-      await client.chat.postMessage({
-        channel: userId,
-        text: '❌ Щось пішло не так при створенні задачі. Спробуй ще раз або звернись до адміна.',
-      })
+      if (!notionCreated) {
+        await client.chat.postMessage({
+          channel: userId,
+          text: '❌ Щось пішло не так при створенні задачі. Спробуй ще раз або звернись до адміна.',
+        })
+      }
     }
-  })
 }
 
 function getNotionType(taskType) {
