@@ -1,4 +1,94 @@
 // Базові поля — є у всіх типах задач
+const MATERIALS_HINT_TEXT = 'Будь ласка, перейдіть у таску в ноушин та додайте аттачменти у коментарі'
+
+function getBlockValue(values, blockId, actionId) {
+  const element = values?.[blockId]?.[actionId]
+  if (!element) return null
+  return element.value || element.selected_option?.value || element.selected_date || null
+}
+
+function ensureOtherPlatformOption(options = []) {
+  if (options.some((option) => option.value === 'Other')) return options
+
+  return [
+    ...options,
+    { text: { type: 'plain_text', text: 'Other' }, value: 'Other' },
+  ]
+}
+
+function cloneElementWithState(block, values) {
+  if (!block.element) return block
+
+  const nextBlock = {
+    ...block,
+    element: { ...block.element },
+  }
+  const { action_id: actionId, type } = nextBlock.element
+  const currentValue = getBlockValue(values, block.block_id, actionId)
+
+  if (type === 'plain_text_input' && typeof currentValue === 'string') {
+    nextBlock.element.initial_value = currentValue
+  }
+
+  if (type === 'datepicker' && currentValue) {
+    nextBlock.element.initial_date = currentValue
+  }
+
+  if (type === 'static_select') {
+    let options = nextBlock.element.options
+
+    if (block.block_id === 'platform_block') {
+      options = ensureOtherPlatformOption(options)
+      nextBlock.element.options = options
+    }
+
+    if (currentValue && options) {
+      const initialOption = options.find((option) => option.value === currentValue)
+      if (initialOption) nextBlock.element.initial_option = initialOption
+    }
+  }
+
+  return nextBlock
+}
+
+function getPlatformOtherBlock(values = {}) {
+  const platformValue = getBlockValue(values, 'platform_block', 'platform')
+  if (platformValue !== 'Other') return null
+
+  return {
+    type: 'input',
+    block_id: 'platform_other_block',
+    label: { type: 'plain_text', text: '📱 Platform (other) *' },
+    element: {
+      type: 'plain_text_input',
+      action_id: 'platform_other',
+      initial_value: getBlockValue(values, 'platform_other_block', 'platform_other') || undefined,
+      placeholder: { type: 'plain_text', text: 'Вкажи платформу вручну...' },
+    },
+  }
+}
+
+function enhanceSpecificBlocks(blocks, values = {}) {
+  const result = []
+
+  for (const block of blocks) {
+    const hydratedBlock = cloneElementWithState(block, values)
+
+    if (hydratedBlock.block_id?.startsWith('artifact_')) {
+      hydratedBlock.hint = { type: 'plain_text', text: MATERIALS_HINT_TEXT }
+    }
+
+    result.push(hydratedBlock)
+
+    if (hydratedBlock.block_id === 'platform_block') {
+      const platformOtherBlock = getPlatformOtherBlock(values)
+      if (platformOtherBlock) result.push(platformOtherBlock)
+    }
+  }
+
+  return result
+}
+
 function baseBlocks() {
   return [
     {
@@ -100,21 +190,6 @@ const specificBlocks = {
   static_simple: [
     {
       type: 'input',
-      block_id: 'format_block',
-      label: { type: 'plain_text', text: '📐 Формат *' },
-      element: {
-        type: 'static_select',
-        action_id: 'format',
-        placeholder: { type: 'plain_text', text: 'Вибери формат...' },
-        options: [
-          { text: { type: 'plain_text', text: 'Static Image' }, value: 'Static Image' },
-          { text: { type: 'plain_text', text: 'Poster' }, value: 'Poster' },
-          { text: { type: 'plain_text', text: 'Flyer' }, value: 'Flyer' },
-        ],
-      },
-    },
-    {
-      type: 'input',
       block_id: 'platform_block',
       label: { type: 'plain_text', text: '📱 Платформа *' },
       element: {
@@ -167,21 +242,6 @@ const specificBlocks = {
   ],
 
   static_complex: [
-    {
-      type: 'input',
-      block_id: 'format_block',
-      label: { type: 'plain_text', text: '📐 Формат *' },
-      element: {
-        type: 'static_select',
-        action_id: 'format',
-        placeholder: { type: 'plain_text', text: 'Вибери формат...' },
-        options: [
-          { text: { type: 'plain_text', text: 'Static Image' }, value: 'Static Image' },
-          { text: { type: 'plain_text', text: 'Poster' }, value: 'Poster' },
-          { text: { type: 'plain_text', text: 'Flyer' }, value: 'Flyer' },
-        ],
-      },
-    },
     {
       type: 'input',
       block_id: 'platform_block',
@@ -1682,10 +1742,10 @@ const specificBlocks = {
   ],
 }
 
-export function getModalBlocks(taskType) {
-  const specific = specificBlocks[taskType] || []
+export function getModalBlocks(taskType, values = {}) {
+  const specific = enhanceSpecificBlocks(specificBlocks[taskType] || [], values)
   return [
-    ...baseBlocks(),
+    ...baseBlocks().map((block) => cloneElementWithState(block, values)),
     ...(specific.length ? [divider()] : []),
     ...specific,
   ]

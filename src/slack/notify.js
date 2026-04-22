@@ -9,7 +9,8 @@ export async function sendStatusUpdate({
   const statusEmoji = {
     'To do': '⬜',
     'In progress': '🔵',
-    'Done': '✅',
+    Comments: '🟠',
+    Ready: '🟢',
   }
 
   await slackClient.chat.postMessage({

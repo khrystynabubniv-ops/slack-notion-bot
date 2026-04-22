@@ -40,49 +40,6 @@ const TASK_TYPE_PAGE_IDS = {
   other: '349ce989-9cb7-80f9-832f-c55be91be724',
 }
 
-const DEFAULT_FORMAT_BY_TASK_TYPE = {
-  carousel: 'Carousel',
-  resize: 'Static Image',
-  promo_creo_static: 'Static Image',
-  promo_creo_mix: 'Animation',
-  pres_edit: 'Presentation',
-  pres_template: 'Presentation',
-  pres_wow: 'Presentation',
-  ai_static_simple: 'Static Image',
-  ai_static_complex: 'Static Image',
-  ai_dynamic_simple: 'Animation',
-  ai_dynamic_complex: 'Animation',
-  landing_template: 'Web',
-  landing_wow: 'Web',
-  blog: 'Blog',
-  digest_simple: 'Other',
-  digest_wow: 'Other',
-  email_digest: 'Other',
-  merch_simple: 'Merch',
-  merch_ref: 'Merch',
-  merch_research: 'Merch',
-  identity: 'Other',
-  logo: 'Other',
-  event_simple: 'Event design',
-  event_complex: 'Event design',
-  other: 'Other',
-}
-
-const PRINT_FORMAT_MAP = {
-  Постер: 'Poster',
-  Флаєр: 'Flyer',
-  Брошура: 'Print',
-  Листівка: 'Print',
-  Дошка: 'Print',
-  Інше: 'Print',
-}
-
-const VIDEO_FORMAT_MAP = {
-  Reels: 'Reels',
-  Square: 'Square',
-  Horizontal: 'Horizontal',
-}
-
 const PLATFORM_MAP = {
   Meta: 'Meta',
 }
@@ -91,15 +48,7 @@ export function getTaskTypeRelationId(taskType) {
   return TASK_TYPE_PAGE_IDS[taskType] || null
 }
 
-export function resolveFormat({ taskType, format, videoFormat, printType }) {
-  if (format) return format
-  if (videoFormat) return VIDEO_FORMAT_MAP[videoFormat] || videoFormat
-  if (printType) return PRINT_FORMAT_MAP[printType] || 'Print'
-
-  return DEFAULT_FORMAT_BY_TASK_TYPE[taskType] || null
-}
-
 export function resolvePlatform(platform) {
-  if (!platform) return null
+  if (!platform || platform === 'Other') return null
   return PLATFORM_MAP[platform] || platform
 }

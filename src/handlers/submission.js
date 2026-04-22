@@ -5,6 +5,17 @@ import { getModalBlocks } from './modalBlocks.js'
 const DESIGN_CHANNEL = process.env.DESIGN_CHANNEL_ID || 'C0ARG2KR5DX'
 
 export function registerSubmissionHandlers(app) {
+  function buildTaskModalView(taskType, taskTypeLabel, values = {}) {
+    return {
+      type: 'modal',
+      callback_id: 'submit_task',
+      private_metadata: JSON.stringify({ taskType, taskTypeLabel }),
+      title: { type: 'plain_text', text: '📋 Бриф задачі' },
+      submit: { type: 'plain_text', text: 'Створити задачу' },
+      close: { type: 'plain_text', text: 'Скасувати' },
+      blocks: getModalBlocks(taskType, values),
+    }
+  }
 
   // Крок 1 — юзер вибрав тип задачі, відкриваємо форму з полями
   app.view('select_task_type', async ({ ack, body, client, view }) => {
@@ -13,15 +24,29 @@ export function registerSubmissionHandlers(app) {
 
     await ack({
       response_action: 'update',
-      view: {
-        type: 'modal',
-        callback_id: 'submit_task',
-        private_metadata: JSON.stringify({ taskType, taskTypeLabel }),
-        title: { type: 'plain_text', text: '📋 Бриф задачі' },
-        submit: { type: 'plain_text', text: 'Створити задачу' },
-        close: { type: 'plain_text', text: 'Скасувати' },
-        blocks: getModalBlocks(taskType),
+      view: buildTaskModalView(taskType, taskTypeLabel),
+    })
+  })
+
+  app.action('platform', async ({ ack, body, client }) => {
+    await ack()
+
+    const { taskType, taskTypeLabel } = JSON.parse(body.view.private_metadata)
+    const values = {
+      ...body.view.state.values,
+      platform_block: {
+        ...body.view.state.values.platform_block,
+        platform: {
+          ...body.actions[0],
+          selected_option: body.actions[0].selected_option,
+        },
       },
+    }
+
+    await client.views.update({
+      view_id: body.view.id,
+      hash: body.view.hash,
+      view: buildTaskModalView(taskType, taskTypeLabel, values),
     })
   })
 
@@ -47,10 +72,10 @@ export function registerSubmissionHandlers(app) {
     const specificFields = {}
     const artifacts = {}
 
-    const format = values.format_block?.format?.selected_option?.value
     const videoFormat = values.video_format_block?.video_format?.selected_option?.value
     const printType = values.print_type_block?.print_type?.selected_option?.value
     const platform = values.platform_block?.platform?.selected_option?.value
+    const platformOther = values.platform_other_block?.platform_other?.value
 
     const fieldMapping = {
       size_block: '📐 Розміри',
@@ -151,10 +176,10 @@ export function registerSubmissionHandlers(app) {
         name: name || taskTypeLabel,
         priority,
         deadline,
-        format,
         videoFormat,
         printType,
         platform,
+        platformOther,
         taskType,
         context,
         style,

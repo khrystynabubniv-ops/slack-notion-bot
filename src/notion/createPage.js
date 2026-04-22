@@ -4,7 +4,6 @@ import {
   DEFAULT_OWNER_ID,
   DEFAULT_TEAM,
   getTaskTypeRelationId,
-  resolveFormat,
   resolvePlatform,
 } from './taskConfig.js'
 
@@ -47,13 +46,14 @@ function buildSlackPersonProperty(propertyConfig, slackPersonName) {
   }
 }
 
-function buildDescription({ context, style, antiref, canEditText, specificFields, artifacts }) {
+function buildDescription({ context, style, antiref, canEditText, platformOther, specificFields, artifacts }) {
   const lines = []
 
   if (context) lines.push(`📌 Контекст: ${context}`)
   if (style) lines.push(`🎨 Стиль/Референси: ${style}`)
   if (antiref) lines.push(`🚫 Антиреференси: ${antiref}`)
   if (canEditText !== undefined) lines.push(`✏️ Дизайнер може правити текст: ${canEditText}`)
+  if (platformOther) lines.push(`📱 Platform (other): ${platformOther}`)
 
   if (specificFields && Object.keys(specificFields).length > 0) {
     lines.push('\n— СПЕЦИФІЧНІ ПОЛЯ —')
@@ -76,10 +76,10 @@ export async function createNotionPage({
   name,
   priority,
   deadline,
-  format,
   videoFormat,
   printType,
   platform,
+  platformOther,
   taskType,
   context,
   style,
@@ -89,9 +89,16 @@ export async function createNotionPage({
   artifacts = {},
   slackPersonName,
 }) {
-  const description = buildDescription({ context, style, antiref, canEditText, specificFields, artifacts })
+  const description = buildDescription({
+    context,
+    style,
+    antiref,
+    canEditText,
+    platformOther,
+    specificFields,
+    artifacts,
+  })
   const taskTypeRelationId = getTaskTypeRelationId(taskType)
-  const notionFormat = resolveFormat({ taskType, format, videoFormat, printType })
   const notionPlatform = resolvePlatform(platform)
   const databaseProperties = await getDatabaseProperties()
 
@@ -118,7 +125,6 @@ export async function createNotionPage({
 
   if (priority) properties.Priority = { select: { name: priority } }
   if (deadline) properties.Deadline = { date: { start: deadline } }
-  if (notionFormat) properties.Format = { select: { name: notionFormat } }
   if (notionPlatform) properties.Platform = { select: { name: notionPlatform } }
   if (taskTypeRelationId) properties['Task Type'] = { relation: [{ id: taskTypeRelationId }] }
 
