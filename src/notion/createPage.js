@@ -10,6 +10,7 @@ import {
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const DATABASE_ID = process.env.NOTION_DATABASE_ID
 let databaseSchemaPromise = null
+let missingCtaConfigWarned = false
 
 function clampText(value, limit = 2000) {
   return value?.slice(0, limit) || ''
@@ -31,7 +32,15 @@ function buildPageChildren() {
   const ctaDescription = process.env.NOTION_PAGE_CTA_DESCRIPTION?.trim()
   const ctaEmoji = process.env.NOTION_PAGE_CTA_EMOJI?.trim() || '🚀'
 
-  if (!ctaLabel || !ctaUrl) return []
+  if (!ctaLabel || !ctaUrl) {
+    if (!missingCtaConfigWarned) {
+      console.warn(
+        'Notion CTA block is disabled: set NOTION_PAGE_CTA_LABEL and NOTION_PAGE_CTA_URL to create page content automatically.'
+      )
+      missingCtaConfigWarned = true
+    }
+    return []
+  }
 
   const children = [
     {
@@ -190,29 +199,17 @@ export async function createNotionPage({
     }
   }
 
+  const pageChildren = buildPageChildren()
+
   const response = await notion.pages.create({
     parent: { database_id: DATABASE_ID },
     properties,
+    children: pageChildren,
   })
-
-  const pageChildren = buildPageChildren()
-  let ctaBlockAdded = false
-
-  if (pageChildren.length > 0) {
-    try {
-      await notion.blocks.children.append({
-        block_id: response.id,
-        children: pageChildren,
-      })
-      ctaBlockAdded = true
-    } catch (error) {
-      console.error('Notion CTA block append failed:', error)
-    }
-  }
 
   return {
     pageId: response.id,
     pageUrl: response.url,
-    ctaBlockAdded,
+    ctaBlockAdded: pageChildren.length > 0,
   }
 }
