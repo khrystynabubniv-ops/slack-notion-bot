@@ -1,5 +1,16 @@
 // Базові поля — є у всіх типах задач
 const MATERIALS_HINT_TEXT = 'Будь ласка, перейдіть у таску в ноушин та додайте аттачменти у коментарі'
+const MATERIALS_HINT_BLOCK_IDS = new Set([
+  'artifact_figma_block',
+  'artifact_drive_block',
+  'artifact_video_block',
+  'artifact_music_block',
+  'artifact_photo_block',
+  'artifact_logo_block',
+  'artifact_brand_block',
+  'artifact_pres_block',
+  'artifact_article_block',
+])
 
 function getBlockValue(values, blockId, actionId) {
   const element = values?.[blockId]?.[actionId]
@@ -79,7 +90,7 @@ function enhanceSpecificBlocks(blocks, values = {}) {
   for (const block of blocks) {
     const hydratedBlock = cloneElementWithState(block, values)
 
-    if (hydratedBlock.block_id?.startsWith('artifact_')) {
+    if (MATERIALS_HINT_BLOCK_IDS.has(hydratedBlock.block_id)) {
       hydratedBlock.hint = { type: 'plain_text', text: MATERIALS_HINT_TEXT }
     }
 
@@ -393,176 +404,348 @@ const specificBlocks = {
 
   // ── НОВА КАТЕГОРІЯ: Promo Creatives ──────────────────────────────────────
 
-  promo_creo_static: [
+  promo_creo_static_template: [
     {
       type: 'input',
-      block_id: 'slides_text_block',
-      label: { type: 'plain_text', text: '📝 Текст для розміщення *' },
+      block_id: 'selected_concept_block',
+      label: { type: 'plain_text', text: '🎯 Обраний концепт *' },
       element: {
         type: 'plain_text_input',
-        action_id: 'slides_text',
+        action_id: 'selected_concept',
+        placeholder: { type: 'plain_text', text: 'Назва або короткий опис обраного концепту' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'new_text_block',
+      label: { type: 'plain_text', text: '📝 Новий текст *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'new_text',
         multiline: true,
-        placeholder: { type: 'plain_text', text: 'Junior Python Developer · Remote · до 15 травня' },
+        placeholder: { type: 'plain_text', text: 'Текст, який треба підставити в готовий шаблон' },
       },
     },
     {
       type: 'input',
-      block_id: 'platform_block',
-      label: { type: 'plain_text', text: '📱 Платформа *' },
-      element: {
-        type: 'static_select',
-        action_id: 'platform',
-        placeholder: { type: 'plain_text', text: 'Вибери...' },
-        options: [
-          { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
-          { text: { type: 'plain_text', text: 'LinkedIn' }, value: 'LinkedIn' },
-          { text: { type: 'plain_text', text: 'Facebook' }, value: 'Facebook' },
-          { text: { type: 'plain_text', text: 'TikTok' }, value: 'TikTok' },
-          { text: { type: 'plain_text', text: 'Meta (всі платформи)' }, value: 'Meta' },
-        ],
-      },
-    },
-    {
-      type: 'input',
-      block_id: 'promo_desc_block',
-      label: { type: 'plain_text', text: '💡 Що саме за задача (уточни)' },
-      optional: true,
+      block_id: 'cta_block',
+      label: { type: 'plain_text', text: '📢 CTA *' },
       element: {
         type: 'plain_text_input',
-        action_id: 'promo_desc',
-        multiline: true,
-        placeholder: { type: 'plain_text', text: 'Промо для вакансії, є шаблон у Figma — треба підставити текст' },
-      },
-    },
-    {
-      type: 'input',
-      block_id: 'artifact_figma_block',
-      label: { type: 'plain_text', text: '📎 Посилання на шаблон (Figma)' },
-      optional: true,
-      element: {
-        type: 'plain_text_input',
-        action_id: 'artifact_figma',
-        placeholder: { type: 'plain_text', text: 'figma.com/file/...' },
+        action_id: 'cta',
+        placeholder: { type: 'plain_text', text: 'Наприклад: Подати заявку до 1 травня' },
       },
     },
   ],
 
-  promo_creo_mix: [
+  promo_creo_static_ideas: [
     {
       type: 'input',
-      block_id: 'promo_desc_block',
-      label: { type: 'plain_text', text: '💡 Що саме за задача, яка ідея *' },
+      block_id: 'concept_only_block',
+      label: { type: 'plain_text', text: '💡 Концепція *' },
       element: {
         type: 'plain_text_input',
-        action_id: 'promo_desc',
+        action_id: 'concept_only',
         multiline: true,
-        placeholder: { type: 'plain_text', text: 'Промо для стажування — нова концепція, поєднання статики і анімації' },
-      },
-    },
-    {
-      type: 'input',
-      block_id: 'platform_block',
-      label: { type: 'plain_text', text: '📱 Платформа *' },
-      element: {
-        type: 'static_select',
-        action_id: 'platform',
-        placeholder: { type: 'plain_text', text: 'Вибери...' },
-        options: [
-          { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
-          { text: { type: 'plain_text', text: 'LinkedIn' }, value: 'LinkedIn' },
-          { text: { type: 'plain_text', text: 'Facebook' }, value: 'Facebook' },
-          { text: { type: 'plain_text', text: 'TikTok' }, value: 'TikTok' },
-          { text: { type: 'plain_text', text: 'Meta (всі платформи)' }, value: 'Meta' },
-        ],
+        placeholder: { type: 'plain_text', text: 'Опиши ідею майбутнього креативу' },
       },
     },
     {
       type: 'input',
       block_id: 'artifact_ref_block',
-      label: { type: 'plain_text', text: '📎 Референси стилю' },
-      optional: true,
+      label: { type: 'plain_text', text: '📎 Референси *' },
       element: {
         type: 'plain_text_input',
         action_id: 'artifact_ref',
-        placeholder: { type: 'plain_text', text: 'pinterest.com/... або посилання на приклади' },
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Посилання на приклади або опиши, що подобається' },
       },
     },
     {
       type: 'input',
-      block_id: 'artifact_drive_block',
-      label: { type: 'plain_text', text: '📎 Текст, фото, матеріали (Google Drive)' },
-      optional: true,
+      block_id: 'message_block',
+      label: { type: 'plain_text', text: '💬 Меседж *' },
       element: {
         type: 'plain_text_input',
-        action_id: 'artifact_drive',
-        placeholder: { type: 'plain_text', text: 'drive.google.com/...' },
+        action_id: 'message',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Головний меседж, який має зчитуватися з креативу' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'cta_block',
+      label: { type: 'plain_text', text: '📢 CTA *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'cta',
+        placeholder: { type: 'plain_text', text: 'Наприклад: Подати заявку / Дізнатись більше' },
       },
     },
   ],
 
-  promo_creo_video: [
+  promo_creo_mix_template: [
     {
       type: 'input',
-      block_id: 'promo_desc_block',
-      label: { type: 'plain_text', text: '💡 Що саме за задача, яка ідея *' },
+      block_id: 'selected_concept_block',
+      label: { type: 'plain_text', text: '🎯 Обраний концепт *' },
       element: {
         type: 'plain_text_input',
-        action_id: 'promo_desc',
+        action_id: 'selected_concept',
+        placeholder: { type: 'plain_text', text: 'Назва або короткий опис обраного концепту' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'new_text_block',
+      label: { type: 'plain_text', text: '📝 Новий текст *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'new_text',
         multiline: true,
-        placeholder: { type: 'plain_text', text: 'Відео промо для вакансії, Reels 15 сек, динамічно з музикою' },
+        placeholder: { type: 'plain_text', text: 'Текст, який треба використати в шаблоні' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'cta_block',
+      label: { type: 'plain_text', text: '📢 CTA *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'cta',
+        placeholder: { type: 'plain_text', text: 'Наприклад: Подати заявку / Дізнатись більше' },
+      },
+    },
+  ],
+
+  promo_creo_mix_ideas: [
+    {
+      type: 'input',
+      block_id: 'concept_only_block',
+      label: { type: 'plain_text', text: '💡 Концепція *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'concept_only',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Опиши ідею для static + motion креативу' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'artifact_ref_block',
+      label: { type: 'plain_text', text: '📎 Референси *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'artifact_ref',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Посилання на приклади або опиши, що подобається' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'message_block',
+      label: { type: 'plain_text', text: '💬 Меседж *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'message',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Головний меседж, який має бути в креативі' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'cta_block',
+      label: { type: 'plain_text', text: '📢 CTA *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'cta',
+        placeholder: { type: 'plain_text', text: 'Наприклад: Подати заявку / Дізнатись більше' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'subtitles_block',
+      label: { type: 'plain_text', text: '💬 Чи потрібні субтитри? *' },
+      element: {
+        type: 'static_select',
+        action_id: 'subtitles',
+        placeholder: { type: 'plain_text', text: 'Вибери...' },
+        options: [
+          { text: { type: 'plain_text', text: 'Так' }, value: 'Так' },
+          { text: { type: 'plain_text', text: 'Ні' }, value: 'Ні' },
+        ],
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'hooks_block',
+      label: { type: 'plain_text', text: '🪝 Хуки' },
+      optional: true,
+      element: {
+        type: 'plain_text_input',
+        action_id: 'hooks',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Перші фрази / меседжі для зачіпки, якщо вже є' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'desired_dynamics_block',
+      label: { type: 'plain_text', text: '🎞 Мінімальний опис бажаної динаміки' },
+      optional: true,
+      element: {
+        type: 'plain_text_input',
+        action_id: 'desired_dynamics',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Що саме має анімуватись, у якому темпі, можна додати приклади' },
+      },
+    },
+  ],
+
+  promo_creo_video_template: [
+    {
+      type: 'input',
+      block_id: 'selected_concept_block',
+      label: { type: 'plain_text', text: '🎯 Обраний концепт *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'selected_concept',
+        placeholder: { type: 'plain_text', text: 'Назва або короткий опис обраного концепту' },
       },
     },
     {
       type: 'input',
       block_id: 'video_format_block',
-      label: { type: 'plain_text', text: '🎬 Формат відео *' },
+      label: { type: 'plain_text', text: '🎬 Фінальний формат *' },
       element: {
         type: 'static_select',
         action_id: 'video_format',
         placeholder: { type: 'plain_text', text: 'Вибери...' },
         options: [
-          { text: { type: 'plain_text', text: 'Reels / вертикальний (9:16)' }, value: 'Reels' },
-          { text: { type: 'plain_text', text: 'Квадрат (1:1)' }, value: 'Square' },
-          { text: { type: 'plain_text', text: 'Горизонталь (16:9)' }, value: 'Horizontal' },
+          { text: { type: 'plain_text', text: 'Рілз + квадрат' }, value: 'Reels + Square' },
+          { text: { type: 'plain_text', text: 'Тільки рілз' }, value: 'Reels only' },
         ],
       },
     },
     {
       type: 'input',
-      block_id: 'platform_block',
-      label: { type: 'plain_text', text: '📱 Платформа *' },
+      block_id: 'subtitles_block',
+      label: { type: 'plain_text', text: '💬 Чи потрібні субтитри? *' },
       element: {
         type: 'static_select',
-        action_id: 'platform',
+        action_id: 'subtitles',
         placeholder: { type: 'plain_text', text: 'Вибери...' },
         options: [
-          { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
-          { text: { type: 'plain_text', text: 'TikTok' }, value: 'TikTok' },
-          { text: { type: 'plain_text', text: 'Facebook' }, value: 'Facebook' },
-          { text: { type: 'plain_text', text: 'Meta (всі платформи)' }, value: 'Meta' },
+          { text: { type: 'plain_text', text: 'Так' }, value: 'Так' },
+          { text: { type: 'plain_text', text: 'Ні' }, value: 'Ні' },
         ],
       },
     },
     {
       type: 'input',
-      block_id: 'artifact_video_block',
-      label: { type: 'plain_text', text: '📎 Відеоматеріал (Google Drive)' },
-      optional: true,
+      block_id: 'cta_block',
+      label: { type: 'plain_text', text: '📢 CTA наприкінці *' },
       element: {
         type: 'plain_text_input',
-        action_id: 'artifact_video',
-        placeholder: { type: 'plain_text', text: 'drive.google.com/...' },
+        action_id: 'cta',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Вкажи CTA і чи він один, чи тестуємо кілька варіантів' },
       },
     },
     {
       type: 'input',
-      block_id: 'artifact_music_block',
-      label: { type: 'plain_text', text: '📎 Музика (або напиши "підібрати самостійно")' },
+      block_id: 'hooks_block',
+      label: { type: 'plain_text', text: '🪝 Хуки' },
       optional: true,
       element: {
         type: 'plain_text_input',
-        action_id: 'artifact_music',
-        placeholder: { type: 'plain_text', text: '"підібрати самостійно" або drive.google.com/...' },
+        action_id: 'hooks',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Перші фрази / меседжі для зачіпки, якщо вже є' },
+      },
+    },
+  ],
+
+  promo_creo_video_ideas: [
+    {
+      type: 'input',
+      block_id: 'concept_only_block',
+      label: { type: 'plain_text', text: '💡 Концепція *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'concept_only',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Опиши ідею відеокреативу' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'artifact_ref_block',
+      label: { type: 'plain_text', text: '📎 Референси *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'artifact_ref',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Посилання на приклади або опиши, що подобається' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'message_block',
+      label: { type: 'plain_text', text: '💬 Меседж *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'message',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Головний меседж, який має бути у відео' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'cta_block',
+      label: { type: 'plain_text', text: '📢 CTA *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'cta',
+        placeholder: { type: 'plain_text', text: 'Наприклад: Подати заявку / Дізнатись більше' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'subtitles_block',
+      label: { type: 'plain_text', text: '💬 Чи потрібні субтитри? *' },
+      element: {
+        type: 'static_select',
+        action_id: 'subtitles',
+        placeholder: { type: 'plain_text', text: 'Вибери...' },
+        options: [
+          { text: { type: 'plain_text', text: 'Так' }, value: 'Так' },
+          { text: { type: 'plain_text', text: 'Ні' }, value: 'Ні' },
+        ],
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'hooks_block',
+      label: { type: 'plain_text', text: '🪝 Хуки' },
+      optional: true,
+      element: {
+        type: 'plain_text_input',
+        action_id: 'hooks',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Перші фрази / меседжі для зачіпки, якщо вже є' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'desired_dynamics_block',
+      label: { type: 'plain_text', text: '🎞 Мінімальний опис бажаної динаміки' },
+      optional: true,
+      element: {
+        type: 'plain_text_input',
+        action_id: 'desired_dynamics',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Що саме має анімуватись, у якому темпі, можна додати приклади' },
       },
     },
   ],
@@ -700,26 +883,8 @@ const specificBlocks = {
   print_materials: [
     {
       type: 'input',
-      block_id: 'print_type_block',
-      label: { type: 'plain_text', text: '🖨 Тип друкованого матеріалу *' },
-      element: {
-        type: 'static_select',
-        action_id: 'print_type',
-        placeholder: { type: 'plain_text', text: 'Вибери...' },
-        options: [
-          { text: { type: 'plain_text', text: 'Постер' }, value: 'Постер' },
-          { text: { type: 'plain_text', text: 'Флаєр' }, value: 'Флаєр' },
-          { text: { type: 'plain_text', text: 'Брошура' }, value: 'Брошура' },
-          { text: { type: 'plain_text', text: 'Листівка' }, value: 'Листівка' },
-          { text: { type: 'plain_text', text: 'Дошка / банер' }, value: 'Дошка' },
-          { text: { type: 'plain_text', text: 'Інше' }, value: 'Інше' },
-        ],
-      },
-    },
-    {
-      type: 'input',
       block_id: 'print_size_block',
-      label: { type: 'plain_text', text: '📐 Розмір і орієнтація *' },
+      label: { type: 'plain_text', text: '📐 Розміри *' },
       element: {
         type: 'plain_text_input',
         action_id: 'print_size',
@@ -728,39 +893,46 @@ const specificBlocks = {
     },
     {
       type: 'input',
-      block_id: 'color_model_block',
-      label: { type: 'plain_text', text: '🎨 Кольорова модель *' },
-      element: {
-        type: 'static_select',
-        action_id: 'color_model',
-        placeholder: { type: 'plain_text', text: 'Вибери...' },
-        options: [
-          { text: { type: 'plain_text', text: 'CMYK (друк)' }, value: 'CMYK' },
-          { text: { type: 'plain_text', text: 'RGB (digital)' }, value: 'RGB' },
-        ],
-        initial_option: { text: { type: 'plain_text', text: 'CMYK (друк)' }, value: 'CMYK' },
-      },
-    },
-    {
-      type: 'input',
-      block_id: 'message_block',
-      label: { type: 'plain_text', text: '💬 Текст і ключове повідомлення *' },
+      block_id: 'construction_block',
+      label: { type: 'plain_text', text: '🧩 Конструкція *' },
       element: {
         type: 'plain_text_input',
-        action_id: 'message',
+        action_id: 'construction',
         multiline: true,
-        placeholder: { type: 'plain_text', text: 'Заголовок, підзаголовок, CTA, контакти тощо' },
+        placeholder: { type: 'plain_text', text: 'Якщо носій складний: схема складання, кількість згинів, порядок сторін, схема розміщення стін тощо' },
       },
     },
     {
       type: 'input',
-      block_id: 'artifact_drive_block',
-      label: { type: 'plain_text', text: '📎 Фото, логотип, референси (Google Drive)' },
-      optional: true,
+      block_id: 'file_packaging_block',
+      label: { type: 'plain_text', text: '📦 Як передавати елементи *' },
       element: {
         type: 'plain_text_input',
-        action_id: 'artifact_drive',
-        placeholder: { type: 'plain_text', text: 'drive.google.com/...' },
+        action_id: 'file_packaging',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Чи кожен елемент має бути окремим файлом, чи можна скопом в одному документі' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'print_effect_block',
+      label: { type: 'plain_text', text: '✨ Ефект нанесення *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'print_effect',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Який ефект нанесення очікується: матовість, лак, тиснення, фольга тощо' },
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'artifact_ref_block',
+      label: { type: 'plain_text', text: '📎 Референси готового обʼєкту *' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'artifact_ref',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Посилання на приклади або фото бажаного результату' },
       },
     },
   ],

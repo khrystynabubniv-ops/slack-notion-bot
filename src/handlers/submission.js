@@ -73,14 +73,12 @@ export function registerSubmissionHandlers(app) {
     const artifacts = {}
 
     const videoFormat = values.video_format_block?.video_format?.selected_option?.value
-    const printType = values.print_type_block?.print_type?.selected_option?.value
     const platform = values.platform_block?.platform?.selected_option?.value
     const platformOther = values.platform_other_block?.platform_other?.value
 
     const fieldMapping = {
       size_block: '📐 Розміри',
-      print_size_block: '📐 Розмір і орієнтація',
-      print_type_block: '🖨 Тип друкованого матеріалу',
+      print_size_block: '📐 Розміри',
       message_block: '💬 Ключове повідомлення',
       accent_block: '🎯 Основний акцент',
       color_model_block: '🎨 Кольорова модель',
@@ -122,6 +120,14 @@ export function registerSubmissionHandlers(app) {
       vacancy_block: '💼 Назва вакансії та умови',
       formats_list_block: '📐 Перелік форматів',
       promo_desc_block: '💡 Опис задачі',
+      selected_concept_block: '🎯 Обраний концепт',
+      new_text_block: '📝 Новий текст',
+      concept_only_block: '💡 Концепція',
+      hooks_block: '🪝 Хуки',
+      desired_dynamics_block: '🎞 Мінімальний опис бажаної динаміки',
+      construction_block: '🧩 Конструкція',
+      file_packaging_block: '📦 Як передавати елементи',
+      print_effect_block: '✨ Ефект нанесення',
       other_desc_block: '📝 Опис задачі',
     }
 
@@ -177,7 +183,6 @@ export function registerSubmissionHandlers(app) {
         priority,
         deadline,
         videoFormat,
-        printType,
         platform,
         platformOther,
         taskType,

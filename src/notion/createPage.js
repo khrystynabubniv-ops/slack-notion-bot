@@ -77,7 +77,6 @@ export async function createNotionPage({
   priority,
   deadline,
   videoFormat,
-  printType,
   platform,
   platformOther,
   taskType,

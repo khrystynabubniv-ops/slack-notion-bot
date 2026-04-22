@@ -187,9 +187,12 @@ export function getTaskTypeGroups() {
     {
       label: { type: 'plain_text', text: '📣 Promo Creatives' },
       options: [
-        { text: { type: 'plain_text', text: 'Promo Creo Static (по шаблону)' }, value: 'promo_creo_static' },
-        { text: { type: 'plain_text', text: 'Promo Creo Mix (нові ідеї)' }, value: 'promo_creo_mix' },
-        { text: { type: 'plain_text', text: 'Promo Creo Video' }, value: 'promo_creo_video' },
+        { text: { type: 'plain_text', text: 'Promo Creo Static (по шаблону)' }, value: 'promo_creo_static_template' },
+        { text: { type: 'plain_text', text: 'Promo Creo Static (нові ідеї)' }, value: 'promo_creo_static_ideas' },
+        { text: { type: 'plain_text', text: 'Promo Creo Mix (по шаблону)' }, value: 'promo_creo_mix_template' },
+        { text: { type: 'plain_text', text: 'Promo Creo Mix (нові ідеї)' }, value: 'promo_creo_mix_ideas' },
+        { text: { type: 'plain_text', text: 'Promo Creo Video (по шаблону)' }, value: 'promo_creo_video_template' },
+        { text: { type: 'plain_text', text: 'Promo Creo Video (нові ідеї)' }, value: 'promo_creo_video_ideas' },
       ],
     },
     {
