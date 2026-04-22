@@ -29,9 +29,10 @@ export async function sendStatusUpdate({
     `${infoEmoji.assignee} Виконавець: ${assignee || 'не призначено'}`,
     `${infoEmoji.deadline} Дедлайн: ${formattedDeadline}`,
   ]
+  const dmChannelId = await resolveDmChannelId(slackClient, slackUserId)
 
   await slackClient.chat.postMessage({
-    channel: slackUserId,
+    channel: dmChannelId,
     text: `${statusEmoji[newStatus] || '▪️'} Статус задачі «${taskName}» змінено на «${newStatus}».`,
     blocks: [
       {
@@ -79,6 +80,19 @@ export async function sendStatusUpdate({
       },
     ],
   })
+}
+
+async function resolveDmChannelId(slackClient, slackUserId) {
+  const response = await slackClient.conversations.open({
+    users: slackUserId,
+  })
+
+  const channelId = response.channel?.id
+  if (!channelId) {
+    throw new Error(`Unable to open DM channel for user ${slackUserId}`)
+  }
+
+  return channelId
 }
 
 function formatDeadline(deadline) {

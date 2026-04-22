@@ -73,19 +73,30 @@ export async function startPolling(slackClient) {
         if (!task.lastStatus) continue
         if (currentTask.status === task.lastStatus) continue
 
-        await sendStatusUpdate({
-          slackClient,
-          slackUserId: task.slackUserId,
-          taskName: task.taskName,
-          oldStatus: task.lastStatus,
-          newStatus: currentTask.status,
-          assignee: currentTask.assignee,
-          deadline: currentTask.deadline,
-          pageUrl: `https://notion.so/${task.pageId.replace(/-/g, '')}`,
-        })
+        try {
+          console.log(
+            `📣 Sending status update for page ${task.pageId}: ${task.lastStatus} -> ${currentTask.status} (user ${task.slackUserId})`
+          )
 
-        await updateStatus(task.pageId, currentTask.status)
-        console.log(`✅ Status updated: ${task.taskName} → ${currentTask.status}`)
+          await sendStatusUpdate({
+            slackClient,
+            slackUserId: task.slackUserId,
+            taskName: task.taskName,
+            oldStatus: task.lastStatus,
+            newStatus: currentTask.status,
+            assignee: currentTask.assignee,
+            deadline: currentTask.deadline,
+            pageUrl: `https://notion.so/${task.pageId.replace(/-/g, '')}`,
+          })
+
+          await updateStatus(task.pageId, currentTask.status)
+          console.log(`✅ Status updated: ${task.taskName} → ${currentTask.status}`)
+        } catch (error) {
+          console.error(
+            `❌ Failed to notify for page ${task.pageId} (${task.taskName}) and user ${task.slackUserId}:`,
+            error
+          )
+        }
       }
     } catch (err) {
       console.error('Polling error:', err)
