@@ -46,10 +46,8 @@ SLACK_BOT_TOKEN=xoxb-...
 SLACK_SIGNING_SECRET=...
 NOTION_TOKEN=secret_...
 NOTION_DATABASE_ID=...
-NOTION_PAGE_CTA_LABEL=➕ Додати підзадачу
-NOTION_PAGE_CTA_URL=https://example.com/subtask
-NOTION_PAGE_CTA_DESCRIPTION=Натисни, щоб відкрити форму або інструкцію для створення підзадачі.
-NOTION_PAGE_CTA_EMOJI=🚀
+NOTION_TEMPLATE_ID=<id_твоього_notion_template>
+NOTION_TEMPLATE_TIMEZONE=Europe/Kiev
 UPSTASH_REDIS_REST_URL=https://...
 UPSTASH_REDIS_REST_TOKEN=...
 PORT=3000
@@ -82,8 +80,8 @@ Slash command: `/new-task`.
 - Розшар базу задач з цією інтеграцією.
 - Скопіюй `NOTION_DATABASE_ID` з URL бази.
 - У базі має бути властивість `Status` типу *Status* (поллер фільтрує `does_not_equal: Done`).
-- Якщо хочеш автоматично додавати CTA у вміст нової сторінки, задай `NOTION_PAGE_CTA_LABEL` і `NOTION_PAGE_CTA_URL`.
-- Важливо: публічна Notion API наразі не дозволяє створювати нативний `button` block. Тому бот додає підтримуваний блок `callout` з клікабельним посиланням як найближчий програмний аналог кнопки.
+- Якщо хочеш, щоб нові задачі створювалися з готового Notion template, задай `NOTION_TEMPLATE_ID`.
+- Template застосовується асинхронно одразу після створення page. Це зручно для кейсу, де в template вже є нативна кнопка `Add subtask`.
 
 ## Поведінка поллера
 

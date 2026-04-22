@@ -8,14 +8,14 @@ import {
 } from './taskConfig.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
+const notionTemplateApi = new Client({
+  auth: process.env.NOTION_TOKEN,
+  notionVersion: '2026-03-11',
+})
 const DATABASE_ID = process.env.NOTION_DATABASE_ID
 let databaseSchemaPromise = null
-const TEST_CTA = {
-  label: '➕ Додати підзадачу',
-  url: 'https://example.com/subtask',
-  description: 'Тестовий клікабельний блок. Якщо він зʼявився, значить автоматичне додавання контенту в нову сторінку працює.',
-  emoji: '🚀',
-}
+const TEMPLATE_ID = process.env.NOTION_TEMPLATE_ID?.trim()
+const TEMPLATE_TIMEZONE = process.env.NOTION_TEMPLATE_TIMEZONE?.trim() || 'Europe/Kiev'
 
 function clampText(value, limit = 2000) {
   return value?.slice(0, limit) || ''
@@ -31,37 +31,23 @@ function buildRichTextLink(content, url) {
   }
 }
 
-function buildPageChildren() {
-  const children = [
-    {
-      object: 'block',
-      type: 'callout',
-      callout: {
-        rich_text: [buildRichTextLink(TEST_CTA.label, TEST_CTA.url)],
-        icon: { type: 'emoji', emoji: TEST_CTA.emoji },
-        color: 'blue_background',
+async function applyTemplateToPage(pageId) {
+  if (!TEMPLATE_ID) return false
+
+  await notionTemplateApi.request({
+    path: `pages/${pageId}`,
+    method: 'patch',
+    body: {
+      template: {
+        type: 'template_id',
+        template_id: TEMPLATE_ID,
+        timezone: TEMPLATE_TIMEZONE,
       },
+      erase_content: true,
     },
-  ]
+  })
 
-  if (TEST_CTA.description) {
-    children.push({
-      object: 'block',
-      type: 'paragraph',
-      paragraph: {
-        rich_text: [
-          {
-            type: 'text',
-            text: {
-              content: clampText(TEST_CTA.description),
-            },
-          },
-        ],
-      },
-    })
-  }
-
-  return children
+  return true
 }
 
 async function getDatabaseProperties() {
@@ -189,17 +175,22 @@ export async function createNotionPage({
     }
   }
 
-  const pageChildren = buildPageChildren()
-
   const response = await notion.pages.create({
     parent: { database_id: DATABASE_ID },
     properties,
-    children: pageChildren,
   })
+
+  let templateApplied = false
+
+  try {
+    templateApplied = await applyTemplateToPage(response.id)
+  } catch (error) {
+    console.error('Notion template apply failed:', error)
+  }
 
   return {
     pageId: response.id,
     pageUrl: response.url,
-    ctaBlockAdded: pageChildren.length > 0,
+    templateApplied,
   }
 }
