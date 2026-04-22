@@ -121,15 +121,20 @@ function baseBlocks() {
       type: 'input',
       block_id: 'priority_block',
       label: { type: 'plain_text', text: '🔥 Пріоритет *' },
+      hint: {
+        type: 'plain_text',
+        text: 'Urgent — є конкретна дата події / підрядник з дедлайном / force majeure. Потребує ревю Жені.\nHigh — задача цього тижня, є дедлайн, але не горить сьогодні. Стандартний пріоритет для більшості задач.\nNormal — задача без жорсткого дедлайну, береться за чергою.\nLow — задача «коли буде час», не блокує нікого.\nPlanned — задача відома наперед, запланована на конкретний тиждень у майбутньому (Summer Camp, дайджест, ребрендинг).',
+      },
       element: {
         type: 'static_select',
         action_id: 'priority',
         placeholder: { type: 'plain_text', text: 'Вибери пріоритет...' },
         options: [
+          { text: { type: 'plain_text', text: 'Urgent' }, value: 'Urgent' },
+          { text: { type: 'plain_text', text: 'High' }, value: 'High' },
+          { text: { type: 'plain_text', text: 'Normal' }, value: 'Normal' },
           { text: { type: 'plain_text', text: 'Low' }, value: 'Low' },
           { text: { type: 'plain_text', text: 'Planned' }, value: 'Planned' },
-          { text: { type: 'plain_text', text: 'This week' }, value: 'This week' },
-          { text: { type: 'plain_text', text: 'Urgent' }, value: 'Urgent' },
         ],
       },
     },
