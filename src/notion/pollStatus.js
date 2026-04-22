@@ -1,6 +1,7 @@
 import { Client } from '@notionhq/client'
 import { getAllTasks, updateStatus } from '../redis/store.js'
 import { sendStatusUpdate } from '../slack/notify.js'
+import { buildTaskPageUrl } from './pageUrl.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const DATABASE_ID = process.env.NOTION_DATABASE_ID
@@ -86,7 +87,7 @@ export async function startPolling(slackClient) {
             newStatus: currentTask.status,
             assignee: currentTask.assignee,
             deadline: currentTask.deadline,
-            pageUrl: `https://notion.so/${task.pageId.replace(/-/g, '')}`,
+            pageUrl: buildTaskPageUrl(task.pageId),
           })
 
           await updateStatus(task.pageId, currentTask.status)

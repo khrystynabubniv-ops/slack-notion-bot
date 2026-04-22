@@ -6,6 +6,7 @@ import {
   getTaskTypeRelationId,
   resolvePlatform,
 } from './taskConfig.js'
+import { buildTaskPageUrl } from './pageUrl.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const notionTemplateApi = new Client({
@@ -190,7 +191,7 @@ export async function createNotionPage({
 
   return {
     pageId: response.id,
-    pageUrl: response.url,
+    pageUrl: buildTaskPageUrl(response.id, response.url),
     templateApplied,
   }
 }
