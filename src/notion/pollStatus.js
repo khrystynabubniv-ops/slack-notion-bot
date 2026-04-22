@@ -5,8 +5,30 @@ import { sendStatusUpdate } from '../slack/notify.js'
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const DATABASE_ID = process.env.NOTION_DATABASE_ID
 
-async function getCurrentStatuses() {
-  const statuses = {}
+function extractAssignee(page) {
+  const people = page.properties.Owner?.people || []
+  const names = people
+    .map((person) => person.name)
+    .filter(Boolean)
+
+  if (names.length) return names.join(', ')
+
+  const slackPerson = page.properties['Slack Person']
+  if (slackPerson?.title?.length) {
+    return slackPerson.title.map((item) => item.plain_text).join('').trim()
+  }
+
+  if (slackPerson?.rich_text?.length) {
+    return slackPerson.rich_text.map((item) => item.plain_text).join('').trim()
+  }
+
+  if (slackPerson?.select?.name) return slackPerson.select.name
+
+  return null
+}
+
+async function getCurrentTaskSnapshots() {
+  const tasks = {}
 
   let hasMore = true
   let startCursor
@@ -19,14 +41,20 @@ async function getCurrentStatuses() {
 
     for (const page of response.results) {
       const status = page.properties.Status?.status?.name
-      if (status) statuses[page.id] = status
+      if (!status) continue
+
+      tasks[page.id] = {
+        status,
+        assignee: extractAssignee(page),
+        deadline: page.properties.Deadline?.date?.start || null,
+      }
     }
 
     hasMore = response.has_more
     startCursor = response.next_cursor ?? undefined
   }
 
-  return statuses
+  return tasks
 }
 
 export async function startPolling(slackClient) {
@@ -37,25 +65,27 @@ export async function startPolling(slackClient) {
       const trackedTasks = await getAllTasks()
       if (!trackedTasks.length) return
 
-      const currentStatuses = await getCurrentStatuses()
+      const currentTasks = await getCurrentTaskSnapshots()
 
       for (const task of trackedTasks) {
-        const current = currentStatuses[task.pageId]
-        if (!current) continue
+        const currentTask = currentTasks[task.pageId]
+        if (!currentTask?.status) continue
         if (!task.lastStatus) continue
-        if (current === task.lastStatus) continue
+        if (currentTask.status === task.lastStatus) continue
 
         await sendStatusUpdate({
           slackClient,
           slackUserId: task.slackUserId,
           taskName: task.taskName,
           oldStatus: task.lastStatus,
-          newStatus: current,
+          newStatus: currentTask.status,
+          assignee: currentTask.assignee,
+          deadline: currentTask.deadline,
           pageUrl: `https://notion.so/${task.pageId.replace(/-/g, '')}`,
         })
 
-        await updateStatus(task.pageId, current)
-        console.log(`✅ Status updated: ${task.taskName} → ${current}`)
+        await updateStatus(task.pageId, currentTask.status)
+        console.log(`✅ Status updated: ${task.taskName} → ${currentTask.status}`)
       }
     } catch (err) {
       console.error('Polling error:', err)

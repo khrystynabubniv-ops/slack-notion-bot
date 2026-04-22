@@ -4,6 +4,8 @@ export async function sendStatusUpdate({
   taskName,
   oldStatus,
   newStatus,
+  assignee,
+  deadline,
   pageUrl,
 }) {
   const statusEmoji = {
@@ -11,28 +13,56 @@ export async function sendStatusUpdate({
     'In progress': '🔵',
     Comments: '🟠',
     Ready: '🟢',
+    Done: '✅',
   }
+  const infoEmoji = {
+    status: '🔄',
+    task: '🏷️',
+    assignee: '👤',
+    deadline: '📅',
+  }
+
+  const formattedDeadline = formatDeadline(deadline)
+  const summaryLines = [
+    `${infoEmoji.status} Статус: «${newStatus}»`,
+    `${infoEmoji.task} Задача: ${taskName}`,
+    `${infoEmoji.assignee} Виконавець: ${assignee || 'не призначено'}`,
+    `${infoEmoji.deadline} Дедлайн: ${formattedDeadline}`,
+  ]
 
   await slackClient.chat.postMessage({
     channel: slackUserId,
+    text: `${statusEmoji[newStatus] || '▪️'} Статус задачі «${taskName}» змінено на «${newStatus}».`,
     blocks: [
+      {
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: '*Design Bot*',
+          },
+          {
+            type: 'mrkdwn',
+            text: 'щойно',
+          },
+        ],
+      },
+      {
+        type: 'divider',
+      },
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Оновлення по задачі*\n*${taskName}*`,
+          text: summaryLines.join('\n\n'),
         },
       },
       {
-        type: 'section',
-        fields: [
+        type: 'context',
+        elements: [
           {
             type: 'mrkdwn',
-            text: `*Було:*\n${statusEmoji[oldStatus] || '▪️'} ${oldStatus}`,
-          },
-          {
-            type: 'mrkdwn',
-            text: `*Стало:*\n${statusEmoji[newStatus] || '▪️'} ${newStatus}`,
+            text: `Було: ${statusEmoji[oldStatus] || '▪️'} ${oldStatus}`,
           },
         ],
       },
@@ -49,4 +79,20 @@ export async function sendStatusUpdate({
       },
     ],
   })
+}
+
+function formatDeadline(deadline) {
+  if (!deadline) return 'не вказано'
+
+  const date = new Date(`${deadline}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return deadline
+
+  const now = new Date()
+  const sameYear = date.getFullYear() === now.getFullYear()
+
+  return new Intl.DateTimeFormat('uk-UA', {
+    day: 'numeric',
+    month: 'long',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  }).format(date)
 }
