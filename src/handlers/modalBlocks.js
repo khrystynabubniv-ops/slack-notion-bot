@@ -7,13 +7,18 @@ function getBlockValue(values, blockId, actionId) {
   return element.value || element.selected_option?.value || element.selected_date || null
 }
 
-function ensureOtherPlatformOption(options = []) {
-  if (options.some((option) => option.value === 'Other')) return options
+function ensurePlatformOptions(options = []) {
+  const nextOptions = [...options]
 
-  return [
-    ...options,
-    { text: { type: 'plain_text', text: 'Other' }, value: 'Other' },
-  ]
+  if (!nextOptions.some((option) => option.value === 'Telegram')) {
+    nextOptions.push({ text: { type: 'plain_text', text: 'Telegram' }, value: 'Telegram' })
+  }
+
+  if (!nextOptions.some((option) => option.value === 'Other')) {
+    nextOptions.push({ text: { type: 'plain_text', text: 'Other' }, value: 'Other' })
+  }
+
+  return nextOptions
 }
 
 function cloneElementWithState(block, values) {
@@ -38,7 +43,7 @@ function cloneElementWithState(block, values) {
     let options = nextBlock.element.options
 
     if (block.block_id === 'platform_block') {
-      options = ensureOtherPlatformOption(options)
+      options = ensurePlatformOptions(options)
       nextBlock.element.options = options
     }
 
