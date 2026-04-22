@@ -10,7 +10,12 @@ import {
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const DATABASE_ID = process.env.NOTION_DATABASE_ID
 let databaseSchemaPromise = null
-let missingCtaConfigWarned = false
+const TEST_CTA = {
+  label: '➕ Додати підзадачу',
+  url: 'https://example.com/subtask',
+  description: 'Тестовий клікабельний блок. Якщо він зʼявився, значить автоматичне додавання контенту в нову сторінку працює.',
+  emoji: '🚀',
+}
 
 function clampText(value, limit = 2000) {
   return value?.slice(0, limit) || ''
@@ -27,34 +32,19 @@ function buildRichTextLink(content, url) {
 }
 
 function buildPageChildren() {
-  const ctaLabel = process.env.NOTION_PAGE_CTA_LABEL?.trim()
-  const ctaUrl = process.env.NOTION_PAGE_CTA_URL?.trim()
-  const ctaDescription = process.env.NOTION_PAGE_CTA_DESCRIPTION?.trim()
-  const ctaEmoji = process.env.NOTION_PAGE_CTA_EMOJI?.trim() || '🚀'
-
-  if (!ctaLabel || !ctaUrl) {
-    if (!missingCtaConfigWarned) {
-      console.warn(
-        'Notion CTA block is disabled: set NOTION_PAGE_CTA_LABEL and NOTION_PAGE_CTA_URL to create page content automatically.'
-      )
-      missingCtaConfigWarned = true
-    }
-    return []
-  }
-
   const children = [
     {
       object: 'block',
       type: 'callout',
       callout: {
-        rich_text: [buildRichTextLink(ctaLabel, ctaUrl)],
-        icon: { type: 'emoji', emoji: ctaEmoji },
+        rich_text: [buildRichTextLink(TEST_CTA.label, TEST_CTA.url)],
+        icon: { type: 'emoji', emoji: TEST_CTA.emoji },
         color: 'blue_background',
       },
     },
   ]
 
-  if (ctaDescription) {
+  if (TEST_CTA.description) {
     children.push({
       object: 'block',
       type: 'paragraph',
@@ -63,7 +53,7 @@ function buildPageChildren() {
           {
             type: 'text',
             text: {
-              content: clampText(ctaDescription),
+              content: clampText(TEST_CTA.description),
             },
           },
         ],
