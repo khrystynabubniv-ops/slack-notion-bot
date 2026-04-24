@@ -203,6 +203,7 @@ export function registerSubmissionHandlers(app) {
           slackUserId: userId,
           slackChannelId: userId,
           taskName: name || taskTypeLabel,
+          requesterName: slackPersonName,
         })
       } catch (redisErr) {
         console.error('Redis saveTask failed (non-critical):', redisErr)

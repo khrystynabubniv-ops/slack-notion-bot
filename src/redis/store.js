@@ -12,12 +12,15 @@ function parseStoredTask(data) {
   return null
 }
 
-export async function saveTask({ pageId, slackUserId, slackChannelId, taskName }) {
+export async function saveTask({ pageId, slackUserId, slackChannelId, taskName, requesterName }) {
   await redis.set(`notion:${pageId}`, JSON.stringify({
     slackUserId,
     slackChannelId,
     taskName,
+    requesterName: requesterName || null,
     lastStatus: 'To do',
+    lastCommentId: null,
+    lastCommentCreatedTime: null,
   }))
 }
 
@@ -35,6 +38,19 @@ export async function updateStatus(pageId, newStatus) {
   await redis.set(`notion:${pageId}`, JSON.stringify({
     ...parsed,
     lastStatus: newStatus,
+  }))
+}
+
+export async function updateLastComment(pageId, { id, createdTime, commentId }) {
+  const data = await redis.get(`notion:${pageId}`)
+  if (!data) return
+  const parsed = parseStoredTask(data)
+  if (!parsed) return
+
+  await redis.set(`notion:${pageId}`, JSON.stringify({
+    ...parsed,
+    lastCommentId: commentId || id || null,
+    lastCommentCreatedTime: createdTime || null,
   }))
 }
 

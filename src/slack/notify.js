@@ -82,6 +82,64 @@ export async function sendStatusUpdate({
   })
 }
 
+export async function sendCommentUpdate({
+  slackClient,
+  slackUserId,
+  taskName,
+  commentAuthor,
+  commentText,
+  pageUrl,
+}) {
+  const targetChannel = await resolveNotificationChannel(slackClient, slackUserId)
+  const preview = formatCommentPreview(commentText)
+
+  await slackClient.chat.postMessage({
+    channel: targetChannel,
+    text: `💬 У задачі «${taskName}» з'явився новий коментар.`,
+    blocks: [
+      {
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: '*Design Bot*',
+          },
+          {
+            type: 'mrkdwn',
+            text: 'щойно',
+          },
+        ],
+      },
+      {
+        type: 'divider',
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: [
+            '💬 *Новий коментар у задачі*',
+            `🏷️ Задача: ${taskName}`,
+            `👤 Автор: ${commentAuthor || 'невідомий автор'}`,
+            `📝 Коментар: ${preview}`,
+          ].join('\n\n'),
+        },
+      },
+      {
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
+            url: pageUrl,
+            style: 'primary',
+          },
+        ],
+      },
+    ],
+  })
+}
+
 async function resolveNotificationChannel(slackClient, slackUserId) {
   try {
     const response = await slackClient.conversations.open({
@@ -111,4 +169,11 @@ function formatDeadline(deadline) {
     month: 'long',
     ...(sameYear ? {} : { year: 'numeric' }),
   }).format(date)
+}
+
+function formatCommentPreview(commentText) {
+  const normalized = (commentText || '').replace(/\s+/g, ' ').trim()
+  if (!normalized) return 'Без тексту'
+  if (normalized.length <= 220) return `«${normalized}»`
+  return `«${normalized.slice(0, 217)}...»`
 }
