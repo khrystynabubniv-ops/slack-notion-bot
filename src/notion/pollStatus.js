@@ -6,6 +6,7 @@ import { buildTaskPageUrl } from './pageUrl.js'
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const DATABASE_ID = process.env.NOTION_DATABASE_ID
 let commentPollingEnabled = true
+const notionUserNameCache = new Map()
 
 function extractAssignee(page) {
   const people = page.properties.Owner?.people || []
@@ -95,14 +96,39 @@ async function getLatestOpenComment(pageId) {
 
   if (!latestComment) return null
 
+  const author = await resolveNotionUserName(latestComment.created_by)
+
   return {
     id: latestComment.id,
     createdTime: latestComment.created_time,
-    author: latestComment.created_by?.name || latestComment.created_by?.id || null,
+    author,
     text: latestComment.rich_text
       ?.map((item) => item.plain_text || item.text?.content || '')
       .join('')
       .trim() || '',
+  }
+}
+
+async function resolveNotionUserName(createdBy) {
+  if (!createdBy) return null
+  if (createdBy.name) return createdBy.name
+
+  const userId = createdBy.id
+  if (!userId) return null
+
+  if (notionUserNameCache.has(userId)) {
+    return notionUserNameCache.get(userId)
+  }
+
+  try {
+    const user = await notion.users.retrieve({ user_id: userId })
+    const resolvedName = user?.name || user?.person?.email || userId
+    notionUserNameCache.set(userId, resolvedName)
+    return resolvedName
+  } catch (error) {
+    console.warn(`Failed to resolve Notion user name for ${userId}:`, error)
+    notionUserNameCache.set(userId, userId)
+    return userId
   }
 }
 
