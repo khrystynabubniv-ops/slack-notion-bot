@@ -3,6 +3,7 @@ import pkg from '@slack/bolt'
 const { App, ExpressReceiver } = pkg
 import { registerNewTaskCommand } from './handlers/newTask.js'
 import { registerSubmissionHandlers } from './handlers/submission.js'
+import { registerNotionLaunchWebhook } from './notion/launchWebhook.js'
 import { registerHomeTab } from './slack/home.js'
 import { startPolling } from './notion/pollStatus.js'
 
@@ -38,9 +39,9 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
   })
 } else {
   const receiver = new ExpressReceiver({ signingSecret })
-receiver.router.get('/', (req, res) => {
-  res.send('OK')
-})
+  receiver.router.get('/', (req, res) => {
+    res.send('OK')
+  })
   receiver.router.post('/', (req, res, next) => {
     if (req.body?.type === 'url_verification') {
       res.json({ challenge: req.body.challenge })
@@ -48,6 +49,7 @@ receiver.router.get('/', (req, res) => {
       next()
     }
   })
+  registerNotionLaunchWebhook(receiver.router)
 
   const app = new App({ token, receiver })
 

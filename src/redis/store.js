@@ -68,3 +68,24 @@ export async function getAllTasks() {
 
   return tasks.filter(Boolean)
 }
+
+export async function saveLaunchContext({ parentTaskId, parentPageName, payload }) {
+  if (!parentTaskId) {
+    throw new Error('parentTaskId is required')
+  }
+
+  await redis.set(
+    `notion-launch:${parentTaskId}`,
+    JSON.stringify({
+      parentTaskId,
+      parentPageName: parentPageName || null,
+      payload: payload || null,
+      createdAt: new Date().toISOString(),
+    })
+  )
+}
+
+export async function getLaunchContext(parentTaskId) {
+  const data = await redis.get(`notion-launch:${parentTaskId}`)
+  return parseStoredTask(data)
+}
