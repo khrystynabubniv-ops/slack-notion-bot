@@ -5,6 +5,32 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 })
 
+const SAVE_TASK_RETRY_DELAYS_MS = [300, 1000]
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function saveWithRetry(key, value) {
+  let lastError
+
+  for (let attempt = 0; attempt <= SAVE_TASK_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await redis.set(key, value)
+    } catch (error) {
+      lastError = error
+      const retryDelay = SAVE_TASK_RETRY_DELAYS_MS[attempt]
+
+      if (retryDelay === undefined) break
+
+      console.warn(`Redis save failed for ${key}, retrying in ${retryDelay}ms:`, error)
+      await wait(retryDelay)
+    }
+  }
+
+  throw lastError
+}
+
 function parseStoredTask(data) {
   if (!data) return null
   if (typeof data === 'string') return JSON.parse(data)
@@ -13,7 +39,7 @@ function parseStoredTask(data) {
 }
 
 export async function saveTask({ pageId, slackUserId, slackChannelId, taskName, requesterName }) {
-  await redis.set(`notion:${pageId}`, JSON.stringify({
+  await saveWithRetry(`notion:${pageId}`, JSON.stringify({
     slackUserId,
     slackChannelId,
     taskName,

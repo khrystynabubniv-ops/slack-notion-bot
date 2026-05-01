@@ -6,6 +6,7 @@ export async function sendStatusUpdate({
   newStatus,
   assignee,
   deadline,
+  finalProjectUrl,
   pageUrl,
 }) {
   const statusEmoji = {
@@ -23,16 +24,42 @@ export async function sendStatusUpdate({
   }
 
   const formattedDeadline = formatDeadline(deadline)
+  const resultUrl = normalizeUrl(finalProjectUrl)
   const summaryLines = [
     `${infoEmoji.status} Статус: «${newStatus}»`,
     `${infoEmoji.task} Задача: ${taskName}`,
     `${infoEmoji.assignee} Виконавець: ${assignee || 'не призначено'}`,
     `${infoEmoji.deadline} Дедлайн: ${formattedDeadline}`,
   ]
-  const targetChannel = await resolveNotificationChannel(slackClient, slackUserId)
+  const resultBlocks = resultUrl
+    ? [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `✨ *Ось результати:* <${resultUrl}|відкрити фінальний проєкт>\nПереглянь і повернися до дизайнера з фідбеком.`,
+          },
+        },
+      ]
+    : []
+  const actionElements = [
+    {
+      type: 'button',
+      text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
+      url: pageUrl,
+      style: 'primary',
+    },
+  ]
 
-  await slackClient.chat.postMessage({
-    channel: targetChannel,
+  if (resultUrl) {
+    actionElements.push({
+      type: 'button',
+      text: { type: 'plain_text', text: '🔗 Відкрити результат' },
+      url: resultUrl,
+    })
+  }
+
+  await postNotification(slackClient, slackUserId, {
     text: `${statusEmoji[newStatus] || '▪️'} Статус задачі «${taskName}» змінено на «${newStatus}».`,
     blocks: [
       {
@@ -58,6 +85,7 @@ export async function sendStatusUpdate({
           text: summaryLines.join('\n\n'),
         },
       },
+      ...resultBlocks,
       {
         type: 'context',
         elements: [
@@ -69,14 +97,7 @@ export async function sendStatusUpdate({
       },
       {
         type: 'actions',
-        elements: [
-          {
-            type: 'button',
-            text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
-            url: pageUrl,
-            style: 'primary',
-          },
-        ],
+        elements: actionElements,
       },
     ],
   })
@@ -90,11 +111,9 @@ export async function sendCommentUpdate({
   commentText,
   pageUrl,
 }) {
-  const targetChannel = await resolveNotificationChannel(slackClient, slackUserId)
   const preview = formatCommentPreview(commentText)
 
-  await slackClient.chat.postMessage({
-    channel: targetChannel,
+  await postNotification(slackClient, slackUserId, {
     text: `💬 У задачі «${taskName}» з'явився новий коментар.`,
     blocks: [
       {
@@ -140,19 +159,69 @@ export async function sendCommentUpdate({
   })
 }
 
-async function resolveNotificationChannel(slackClient, slackUserId) {
+async function postNotification(slackClient, slackUserId, message) {
+  const channels = await resolveNotificationChannels(slackClient, slackUserId)
+  let lastError
+
+  for (const channel of channels) {
+    try {
+      return await slackClient.chat.postMessage({
+        ...message,
+        channel,
+      })
+    } catch (error) {
+      lastError = error
+
+      if (!shouldTryNextChannel(error)) {
+        throw error
+      }
+
+      console.warn(`Failed to post notification to ${channel}, trying fallback channel:`, error)
+    }
+  }
+
+  throw lastError
+}
+
+async function resolveNotificationChannels(slackClient, slackUserId) {
+  const channels = []
+
   try {
     const response = await slackClient.conversations.open({
       users: slackUserId,
     })
 
     const channelId = response.channel?.id
-    if (channelId) return channelId
+    if (channelId) channels.push(channelId)
   } catch (error) {
     console.warn(`Failed to open DM channel for ${slackUserId}, fallback to user ID delivery:`, error)
   }
 
-  return slackUserId
+  channels.push(slackUserId)
+
+  return [...new Set(channels.filter(Boolean))]
+}
+
+function shouldTryNextChannel(error) {
+  const slackError = error?.data?.error || error?.message
+  return ['channel_not_found', 'not_in_channel', 'is_archived'].includes(slackError)
+}
+
+function normalizeUrl(value) {
+  if (typeof value !== 'string') return null
+
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  try {
+    return new URL(trimmed).toString()
+  } catch (_) {
+    try {
+      return new URL(`https://${trimmed}`).toString()
+    } catch (_) {
+      return null
+    }
+  }
 }
 
 function formatDeadline(deadline) {

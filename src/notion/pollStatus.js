@@ -30,6 +30,18 @@ function extractAssignee(page) {
   return null
 }
 
+function extractUrlProperty(page, propertyName) {
+  const property = page.properties[propertyName]
+  if (!property) return null
+
+  if (typeof property.url === 'string') {
+    const url = property.url.trim()
+    return url || null
+  }
+
+  return null
+}
+
 async function getCurrentTaskSnapshots() {
   const tasks = {}
 
@@ -50,6 +62,7 @@ async function getCurrentTaskSnapshots() {
         status,
         assignee: extractAssignee(page),
         deadline: page.properties.Deadline?.date?.start || null,
+        finalProjectUrl: extractUrlProperty(page, 'Final project'),
       }
     }
 
@@ -60,12 +73,12 @@ async function getCurrentTaskSnapshots() {
   return tasks
 }
 
-async function getLatestOpenComment(pageId) {
-  if (!commentPollingEnabled) return null
+async function getOpenComments(pageId) {
+  if (!commentPollingEnabled) return []
 
   let hasMore = true
   let startCursor
-  let latestComment = null
+  const comments = []
 
   try {
     while (hasMore) {
@@ -75,8 +88,7 @@ async function getLatestOpenComment(pageId) {
         page_size: 100,
       })
 
-      const currentLatest = response.results.at(-1)
-      if (currentLatest) latestComment = currentLatest
+      comments.push(...response.results)
 
       hasMore = response.has_more
       startCursor = response.next_cursor ?? undefined
@@ -88,21 +100,22 @@ async function getLatestOpenComment(pageId) {
       console.warn(
         '⚠️ Comment polling disabled. Enable "Read comments" capability for the Notion integration.'
       )
-      return null
+      return []
     }
 
     throw error
   }
 
-  if (!latestComment) return null
+  return Promise.all(comments.map(formatComment))
+}
 
-  const author = await resolveNotionUserName(latestComment.created_by)
-
+async function formatComment(comment) {
+  const author = await resolveNotionUserName(comment.created_by)
   return {
-    id: latestComment.id,
-    createdTime: latestComment.created_time,
+    id: comment.id,
+    createdTime: comment.created_time,
     author,
-    text: latestComment.rich_text
+    text: comment.rich_text
       ?.map((item) => item.plain_text || item.text?.content || '')
       .join('')
       .trim() || '',
@@ -132,16 +145,28 @@ async function resolveNotionUserName(createdBy) {
   }
 }
 
-function isNewerComment(latestComment, task) {
-  if (!task.lastCommentId && !task.lastCommentCreatedTime) return false
-  if (latestComment.id === task.lastCommentId) return false
-  if (!task.lastCommentCreatedTime) return true
+function getNewComments(comments, task) {
+  if (!comments.length) return []
+  if (!task.lastCommentId && !task.lastCommentCreatedTime) return []
 
-  const latestTimestamp = Date.parse(latestComment.createdTime)
+  if (task.lastCommentId) {
+    const savedIndex = comments.findIndex((comment) => comment.id === task.lastCommentId)
+    if (savedIndex >= 0) return comments.slice(savedIndex + 1)
+  }
+
+  if (!task.lastCommentCreatedTime) return comments
+
   const savedTimestamp = Date.parse(task.lastCommentCreatedTime)
+  if (Number.isNaN(savedTimestamp)) return comments
 
-  if (Number.isNaN(latestTimestamp) || Number.isNaN(savedTimestamp)) return true
-  return latestTimestamp > savedTimestamp
+  return comments.filter((comment) => {
+    if (comment.id === task.lastCommentId) return false
+
+    const commentTimestamp = Date.parse(comment.createdTime)
+    if (Number.isNaN(commentTimestamp)) return true
+
+    return commentTimestamp > savedTimestamp
+  })
 }
 
 function normalizePersonName(value) {
@@ -171,7 +196,10 @@ export async function startPolling(slackClient) {
         if (!currentTask?.status) continue
         const pageUrl = buildTaskPageUrl(task.pageId)
 
-        if (task.lastStatus && currentTask.status !== task.lastStatus) {
+        if (!task.lastStatus) {
+          await updateStatus(task.pageId, currentTask.status)
+          console.log(`ℹ️ Status checkpoint initialized: ${task.taskName} → ${currentTask.status}`)
+        } else if (currentTask.status !== task.lastStatus) {
           try {
             console.log(
               `📣 Sending status update for page ${task.pageId}: ${task.lastStatus} -> ${currentTask.status} (user ${task.slackUserId})`
@@ -185,6 +213,7 @@ export async function startPolling(slackClient) {
               newStatus: currentTask.status,
               assignee: currentTask.assignee,
               deadline: currentTask.deadline,
+              finalProjectUrl: currentTask.finalProjectUrl,
               pageUrl,
             })
 
@@ -199,36 +228,40 @@ export async function startPolling(slackClient) {
         }
 
         try {
-          const latestComment = await getLatestOpenComment(task.pageId)
-          if (!latestComment) continue
+          const comments = await getOpenComments(task.pageId)
+          if (!comments.length) continue
 
           if (!task.lastCommentId && !task.lastCommentCreatedTime) {
+            const latestComment = comments.at(-1)
             await updateLastComment(task.pageId, latestComment)
             continue
           }
 
-          if (!isNewerComment(latestComment, task)) continue
+          const newComments = getNewComments(comments, task)
+          if (!newComments.length) continue
 
-          if (isOwnComment(latestComment, task)) {
-            await updateLastComment(task.pageId, latestComment)
-            continue
+          for (const comment of newComments) {
+            if (isOwnComment(comment, task)) {
+              await updateLastComment(task.pageId, comment)
+              continue
+            }
+
+            console.log(
+              `💬 Sending comment update for page ${task.pageId}: ${comment.id} (user ${task.slackUserId})`
+            )
+
+            await sendCommentUpdate({
+              slackClient,
+              slackUserId: task.slackUserId,
+              taskName: task.taskName,
+              commentAuthor: comment.author,
+              commentText: comment.text,
+              pageUrl,
+            })
+
+            await updateLastComment(task.pageId, comment)
+            console.log(`✅ Comment checkpoint updated: ${task.taskName} → ${comment.id}`)
           }
-
-          console.log(
-            `💬 Sending comment update for page ${task.pageId}: ${latestComment.id} (user ${task.slackUserId})`
-          )
-
-          await sendCommentUpdate({
-            slackClient,
-            slackUserId: task.slackUserId,
-            taskName: task.taskName,
-            commentAuthor: latestComment.author,
-            commentText: latestComment.text,
-            pageUrl,
-          })
-
-          await updateLastComment(task.pageId, latestComment)
-          console.log(`✅ Comment checkpoint updated: ${task.taskName} → ${latestComment.id}`)
         } catch (error) {
           console.error(
             `❌ Failed to notify about comments for page ${task.pageId} (${task.taskName}) and user ${task.slackUserId}:`,

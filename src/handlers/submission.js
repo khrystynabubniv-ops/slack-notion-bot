@@ -58,6 +58,7 @@ export function registerSubmissionHandlers(app) {
     const values = view.state.values
     const userId = body.user.id
     let notionCreated = false
+    let notificationTrackingEnabled = true
     const userName = body.user.name
 
     // Базові поля
@@ -206,8 +207,13 @@ export function registerSubmissionHandlers(app) {
           requesterName: slackPersonName,
         })
       } catch (redisErr) {
-        console.error('Redis saveTask failed (non-critical):', redisErr)
+        notificationTrackingEnabled = false
+        console.error('Redis saveTask failed; status/comment notifications will not be tracked:', redisErr)
       }
+
+      const requesterNotificationText = notificationTrackingEnabled
+        ? `✅ *Задача створена!*\n*${name || taskTypeLabel}*\nДизайн-команда отримала бриф і розпочне роботу.`
+        : `✅ *Задача створена!*\n*${name || taskTypeLabel}*\nДизайн-команда отримала бриф, але автоапдейти про статус і коментарі зараз не підключилися.`
 
       // Сповіщення замовнику
       await client.chat.postMessage({
@@ -217,7 +223,7 @@ export function registerSubmissionHandlers(app) {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `✅ *Задача створена!*\n*${name || taskTypeLabel}*\nДизайн-команда отримала бриф і розпочне роботу.`,
+              text: requesterNotificationText,
             },
           },
           {
