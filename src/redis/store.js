@@ -6,17 +6,22 @@ const redis = new Redis({
 })
 
 const SAVE_TASK_RETRY_DELAYS_MS = [300, 1000]
+const DEFAULT_FAILED_SUBMISSION_TTL_SECONDS = 60 * 60 * 24 * 30
+const FAILED_SUBMISSION_TTL_SECONDS = Number.parseInt(
+  process.env.FAILED_SUBMISSION_TTL_SECONDS || `${DEFAULT_FAILED_SUBMISSION_TTL_SECONDS}`,
+  10
+)
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function saveWithRetry(key, value) {
+async function saveWithRetry(key, value, options) {
   let lastError
 
   for (let attempt = 0; attempt <= SAVE_TASK_RETRY_DELAYS_MS.length; attempt += 1) {
     try {
-      return await redis.set(key, value)
+      return options ? await redis.set(key, value, options) : await redis.set(key, value)
     } catch (error) {
       lastError = error
       const retryDelay = SAVE_TASK_RETRY_DELAYS_MS[attempt]
@@ -29,6 +34,14 @@ async function saveWithRetry(key, value) {
   }
 
   throw lastError
+}
+
+function getFailedSubmissionTtlOptions() {
+  if (Number.isFinite(FAILED_SUBMISSION_TTL_SECONDS) && FAILED_SUBMISSION_TTL_SECONDS > 0) {
+    return { ex: FAILED_SUBMISSION_TTL_SECONDS }
+  }
+
+  return undefined
 }
 
 function parseStoredTask(data) {
@@ -48,6 +61,24 @@ export async function saveTask({ pageId, slackUserId, slackChannelId, taskName, 
     lastCommentId: null,
     lastCommentCreatedTime: null,
   }))
+}
+
+export async function saveFailedSubmission(payload) {
+  const createdAt = new Date().toISOString()
+  const draftId = `failed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const key = `failed-submission:${draftId}`
+
+  await saveWithRetry(
+    key,
+    JSON.stringify({
+      id: draftId,
+      createdAt,
+      ...payload,
+    }),
+    getFailedSubmissionTtlOptions()
+  )
+
+  return { draftId, key, createdAt }
 }
 
 export async function getTask(pageId) {

@@ -1,8 +1,65 @@
 import { createNotionPage } from '../notion/createPage.js'
-import { saveTask } from '../redis/store.js'
+import { saveFailedSubmission, saveTask } from '../redis/store.js'
 import { getModalBlocks } from './modalBlocks.js'
 
 const DESIGN_CHANNEL = process.env.DESIGN_CHANNEL_ID || 'C0ARG2KR5DX'
+
+function serializeTaskCreationError(error) {
+  return {
+    message: error?.message || String(error),
+    code: error?.code || null,
+    status: error?.status || error?.statusCode || null,
+    notionError: error?.body?.message || error?.data?.error || null,
+  }
+}
+
+function buildFailedSubmissionPayload({
+  userId,
+  userName,
+  slackPersonName,
+  taskType,
+  taskTypeLabel,
+  name,
+  priority,
+  deadline,
+  context,
+  style,
+  antiref,
+  canEditText,
+  videoFormat,
+  platform,
+  platformOther,
+  specificFields,
+  artifacts,
+  values,
+  error,
+}) {
+  return {
+    slackUserId: userId,
+    slackUserName: userName || null,
+    requesterName: slackPersonName || userName || null,
+    task: {
+      name: name || taskTypeLabel,
+      taskType,
+      taskTypeLabel,
+      priority: priority || null,
+      deadline: deadline || null,
+      videoFormat: videoFormat || null,
+      platform: platform || null,
+      platformOther: platformOther || null,
+    },
+    answers: {
+      context: context || null,
+      style: style || null,
+      antiref: antiref || null,
+      canEditText: canEditText || null,
+      specificFields,
+      artifacts,
+    },
+    rawSlackValues: values,
+    error: serializeTaskCreationError(error),
+  }
+}
 
 export function registerSubmissionHandlers(app) {
   function buildTaskModalView(taskType, taskTypeLabel, values = {}) {
@@ -60,6 +117,7 @@ export function registerSubmissionHandlers(app) {
     let notionCreated = false
     let notificationTrackingEnabled = true
     const userName = body.user.name
+    let slackPersonName = userName
 
     // Базові поля
     const name = values.name_block?.name?.value
@@ -163,8 +221,6 @@ export function registerSubmissionHandlers(app) {
     }
 
     try {
-      let slackPersonName = userName
-
       try {
         const userInfo = await client.users.info({ user: userId })
         const profile = userInfo.user?.profile
@@ -277,9 +333,47 @@ export function registerSubmissionHandlers(app) {
     } catch (err) {
       console.error('Error creating task:', err)
       if (!notionCreated) {
+        let failedDraft = null
+        const failedSubmissionPayload = buildFailedSubmissionPayload({
+          userId,
+          userName,
+          slackPersonName,
+          taskType,
+          taskTypeLabel,
+          name,
+          priority,
+          deadline,
+          context,
+          style,
+          antiref,
+          canEditText,
+          videoFormat,
+          platform,
+          platformOther,
+          specificFields,
+          artifacts,
+          values,
+          error: err,
+        })
+
+        try {
+          failedDraft = await saveFailedSubmission(failedSubmissionPayload)
+          console.error(
+            `Task submission draft saved after Notion create failure: ${failedDraft.key}`,
+            failedSubmissionPayload.error
+          )
+        } catch (draftErr) {
+          console.error('Failed to save task submission draft:', draftErr)
+          console.error('Unsaved task submission draft:', JSON.stringify(failedSubmissionPayload))
+        }
+
+        const draftText = failedDraft
+          ? `\nБриф збережено як чернетку: \`${failedDraft.draftId}\`. Напиши адміну цей код, і ми відновимо задачу без повторного заповнення.`
+          : '\nНе вдалося зберегти чернетку автоматично, але адмін може перевірити server logs.'
+
         await client.chat.postMessage({
           channel: userId,
-          text: '❌ Щось пішло не так при створенні задачі. Спробуй ще раз або звернись до адміна.',
+          text: `❌ Щось пішло не так при створенні задачі. Спробуй ще раз або звернись до адміна.${draftText}`,
         })
       }
     }

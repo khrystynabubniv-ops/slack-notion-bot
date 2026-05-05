@@ -52,6 +52,7 @@ NOTION_STATUS_PROPERTY=Design Status
 NOTION_BRAND_DESIGN_HUB_URL=https://www.notion.so/Brand-Design-Hub-33cce9899cb7814488c0f439326aaf2a?source=copy_link
 UPSTASH_REDIS_REST_URL=https://...
 UPSTASH_REDIS_REST_TOKEN=...
+FAILED_SUBMISSION_TTL_SECONDS=2592000
 PORT=3000
 ```
 
@@ -95,3 +96,9 @@ Slash command: `/new-task`.
 3. Якщо статус відрізняється від збереженого — шле DM автору і оновлює Redis.
 4. Перевіряє останній відкритий коментар у кожній задачі.
 5. Якщо з'явився новий коментар — шле окремий DM автору і оновлює Redis.
+
+## Чернетки невдалих сабмітів
+
+Якщо користувач заповнив бриф, але Notion відхилив створення задачі, бот зберігає чернетку в Redis під ключем `failed-submission:<draftId>`.
+Користувач отримує `draftId` у Slack, а адмін може витягнути payload із Redis і вручну відновити задачу без повторного заповнення форми.
+За замовчуванням чернетки зберігаються 30 днів; змінити TTL можна через `FAILED_SUBMISSION_TTL_SECONDS`.
