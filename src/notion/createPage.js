@@ -5,6 +5,7 @@ import {
   DEFAULT_STATUS,
   DEFAULT_TEAM,
   getTaskTypeRelationId,
+  resolveActivityTypePropertyName,
   resolveStatusPropertyName,
   resolvePlatform,
 } from './taskConfig.js'
@@ -88,6 +89,27 @@ function buildSlackPersonProperty(propertyConfig, slackPersonName) {
   }
 }
 
+function hasPropertyType(databaseProperties, propertyName, expectedTypes) {
+  return expectedTypes.includes(databaseProperties[propertyName]?.type)
+}
+
+function resolveTitlePropertyName(databaseProperties) {
+  if (hasPropertyType(databaseProperties, 'Name', ['title'])) return 'Name'
+
+  return Object.entries(databaseProperties)
+    .find(([, propertyConfig]) => propertyConfig?.type === 'title')
+    ?.[0]
+}
+
+function addPropertyIfType(properties, databaseProperties, propertyName, expectedTypes, value) {
+  if (!propertyName || !hasPropertyType(databaseProperties, propertyName, expectedTypes)) {
+    return false
+  }
+
+  properties[propertyName] = value
+  return true
+}
+
 function buildDescription({ context, style, antiref, canEditText, platformOther, specificFields, artifacts }) {
   const lines = []
 
@@ -142,44 +164,67 @@ export async function createNotionPage({
   const taskTypeRelationId = getTaskTypeRelationId(taskType)
   const notionPlatform = resolvePlatform(platform)
   const databaseProperties = await getDatabaseProperties()
+  const titlePropertyName = resolveTitlePropertyName(databaseProperties)
   const statusPropertyName = resolveStatusPropertyName(databaseProperties)
+  const activityTypePropertyName = resolveActivityTypePropertyName(databaseProperties)
+
+  if (!titlePropertyName) {
+    throw new Error('Notion database is missing a title property for task name.')
+  }
 
   const properties = {
-    Name: {
+    [titlePropertyName]: {
       title: [{ text: { content: name } }],
     },
-    'Design needed': {
-      checkbox: true,
-    },
-    Team: {
-      select: { name: DEFAULT_TEAM },
-    },
-    Owner: {
-      people: [{ id: DEFAULT_OWNER_ID }],
-    },
-    Type: {
-      select: { name: DEFAULT_ACTIVITY_TYPE },
-    },
   }
 
-  if (databaseProperties[statusPropertyName]?.type === 'status') {
-    properties[statusPropertyName] = {
-      status: { name: DEFAULT_STATUS },
-    }
+  addPropertyIfType(properties, databaseProperties, statusPropertyName, ['status'], {
+    status: { name: DEFAULT_STATUS },
+  })
+  addPropertyIfType(properties, databaseProperties, 'Design needed', ['checkbox'], {
+    checkbox: true,
+  })
+  addPropertyIfType(properties, databaseProperties, 'Team', ['select'], {
+    select: { name: DEFAULT_TEAM },
+  })
+  addPropertyIfType(properties, databaseProperties, 'Owner', ['people'], {
+    people: [{ id: DEFAULT_OWNER_ID }],
+  })
+  addPropertyIfType(properties, databaseProperties, activityTypePropertyName, ['select'], {
+    select: { name: DEFAULT_ACTIVITY_TYPE },
+  })
+
+  if (priority) {
+    addPropertyIfType(properties, databaseProperties, 'Priority', ['select'], {
+      select: { name: priority },
+    })
   }
 
-  if (priority) properties.Priority = { select: { name: priority } }
-  if (deadline) properties.Deadline = { date: { start: deadline } }
-  if (notionPlatform) properties.Platform = { select: { name: notionPlatform } }
-  if (taskTypeRelationId) properties['Task Type'] = { relation: [{ id: taskTypeRelationId }] }
+  if (deadline) {
+    addPropertyIfType(properties, databaseProperties, 'Deadline', ['date'], {
+      date: { start: deadline },
+    })
+  }
+
+  if (notionPlatform) {
+    addPropertyIfType(properties, databaseProperties, 'Platform', ['select'], {
+      select: { name: notionPlatform },
+    })
+  }
+
+  if (taskTypeRelationId) {
+    addPropertyIfType(properties, databaseProperties, 'Task Type', ['relation'], {
+      relation: [{ id: taskTypeRelationId }],
+    })
+  }
 
   const slackPersonProperty = buildSlackPersonProperty(databaseProperties['Slack Person'], slackPersonName)
   if (slackPersonProperty) properties['Slack Person'] = slackPersonProperty
 
   if (description) {
-    properties.Description = {
+    addPropertyIfType(properties, databaseProperties, 'Description', ['rich_text'], {
       rich_text: [{ text: { content: clampText(description) } }],
-    }
+    })
   }
 
   const response = await notion.pages.create({
