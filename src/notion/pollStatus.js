@@ -2,6 +2,7 @@ import { Client } from '@notionhq/client'
 import { getAllTasks, updateLastComment, updateStatus } from '../redis/store.js'
 import { sendCommentUpdate, sendStatusUpdate } from '../slack/notify.js'
 import { buildTaskPageUrl } from './pageUrl.js'
+import { getStatusPropertyNames } from './taskConfig.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const DATABASE_ID = process.env.NOTION_DATABASE_ID
@@ -42,6 +43,15 @@ function extractUrlProperty(page, propertyName) {
   return null
 }
 
+function extractStatus(page) {
+  for (const propertyName of getStatusPropertyNames()) {
+    const status = page.properties[propertyName]?.status?.name
+    if (status) return status
+  }
+
+  return null
+}
+
 async function getCurrentTaskSnapshots() {
   const tasks = {}
 
@@ -55,7 +65,7 @@ async function getCurrentTaskSnapshots() {
     })
 
     for (const page of response.results) {
-      const status = page.properties.Status?.status?.name
+      const status = extractStatus(page)
       if (!status) continue
 
       tasks[page.id] = {

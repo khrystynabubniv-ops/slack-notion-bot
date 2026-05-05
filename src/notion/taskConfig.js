@@ -1,6 +1,11 @@
 export const DEFAULT_TEAM = 'Brand Design'
 export const DEFAULT_OWNER_ID = 'f342c30b-c5c1-4a52-8cdf-c8b636928364'
 export const DEFAULT_ACTIVITY_TYPE = 'Brand Design'
+export const DEFAULT_STATUS = 'To do'
+export const DEFAULT_STATUS_PROPERTY = 'Design Status'
+export const LEGACY_STATUS_PROPERTY = 'Status'
+
+const configuredStatusProperty = process.env.NOTION_STATUS_PROPERTY?.trim()
 
 const TASK_TYPE_PAGE_IDS = {
   static_simple: '752ce989-9cb7-82c6-97ad-81b4b8e8003c',
@@ -57,4 +62,20 @@ export function getTaskTypeRelationId(taskType) {
 export function resolvePlatform(platform) {
   if (!platform || platform === 'Other') return null
   return PLATFORM_MAP[platform] || platform
+}
+
+export function getStatusPropertyNames() {
+  return [
+    configuredStatusProperty,
+    DEFAULT_STATUS_PROPERTY,
+    LEGACY_STATUS_PROPERTY,
+  ].filter((propertyName, index, propertyNames) => {
+    return propertyName && propertyNames.indexOf(propertyName) === index
+  })
+}
+
+export function resolveStatusPropertyName(databaseProperties = {}) {
+  return getStatusPropertyNames().find((propertyName) => {
+    return databaseProperties[propertyName]?.type === 'status'
+  }) || configuredStatusProperty || DEFAULT_STATUS_PROPERTY
 }

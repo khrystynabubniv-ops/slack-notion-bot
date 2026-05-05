@@ -48,6 +48,7 @@ NOTION_TOKEN=secret_...
 NOTION_DATABASE_ID=...
 NOTION_TEMPLATE_ID=<id_твоього_notion_template>
 NOTION_TEMPLATE_TIMEZONE=Europe/Kiev
+NOTION_STATUS_PROPERTY=Design Status
 NOTION_BRAND_DESIGN_HUB_URL=https://www.notion.so/Brand-Design-Hub-33cce9899cb7814488c0f439326aaf2a?source=copy_link
 UPSTASH_REDIS_REST_URL=https://...
 UPSTASH_REDIS_REST_TOKEN=...
@@ -80,7 +81,7 @@ Slash command: `/new-task`.
 - Створи інтеграцію на https://www.notion.so/my-integrations, скопіюй токен у `NOTION_TOKEN`.
 - Розшар базу задач з цією інтеграцією.
 - Скопіюй `NOTION_DATABASE_ID` з URL бази.
-- У базі має бути властивість `Status` типу *Status*.
+- У базі має бути властивість `Design Status` типу *Status*. Якщо поле називається інакше, задай `NOTION_STATUS_PROPERTY`.
 - Для сповіщень про коментарі в Notion integration треба увімкнути capability `Read comments`, інакше бот автоматично залишить тільки статусні нотифікації.
 - Якщо хочеш, щоб нові задачі створювалися з готового Notion template, задай `NOTION_TEMPLATE_ID`.
 - Template застосовується асинхронно одразу після створення page. Це зручно для кейсу, де в template вже є нативна кнопка `Add subtask`.

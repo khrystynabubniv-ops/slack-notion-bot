@@ -2,8 +2,10 @@ import { Client } from '@notionhq/client'
 import {
   DEFAULT_ACTIVITY_TYPE,
   DEFAULT_OWNER_ID,
+  DEFAULT_STATUS,
   DEFAULT_TEAM,
   getTaskTypeRelationId,
+  resolveStatusPropertyName,
   resolvePlatform,
 } from './taskConfig.js'
 import { buildTaskPageUrl } from './pageUrl.js'
@@ -140,13 +142,11 @@ export async function createNotionPage({
   const taskTypeRelationId = getTaskTypeRelationId(taskType)
   const notionPlatform = resolvePlatform(platform)
   const databaseProperties = await getDatabaseProperties()
+  const statusPropertyName = resolveStatusPropertyName(databaseProperties)
 
   const properties = {
     Name: {
       title: [{ text: { content: name } }],
-    },
-    Status: {
-      status: { name: 'To do' },
     },
     'Design needed': {
       checkbox: true,
@@ -160,6 +160,12 @@ export async function createNotionPage({
     Type: {
       select: { name: DEFAULT_ACTIVITY_TYPE },
     },
+  }
+
+  if (databaseProperties[statusPropertyName]?.type === 'status') {
+    properties[statusPropertyName] = {
+      status: { name: DEFAULT_STATUS },
+    }
   }
 
   if (priority) properties.Priority = { select: { name: priority } }
