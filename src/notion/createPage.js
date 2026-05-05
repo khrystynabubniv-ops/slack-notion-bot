@@ -1,11 +1,9 @@
 import { Client } from '@notionhq/client'
 import {
-  DEFAULT_ACTIVITY_TYPE,
   DEFAULT_OWNER_ID,
   DEFAULT_STATUS,
   DEFAULT_TEAM,
   getTaskTypeRelationId,
-  resolveActivityTypePropertyName,
   resolveStatusPropertyName,
   resolvePlatform,
 } from './taskConfig.js'
@@ -166,7 +164,6 @@ export async function createNotionPage({
   const databaseProperties = await getDatabaseProperties()
   const titlePropertyName = resolveTitlePropertyName(databaseProperties)
   const statusPropertyName = resolveStatusPropertyName(databaseProperties)
-  const activityTypePropertyName = resolveActivityTypePropertyName(databaseProperties)
 
   if (!titlePropertyName) {
     throw new Error('Notion database is missing a title property for task name.')
@@ -189,9 +186,6 @@ export async function createNotionPage({
   })
   addPropertyIfType(properties, databaseProperties, 'Owner', ['people'], {
     people: [{ id: DEFAULT_OWNER_ID }],
-  })
-  addPropertyIfType(properties, databaseProperties, activityTypePropertyName, ['select'], {
-    select: { name: DEFAULT_ACTIVITY_TYPE },
   })
 
   if (priority) {

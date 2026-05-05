@@ -1,10 +1,8 @@
 export const DEFAULT_TEAM = 'Brand Design'
 export const DEFAULT_OWNER_ID = 'f342c30b-c5c1-4a52-8cdf-c8b636928364'
-export const DEFAULT_ACTIVITY_TYPE = 'Brand Design'
 export const DEFAULT_STATUS = 'To do'
 export const DEFAULT_STATUS_PROPERTY = 'Design Status'
 export const LEGACY_STATUS_PROPERTY = 'Status'
-export const ACTIVITY_TYPE_PROPERTY_NAMES = ['Type', 'PR Type']
 
 const configuredStatusProperty = process.env.NOTION_STATUS_PROPERTY?.trim()
 
@@ -79,10 +77,4 @@ export function resolveStatusPropertyName(databaseProperties = {}) {
   return getStatusPropertyNames().find((propertyName) => {
     return databaseProperties[propertyName]?.type === 'status'
   }) || configuredStatusProperty || DEFAULT_STATUS_PROPERTY
-}
-
-export function resolveActivityTypePropertyName(databaseProperties = {}) {
-  return ACTIVITY_TYPE_PROPERTY_NAMES.find((propertyName) => {
-    return databaseProperties[propertyName]?.type === 'select'
-  }) || null
 }
