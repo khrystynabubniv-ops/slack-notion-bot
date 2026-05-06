@@ -18,9 +18,25 @@ const DATABASE_ID = process.env.NOTION_DATABASE_ID
 let databaseSchemaPromise = null
 const TEMPLATE_ID = process.env.NOTION_TEMPLATE_ID?.trim()
 const TEMPLATE_TIMEZONE = process.env.NOTION_TEMPLATE_TIMEZONE?.trim() || 'Europe/Kiev'
+const RICH_TEXT_CONTENT_LIMIT = 2000
 
 function clampText(value, limit = 2000) {
   return value?.slice(0, limit) || ''
+}
+
+function buildRichText(value, limit = RICH_TEXT_CONTENT_LIMIT) {
+  if (!value) return []
+
+  const chunks = []
+  for (let index = 0; index < value.length; index += limit) {
+    chunks.push({
+      text: {
+        content: value.slice(index, index + limit),
+      },
+    })
+  }
+
+  return chunks
 }
 
 function buildRichTextLink(content, url) {
@@ -217,7 +233,7 @@ export async function createNotionPage({
 
   if (description) {
     addPropertyIfType(properties, databaseProperties, 'Description', ['rich_text'], {
-      rich_text: [{ text: { content: clampText(description) } }],
+      rich_text: buildRichText(description),
     })
   }
 
