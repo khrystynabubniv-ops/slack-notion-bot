@@ -4,12 +4,24 @@ import { getModalBlocks } from './modalBlocks.js'
 
 const DESIGN_CHANNEL = process.env.DESIGN_CHANNEL_ID || 'C0ARG2KR5DX'
 
+function parseJsonBody(body) {
+  if (!body || typeof body !== 'string') return null
+
+  try {
+    return JSON.parse(body)
+  } catch {
+    return null
+  }
+}
+
 function serializeTaskCreationError(error) {
+  const parsedBody = parseJsonBody(error?.body)
+
   return {
     message: error?.message || String(error),
     code: error?.code || null,
     status: error?.status || error?.statusCode || null,
-    notionError: error?.body?.message || error?.data?.error || null,
+    notionError: parsedBody?.message || error?.body?.message || error?.data?.error || null,
   }
 }
 

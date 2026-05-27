@@ -19,19 +19,25 @@ let databaseSchemaPromise = null
 const TEMPLATE_ID = process.env.NOTION_TEMPLATE_ID?.trim()
 const TEMPLATE_TIMEZONE = process.env.NOTION_TEMPLATE_TIMEZONE?.trim() || 'Europe/Kiev'
 const RICH_TEXT_CONTENT_LIMIT = 2000
+const RICH_TEXT_OBJECT_LIMIT = 100
+const RICH_TEXT_TRUNCATED_NOTICE = '\n\n[Обрізано: Notion має ліміт на довжину rich text поля.]'
 
 function clampText(value, limit = 2000) {
   return value?.slice(0, limit) || ''
 }
 
-function buildRichText(value, limit = RICH_TEXT_CONTENT_LIMIT) {
+function buildRichText(value, limit = RICH_TEXT_CONTENT_LIMIT, maxObjects = RICH_TEXT_OBJECT_LIMIT) {
   if (!value) return []
 
+  const maxLength = limit * maxObjects
+  const source = value.length > maxLength
+    ? `${value.slice(0, maxLength - RICH_TEXT_TRUNCATED_NOTICE.length)}${RICH_TEXT_TRUNCATED_NOTICE}`
+    : value
   const chunks = []
-  for (let index = 0; index < value.length; index += limit) {
+  for (let index = 0; index < source.length && chunks.length < maxObjects; index += limit) {
     chunks.push({
       text: {
-        content: value.slice(index, index + limit),
+        content: source.slice(index, index + limit),
       },
     })
   }
@@ -124,9 +130,23 @@ function addPropertyIfType(properties, databaseProperties, propertyName, expecte
   return true
 }
 
-function buildDescription({ context, style, antiref, canEditText, platformOther, specificFields, artifacts }) {
+function buildTitle(name) {
+  return [{ text: { content: clampText(name) || 'Untitled' } }]
+}
+
+function buildDescription({
+  fullName,
+  context,
+  style,
+  antiref,
+  canEditText,
+  platformOther,
+  specificFields,
+  artifacts,
+}) {
   const lines = []
 
+  if (fullName) lines.push(`📌 Повна назва: ${fullName}`)
   if (context) lines.push(`📌 Контекст: ${context}`)
   if (style) lines.push(`🎨 Стиль/Референси: ${style}`)
   if (antiref) lines.push(`🚫 Антиреференси: ${antiref}`)
@@ -166,7 +186,9 @@ export async function createNotionPage({
   artifacts = {},
   slackPersonName,
 }) {
+  const truncatedTitle = clampText(name)
   const description = buildDescription({
+    fullName: truncatedTitle !== name ? name : null,
     context,
     style,
     antiref,
@@ -187,7 +209,7 @@ export async function createNotionPage({
 
   const properties = {
     [titlePropertyName]: {
-      title: [{ text: { content: name } }],
+      title: buildTitle(name),
     },
   }
 
