@@ -11,6 +11,37 @@ const token = process.env.SLACK_BOT_TOKEN
 console.log('TOKEN CHECK:', token ? `starts with ${token.substring(0, 8)}...` : 'MISSING')
 const signingSecret = process.env.SLACK_SIGNING_SECRET
 
+function getSlackRequestContext(req) {
+  const body = req.body || {}
+  const payload = body.payload ? JSON.parse(body.payload) : body
+  const user = payload.user || body.user || {}
+
+  return {
+    url: req.url,
+    retryNum: req.headers['x-slack-retry-num'] || null,
+    retryReason: req.headers['x-slack-retry-reason'] || null,
+    bodyType: payload.type || body.type || null,
+    callbackId: payload.callback_id || payload.view?.callback_id || null,
+    command: body.command || null,
+    userId: user.id || body.user_id || null,
+  }
+}
+
+function logSlackReceiverIssue(message, req, error) {
+  let context
+
+  try {
+    context = getSlackRequestContext(req)
+  } catch (contextError) {
+    context = { url: req?.url || null, contextError: contextError?.message || String(contextError) }
+  }
+
+  console.error(message, {
+    ...context,
+    error: error?.message || String(error || ''),
+  })
+}
+
 if (!token || token.trim() === '' || token.trim() === 'placeholder') {
   console.log('⚠️  SLACK_BOT_TOKEN not set — waiting for approval. Server starting in stub mode.')
   const { createServer } = await import('http')
@@ -38,7 +69,24 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
     console.log(`🕐 Stub server running on port ${process.env.PORT || 3000}`)
   })
 } else {
-  const receiver = new ExpressReceiver({ signingSecret })
+  const receiver = new ExpressReceiver({
+    signingSecret,
+    processEventErrorHandler: async ({ error, request, response }) => {
+      logSlackReceiverIssue('Slack event processing failed.', request, error)
+      if (!response.headersSent) {
+        response.writeHead(500)
+        response.end()
+      }
+      return false
+    },
+    unhandledRequestHandler: ({ request, response }) => {
+      logSlackReceiverIssue('Slack request was not acknowledged within the timeout.', request)
+      if (!response.headersSent) {
+        response.writeHead(404)
+        response.end()
+      }
+    },
+  })
   receiver.router.get('/', (req, res) => {
     res.send('OK')
   })
