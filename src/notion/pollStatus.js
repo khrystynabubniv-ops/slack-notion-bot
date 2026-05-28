@@ -2,6 +2,7 @@ import { Client } from '@notionhq/client'
 import { getAllTasks, updateLastComment, updateStatus } from '../redis/store.js'
 import { sendCommentUpdate, sendStatusUpdate } from '../slack/notify.js'
 import { buildTaskPageUrl } from './pageUrl.js'
+import { notionRequest } from './request.js'
 import { getStatusPropertyNames } from './taskConfig.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
@@ -59,10 +60,13 @@ async function getCurrentTaskSnapshots() {
   let startCursor
 
   while (hasMore) {
-    const response = await notion.databases.query({
-      database_id: DATABASE_ID,
-      start_cursor: startCursor,
-    })
+    const response = await notionRequest(
+      () => notion.databases.query({
+        database_id: DATABASE_ID,
+        start_cursor: startCursor,
+      }),
+      'database query'
+    )
 
     for (const page of response.results) {
       const status = extractStatus(page)
@@ -92,11 +96,14 @@ async function getOpenComments(pageId) {
 
   try {
     while (hasMore) {
-      const response = await notion.comments.list({
-        block_id: pageId,
-        start_cursor: startCursor,
-        page_size: 100,
-      })
+      const response = await notionRequest(
+        () => notion.comments.list({
+          block_id: pageId,
+          start_cursor: startCursor,
+          page_size: 100,
+        }),
+        'comments list'
+      )
 
       comments.push(...response.results)
 
@@ -144,7 +151,10 @@ async function resolveNotionUserName(createdBy) {
   }
 
   try {
-    const user = await notion.users.retrieve({ user_id: userId })
+    const user = await notionRequest(
+      () => notion.users.retrieve({ user_id: userId }),
+      'user retrieve'
+    )
     const resolvedName = user?.name || user?.person?.email || userId
     notionUserNameCache.set(userId, resolvedName)
     return resolvedName

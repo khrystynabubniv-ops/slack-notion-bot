@@ -8,6 +8,7 @@ import {
   resolvePlatform,
 } from './taskConfig.js'
 import { buildTaskPageUrl } from './pageUrl.js'
+import { notionRequest } from './request.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const notionTemplateApi = new Client({
@@ -58,26 +59,31 @@ function buildRichTextLink(content, url) {
 async function applyTemplateToPage(pageId) {
   if (!TEMPLATE_ID) return false
 
-  await notionTemplateApi.request({
-    path: `pages/${pageId}`,
-    method: 'patch',
-    body: {
-      template: {
-        type: 'template_id',
-        template_id: TEMPLATE_ID,
-        timezone: TEMPLATE_TIMEZONE,
+  await notionRequest(
+    () => notionTemplateApi.request({
+      path: `pages/${pageId}`,
+      method: 'patch',
+      body: {
+        template: {
+          type: 'template_id',
+          template_id: TEMPLATE_ID,
+          timezone: TEMPLATE_TIMEZONE,
+        },
+        erase_content: true,
       },
-      erase_content: true,
-    },
-  })
+    }),
+    'template apply'
+  )
 
   return true
 }
 
 async function getDatabaseProperties() {
   if (!databaseSchemaPromise) {
-    databaseSchemaPromise = notion.databases
-      .retrieve({ database_id: DATABASE_ID })
+    databaseSchemaPromise = notionRequest(
+      () => notion.databases.retrieve({ database_id: DATABASE_ID }),
+      'database schema retrieve'
+    )
       .then((database) => database.properties || {})
       .catch((error) => {
         databaseSchemaPromise = null
@@ -259,10 +265,13 @@ export async function createNotionPage({
     })
   }
 
-  const response = await notion.pages.create({
-    parent: { database_id: DATABASE_ID },
-    properties,
-  })
+  const response = await notionRequest(
+    () => notion.pages.create({
+      parent: { database_id: DATABASE_ID },
+      properties,
+    }),
+    'page create'
+  )
 
   let templateApplied = false
 

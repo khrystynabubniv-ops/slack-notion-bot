@@ -49,6 +49,8 @@ NOTION_DATABASE_ID=...
 NOTION_TEMPLATE_ID=<id_твоього_notion_template>
 NOTION_TEMPLATE_TIMEZONE=Europe/Kiev
 NOTION_STATUS_PROPERTY=Design Status
+NOTION_REQUEST_MIN_INTERVAL_MS=500
+NOTION_REQUEST_MAX_RETRIES=4
 NOTION_BRAND_DESIGN_HUB_URL=https://www.notion.so/Brand-Design-Hub-33cce9899cb7814488c0f439326aaf2a?source=copy_link
 UPSTASH_REDIS_REST_URL=https://...
 UPSTASH_REDIS_REST_TOKEN=...
@@ -83,6 +85,7 @@ Slash command: `/new-task`.
 - Розшар базу задач з цією інтеграцією.
 - Скопіюй `NOTION_DATABASE_ID` з URL бази.
 - У базі має бути властивість `Design Status` типу *Status*. Якщо поле називається інакше, задай `NOTION_STATUS_PROPERTY`.
+- Щоб не впиратися в rate limit Notion, бот тротлить усі Notion API запити через `NOTION_REQUEST_MIN_INTERVAL_MS` і повторює `429 rate_limited` через `NOTION_REQUEST_MAX_RETRIES`.
 - Для сповіщень про коментарі в Notion integration треба увімкнути capability `Read comments`, інакше бот автоматично залишить тільки статусні нотифікації.
 - Якщо хочеш, щоб нові задачі створювалися з готового Notion template, задай `NOTION_TEMPLATE_ID`.
 - Template застосовується асинхронно одразу після створення page. Це зручно для кейсу, де в template вже є нативна кнопка `Add subtask`.
