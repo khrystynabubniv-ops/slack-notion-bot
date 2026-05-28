@@ -619,9 +619,9 @@ export function registerSubmissionHandlers(app) {
       await client.chat.postMessage({
         channel: userId,
         text:
-          `🕐 *Задачу прийнято в чергу.*\n` +
-          `*${name || taskTypeLabel}*\n` +
-          `Створюю її в Notion у фоні. Якщо Notion тимчасово лімітує запити, я просто спробую ще раз і напишу сюди, коли задача буде готова.`,
+          `🕐 Задачу прийнято в чергу.\n` +
+          `${name || taskTypeLabel}\n` +
+          `Зараз у дизайн-боті багато запитів, тому створення задачі може зайняти трохи більше часу. Напишу тут, щойно задача буде готова.`,
       })
     } catch (slackErr) {
       console.error(`Failed to notify ${userId} about queued task submission:`, slackErr)
