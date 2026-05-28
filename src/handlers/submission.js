@@ -1,8 +1,34 @@
 import { createNotionPage } from '../notion/createPage.js'
-import { saveFailedSubmission, saveTask } from '../redis/store.js'
+import {
+  completeTaskSubmission,
+  enqueueTaskSubmission,
+  getDueTaskSubmission,
+  requeueTaskSubmission,
+  saveFailedSubmission,
+  saveTask,
+} from '../redis/store.js'
 import { getModalBlocks } from './modalBlocks.js'
 
 const DESIGN_CHANNEL = process.env.DESIGN_CHANNEL_ID || 'C0ARG2KR5DX'
+const QUEUE_WORKER_INTERVAL_MS = Number.parseInt(
+  process.env.TASK_SUBMISSION_QUEUE_INTERVAL_MS || '5000',
+  10
+)
+const QUEUE_MAX_ATTEMPTS = Number.parseInt(
+  process.env.TASK_SUBMISSION_QUEUE_MAX_ATTEMPTS || '20',
+  10
+)
+const QUEUE_BASE_RETRY_DELAY_MS = Number.parseInt(
+  process.env.TASK_SUBMISSION_QUEUE_RETRY_DELAY_MS || `${60 * 1000}`,
+  10
+)
+const QUEUE_MAX_RETRY_DELAY_MS = Number.parseInt(
+  process.env.TASK_SUBMISSION_QUEUE_MAX_RETRY_DELAY_MS || `${10 * 60 * 1000}`,
+  10
+)
+
+let queueWorkerStarted = false
+let queueWorkerProcessing = false
 
 function parseJsonBody(body) {
   if (!body || typeof body !== 'string') return null
@@ -73,7 +99,256 @@ function buildFailedSubmissionPayload({
   }
 }
 
+function isRetriableTaskCreationError(error) {
+  const status = error?.status || error?.statusCode
+
+  return error?.code === 'rate_limited' || status === 429 || status >= 500
+}
+
+function getHeader(headers, headerName) {
+  if (!headers) return null
+  if (typeof headers.get === 'function') return headers.get(headerName)
+
+  const normalizedHeaderName = headerName.toLowerCase()
+  return Object.entries(headers)
+    .find(([key]) => key.toLowerCase() === normalizedHeaderName)
+    ?.[1]
+}
+
+function getTaskCreationRetryDelayMs(error, attempts) {
+  const retryAfter = getHeader(error?.headers, 'retry-after')
+  const retryAfterSeconds = Number.parseFloat(Array.isArray(retryAfter) ? retryAfter[0] : retryAfter)
+
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+    return Math.min(Math.ceil(retryAfterSeconds * 1000) + 30 * 1000, QUEUE_MAX_RETRY_DELAY_MS)
+  }
+
+  return Math.min(QUEUE_BASE_RETRY_DELAY_MS * 2 ** Math.min(attempts, 4), QUEUE_MAX_RETRY_DELAY_MS)
+}
+
+async function resolveSlackPersonName(client, { userId, userName }) {
+  try {
+    const userInfo = await client.users.info({ user: userId })
+    const profile = userInfo.user?.profile
+
+    return (
+      profile?.real_name ||
+      profile?.display_name ||
+      userInfo.user?.real_name ||
+      userName ||
+      userId
+    )
+  } catch (slackUserErr) {
+    console.error('Slack users.info failed, fallback to body.user.name:', slackUserErr)
+    return userName || userId
+  }
+}
+
+async function createTaskFromSubmissionPayload(client, payload) {
+  const {
+    userId,
+    userName,
+    taskType,
+    taskTypeLabel,
+    name,
+    priority,
+    deadline,
+    context,
+    style,
+    antiref,
+    canEditText,
+    videoFormat,
+    platform,
+    platformOther,
+    specificFields,
+    artifacts,
+  } = payload
+  const slackPersonName = await resolveSlackPersonName(client, { userId, userName })
+  let notificationTrackingEnabled = true
+
+  const { pageId, pageUrl } = await createNotionPage({
+    name: name || taskTypeLabel,
+    priority,
+    deadline,
+    videoFormat,
+    platform,
+    platformOther,
+    taskType,
+    context,
+    style,
+    antiref,
+    canEditText,
+    specificFields,
+    artifacts,
+    slackPersonName,
+  })
+
+  try {
+    await saveTask({
+      pageId,
+      slackUserId: userId,
+      slackChannelId: userId,
+      taskName: name || taskTypeLabel,
+      requesterName: slackPersonName,
+    })
+  } catch (redisErr) {
+    notificationTrackingEnabled = false
+    console.error('Redis saveTask failed; status/comment notifications will not be tracked:', redisErr)
+  }
+
+  const requesterNotificationText = notificationTrackingEnabled
+    ? `✅ *Задача створена!*\n*${name || taskTypeLabel}*\nДизайн-команда отримала бриф і розпочне роботу.`
+    : `✅ *Задача створена!*\n*${name || taskTypeLabel}*\nДизайн-команда отримала бриф, але автоапдейти про статус і коментарі зараз не підключилися.`
+
+  try {
+    await client.chat.postMessage({
+      channel: userId,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: requesterNotificationText,
+          },
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
+              url: pageUrl,
+              style: 'primary',
+            },
+          ],
+        },
+      ],
+    })
+  } catch (error) {
+    console.error(`Failed to send requester task-created notification to ${userId}:`, error)
+  }
+
+  try {
+    await client.chat.postMessage({
+      channel: DESIGN_CHANNEL,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `🆕 *Нова задача від <@${userId}>*`,
+          },
+        },
+        {
+          type: 'section',
+          fields: [
+            { type: 'mrkdwn', text: `*Задача:*\n${name || taskTypeLabel}` },
+            { type: 'mrkdwn', text: `*Тип:*\n${taskTypeLabel}` },
+            { type: 'mrkdwn', text: `*Пріоритет:*\n${priority || 'не вказано'}` },
+            { type: 'mrkdwn', text: `*Дедлайн:*\n${deadline || 'не вказано'}` },
+          ],
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
+              url: pageUrl,
+              style: 'primary',
+            },
+          ],
+        },
+      ],
+    })
+  } catch (error) {
+    console.error(`Failed to send design-channel task notification for page ${pageId}:`, error)
+  }
+
+  return { pageId, pageUrl }
+}
+
+async function failQueuedSubmission(client, payload, error) {
+  const failedSubmissionPayload = buildFailedSubmissionPayload({
+    ...payload,
+    slackPersonName: payload.slackPersonName || payload.userName,
+    error,
+  })
+  const failedDraft = await saveFailedSubmission(failedSubmissionPayload)
+
+  try {
+    await client.chat.postMessage({
+      channel: payload.userId,
+      text:
+        `❌ Не вдалося створити задачу в Notion після повторних спроб.\n` +
+        `Бриф збережено як чернетку: \`${failedDraft.draftId}\`. Напиши адміну цей код, і ми відновимо задачу без повторного заповнення.`,
+    })
+  } catch (slackErr) {
+    console.error(`Failed to notify ${payload.userId} about failed queued submission:`, slackErr)
+  }
+
+  console.error(
+    `Task submission draft saved after queued create failure: ${failedDraft.key}`,
+    failedSubmissionPayload.error
+  )
+}
+
+async function processQueuedTaskSubmissions(client) {
+  if (queueWorkerProcessing) return
+  queueWorkerProcessing = true
+
+  try {
+    while (true) {
+      const item = await getDueTaskSubmission()
+      if (!item) break
+
+      try {
+        await createTaskFromSubmissionPayload(client, item.payload)
+        await completeTaskSubmission(item.id)
+        console.log(`Queued task submission completed: ${item.id}`)
+      } catch (error) {
+        const attempts = item.attempts || 0
+
+        if (isRetriableTaskCreationError(error) && attempts < QUEUE_MAX_ATTEMPTS) {
+          const delayMs = getTaskCreationRetryDelayMs(error, attempts)
+          const errorSummary = serializeTaskCreationError(error)
+          await requeueTaskSubmission(item, { delayMs, error: errorSummary })
+          console.warn(
+            `Queued task submission ${item.id} delayed for ${delayMs}ms ` +
+              `(attempt ${attempts + 1}/${QUEUE_MAX_ATTEMPTS}):`,
+            errorSummary
+          )
+          continue
+        }
+
+        await failQueuedSubmission(client, item.payload, error)
+        await completeTaskSubmission(item.id)
+      }
+    }
+  } catch (error) {
+    console.error('Task submission queue worker failed:', error)
+  } finally {
+    queueWorkerProcessing = false
+  }
+}
+
+function startTaskSubmissionQueueWorker(client) {
+  if (queueWorkerStarted) return
+  queueWorkerStarted = true
+
+  const intervalMs =
+    Number.isFinite(QUEUE_WORKER_INTERVAL_MS) && QUEUE_WORKER_INTERVAL_MS > 0
+      ? QUEUE_WORKER_INTERVAL_MS
+      : 5000
+
+  console.log(`Task submission queue worker started — every ${intervalMs}ms`)
+  setTimeout(() => processQueuedTaskSubmissions(client), 1000)
+  setInterval(() => processQueuedTaskSubmissions(client), intervalMs)
+}
+
 export function registerSubmissionHandlers(app) {
+  startTaskSubmissionQueueWorker(app.client)
+
   function buildTaskModalView(taskType, taskTypeLabel, values = {}) {
     return {
       type: 'modal',
@@ -126,10 +401,7 @@ export function registerSubmissionHandlers(app) {
     const { taskType, taskTypeLabel } = JSON.parse(view.private_metadata)
     const values = view.state.values
     const userId = body.user.id
-    let notionCreated = false
-    let notificationTrackingEnabled = true
     const userName = body.user.name
-    let slackPersonName = userName
 
     // Базові поля
     const name = values.name_block?.name?.value
@@ -232,162 +504,74 @@ export function registerSubmissionHandlers(app) {
       if (val) artifacts[label] = val
     }
 
+    const submissionPayload = {
+      userId,
+      userName,
+      slackPersonName: userName,
+      taskType,
+      taskTypeLabel,
+      name,
+      priority,
+      deadline,
+      context,
+      style,
+      antiref,
+      canEditText,
+      videoFormat,
+      platform,
+      platformOther,
+      specificFields,
+      artifacts,
+      values,
+    }
+
+    let queuedSubmission
+
     try {
-      try {
-        const userInfo = await client.users.info({ user: userId })
-        const profile = userInfo.user?.profile
-
-        slackPersonName =
-          profile?.real_name ||
-          profile?.display_name ||
-          userInfo.user?.real_name ||
-          userName ||
-          userId
-      } catch (slackUserErr) {
-        console.error('Slack users.info failed, fallback to body.user.name:', slackUserErr)
-      }
-
-      const { pageId, pageUrl } = await createNotionPage({
-        name: name || taskTypeLabel,
-        priority,
-        deadline,
-        videoFormat,
-        platform,
-        platformOther,
-        taskType,
-        context,
-        style,
-        antiref,
-        canEditText,
-        specificFields,
-        artifacts,
-        slackPersonName,
-      })
-
-      notionCreated = true
-
-      try {
-        await saveTask({
-          pageId,
-          slackUserId: userId,
-          slackChannelId: userId,
-          taskName: name || taskTypeLabel,
-          requesterName: slackPersonName,
-        })
-      } catch (redisErr) {
-        notificationTrackingEnabled = false
-        console.error('Redis saveTask failed; status/comment notifications will not be tracked:', redisErr)
-      }
-
-      const requesterNotificationText = notificationTrackingEnabled
-        ? `✅ *Задача створена!*\n*${name || taskTypeLabel}*\nДизайн-команда отримала бриф і розпочне роботу.`
-        : `✅ *Задача створена!*\n*${name || taskTypeLabel}*\nДизайн-команда отримала бриф, але автоапдейти про статус і коментарі зараз не підключилися.`
-
-      // Сповіщення замовнику
-      await client.chat.postMessage({
-        channel: userId,
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: requesterNotificationText,
-            },
-          },
-          {
-            type: 'actions',
-            elements: [
-              {
-                type: 'button',
-                text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
-                url: pageUrl,
-                style: 'primary',
-              },
-            ],
-          },
-        ],
-      })
-
-      // Сповіщення у канал дизайнерів
-      await client.chat.postMessage({
-        channel: DESIGN_CHANNEL,
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `🆕 *Нова задача від <@${userId}>*`,
-            },
-          },
-          {
-            type: 'section',
-            fields: [
-              { type: 'mrkdwn', text: `*Задача:*\n${name || taskTypeLabel}` },
-              { type: 'mrkdwn', text: `*Тип:*\n${taskTypeLabel}` },
-              { type: 'mrkdwn', text: `*Пріоритет:*\n${priority || 'не вказано'}` },
-              { type: 'mrkdwn', text: `*Дедлайн:*\n${deadline || 'не вказано'}` },
-            ],
-          },
-          {
-            type: 'actions',
-            elements: [
-              {
-                type: 'button',
-                text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
-                url: pageUrl,
-                style: 'primary',
-              },
-            ],
-          },
-        ],
-      })
-
+      queuedSubmission = await enqueueTaskSubmission(submissionPayload)
     } catch (err) {
-      console.error('Error creating task:', err)
-      if (!notionCreated) {
-        let failedDraft = null
-        const failedSubmissionPayload = buildFailedSubmissionPayload({
-          userId,
-          userName,
-          slackPersonName,
-          taskType,
-          taskTypeLabel,
-          name,
-          priority,
-          deadline,
-          context,
-          style,
-          antiref,
-          canEditText,
-          videoFormat,
-          platform,
-          platformOther,
-          specificFields,
-          artifacts,
-          values,
-          error: err,
-        })
+      console.error('Failed to queue task submission:', err)
 
-        try {
-          failedDraft = await saveFailedSubmission(failedSubmissionPayload)
-          console.error(
-            `Task submission draft saved after Notion create failure: ${failedDraft.key}`,
-            failedSubmissionPayload.error
-          )
-        } catch (draftErr) {
-          console.error('Failed to save task submission draft:', draftErr)
-          console.error('Unsaved task submission draft:', JSON.stringify(failedSubmissionPayload))
-        }
+      const failedSubmissionPayload = buildFailedSubmissionPayload({
+        ...submissionPayload,
+        error: err,
+      })
 
-        const draftText = failedDraft
-          ? `\nБриф збережено як чернетку: \`${failedDraft.draftId}\`. Напиши адміну цей код, і ми відновимо задачу без повторного заповнення.`
-          : '\nНе вдалося зберегти чернетку автоматично, але адмін може перевірити server logs.'
+      try {
+        const failedDraft = await saveFailedSubmission(failedSubmissionPayload)
 
         await client.chat.postMessage({
           channel: userId,
-          text: `❌ Щось пішло не так при створенні задачі. Спробуй ще раз або звернись до адміна.${draftText}`,
+          text:
+            `❌ Не вдалося поставити задачу в чергу.\n` +
+            `Бриф збережено як чернетку: \`${failedDraft.draftId}\`. Напиши адміну цей код, і ми відновимо задачу без повторного заповнення.`,
+        })
+      } catch (draftErr) {
+        console.error('Failed to save task submission draft:', draftErr)
+        console.error('Unsaved task submission draft:', JSON.stringify(failedSubmissionPayload))
+
+        await client.chat.postMessage({
+          channel: userId,
+          text: '❌ Не вдалося поставити задачу в чергу. Адмін може перевірити server logs.',
         })
       }
+
+      return
     }
+
+    try {
+      await client.chat.postMessage({
+        channel: userId,
+        text:
+          `🕐 *Задачу прийнято в чергу.*\n` +
+          `*${name || taskTypeLabel}*\n` +
+          `Створюю її в Notion у фоні. Якщо Notion тимчасово лімітує запити, я просто спробую ще раз і напишу сюди, коли задача буде готова.`,
+      })
+    } catch (slackErr) {
+      console.error(`Failed to notify ${userId} about queued task submission:`, slackErr)
+    }
+
+    console.log(`Task submission queued: ${queuedSubmission.queueId}`)
+    setTimeout(() => processQueuedTaskSubmissions(client), 0)
   })
 }

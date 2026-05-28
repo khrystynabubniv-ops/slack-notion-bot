@@ -7,6 +7,8 @@ const redis = new Redis({
 
 const SAVE_TASK_RETRY_DELAYS_MS = [300, 1000]
 const DEFAULT_FAILED_SUBMISSION_TTL_SECONDS = 60 * 60 * 24 * 30
+const TASK_SUBMISSION_QUEUE_KEY = 'task-submission-queue'
+const TASK_SUBMISSION_QUEUE_ITEM_PREFIX = 'task-submission-queue-item:'
 const FAILED_SUBMISSION_TTL_SECONDS = Number.parseInt(
   process.env.FAILED_SUBMISSION_TTL_SECONDS || `${DEFAULT_FAILED_SUBMISSION_TTL_SECONDS}`,
   10
@@ -79,6 +81,82 @@ export async function saveFailedSubmission(payload) {
   )
 
   return { draftId, key, createdAt }
+}
+
+export async function enqueueTaskSubmission(payload, { delayMs = 0, queueId } = {}) {
+  const now = Date.now()
+  const id = queueId || `queued-${now}-${Math.random().toString(36).slice(2, 8)}`
+  const key = `${TASK_SUBMISSION_QUEUE_ITEM_PREFIX}${id}`
+  const createdAt = payload.createdAt || new Date(now).toISOString()
+  const nextAttemptAt = new Date(now + delayMs).toISOString()
+  const item = {
+    id,
+    createdAt,
+    nextAttemptAt,
+    attempts: payload.attempts || 0,
+    payload,
+  }
+
+  await saveWithRetry(
+    key,
+    JSON.stringify(item),
+    getFailedSubmissionTtlOptions()
+  )
+  await redis.zadd(TASK_SUBMISSION_QUEUE_KEY, { score: now + delayMs, member: id })
+
+  return { queueId: id, key, createdAt, nextAttemptAt }
+}
+
+export async function getDueTaskSubmission(now = Date.now()) {
+  const queueIds = await redis.zrange(TASK_SUBMISSION_QUEUE_KEY, 0, now, {
+    byScore: true,
+    offset: 0,
+    count: 1,
+  })
+  const queueId = queueIds?.[0]
+
+  if (!queueId) return null
+
+  const removed = await redis.zrem(TASK_SUBMISSION_QUEUE_KEY, queueId)
+  if (!removed) return null
+
+  const key = `${TASK_SUBMISSION_QUEUE_ITEM_PREFIX}${queueId}`
+  const data = await redis.get(key)
+  const parsed = parseStoredTask(data)
+
+  if (!parsed) return null
+
+  return { ...parsed, key }
+}
+
+export async function requeueTaskSubmission(item, { delayMs, error }) {
+  const attempts = (item.attempts || 0) + 1
+  const now = Date.now()
+  const nextAttemptAt = new Date(now + delayMs).toISOString()
+  const updatedItem = {
+    ...item,
+    attempts,
+    nextAttemptAt,
+    lastError: error || null,
+    payload: {
+      ...item.payload,
+      attempts,
+    },
+  }
+
+  await saveWithRetry(
+    item.key,
+    JSON.stringify(updatedItem),
+    getFailedSubmissionTtlOptions()
+  )
+  await redis.zadd(TASK_SUBMISSION_QUEUE_KEY, { score: now + delayMs, member: item.id })
+
+  return updatedItem
+}
+
+export async function completeTaskSubmission(queueId) {
+  await redis.del(`${TASK_SUBMISSION_QUEUE_ITEM_PREFIX}${queueId}`)
+  await redis.zrem(TASK_SUBMISSION_QUEUE_KEY, queueId)
 }
 
 export async function getTask(pageId) {

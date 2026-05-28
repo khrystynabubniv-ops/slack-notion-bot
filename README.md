@@ -51,6 +51,10 @@ NOTION_TEMPLATE_TIMEZONE=Europe/Kiev
 NOTION_STATUS_PROPERTY=Design Status
 NOTION_REQUEST_MIN_INTERVAL_MS=500
 NOTION_REQUEST_MAX_RETRIES=4
+TASK_SUBMISSION_QUEUE_INTERVAL_MS=5000
+TASK_SUBMISSION_QUEUE_MAX_ATTEMPTS=20
+TASK_SUBMISSION_QUEUE_RETRY_DELAY_MS=60000
+TASK_SUBMISSION_QUEUE_MAX_RETRY_DELAY_MS=600000
 NOTION_BRAND_DESIGN_HUB_URL=https://www.notion.so/Brand-Design-Hub-33cce9899cb7814488c0f439326aaf2a?source=copy_link
 UPSTASH_REDIS_REST_URL=https://...
 UPSTASH_REDIS_REST_TOKEN=...
@@ -105,3 +109,9 @@ Slash command: `/new-task`.
 Якщо користувач заповнив бриф, але Notion відхилив створення задачі, бот зберігає чернетку в Redis під ключем `failed-submission:<draftId>`.
 Користувач отримує `draftId` у Slack, а адмін може витягнути payload із Redis і вручну відновити задачу без повторного заповнення форми.
 За замовчуванням чернетки зберігаються 30 днів; змінити TTL можна через `FAILED_SUBMISSION_TTL_SECONDS`.
+
+## Черга створення задач
+
+Після сабміту Slack-форму бот не тримає відкритою, поки Notion відповідає. Він одразу зберігає payload у Redis sorted set `task-submission-queue`, повідомляє користувачу, що задачу прийнято в чергу, а фоновий worker створює Notion page окремо.
+
+Якщо Notion повертає `429 rate_limited` або тимчасову 5xx-помилку, worker відкладає наступну спробу. Кількість спроб задається `TASK_SUBMISSION_QUEUE_MAX_ATTEMPTS`, інтервали — `TASK_SUBMISSION_QUEUE_RETRY_DELAY_MS` і `TASK_SUBMISSION_QUEUE_MAX_RETRY_DELAY_MS`.
