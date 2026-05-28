@@ -3,6 +3,7 @@ import {
   completeTaskSubmission,
   enqueueTaskSubmission,
   getDueTaskSubmission,
+  recoverOrphanedTaskSubmissions,
   requeueTaskSubmission,
   saveFailedSubmission,
   saveTask,
@@ -29,6 +30,7 @@ const QUEUE_MAX_RETRY_DELAY_MS = Number.parseInt(
 
 let queueWorkerStarted = false
 let queueWorkerProcessing = false
+const queueWorkerActiveItemIds = new Set()
 
 function parseJsonBody(body) {
   if (!body || typeof body !== 'string') return null
@@ -337,10 +339,18 @@ async function processQueuedTaskSubmissions(client) {
   queueWorkerProcessing = true
 
   try {
+    const recoveredCount = await recoverOrphanedTaskSubmissions({
+      excludeIds: [...queueWorkerActiveItemIds],
+    })
+    if (recoveredCount > 0) {
+      console.warn(`Recovered ${recoveredCount} orphaned task submission queue item(s).`)
+    }
+
     while (true) {
       const item = await getDueTaskSubmission()
       if (!item) break
 
+      queueWorkerActiveItemIds.add(item.id)
       try {
         await createTaskFromSubmissionPayload(client, item.payload)
         await completeTaskSubmission(item.id)
@@ -367,6 +377,8 @@ async function processQueuedTaskSubmissions(client) {
 
         await failQueuedSubmission(client, item.payload, error)
         await completeTaskSubmission(item.id)
+      } finally {
+        queueWorkerActiveItemIds.delete(item.id)
       }
     }
   } catch (error) {

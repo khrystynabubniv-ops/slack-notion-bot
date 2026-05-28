@@ -129,6 +129,36 @@ export async function getDueTaskSubmission(now = Date.now()) {
   return { ...parsed, key }
 }
 
+export async function recoverOrphanedTaskSubmissions({ excludeIds = [] } = {}) {
+  const keys = await redis.keys(`${TASK_SUBMISSION_QUEUE_ITEM_PREFIX}*`)
+  if (!keys.length) return 0
+
+  const excluded = new Set(excludeIds)
+  let recoveredCount = 0
+
+  for (const key of keys) {
+    const queueId = key.replace(TASK_SUBMISSION_QUEUE_ITEM_PREFIX, '')
+    if (!queueId || excluded.has(queueId)) continue
+
+    const score = await redis.zscore(TASK_SUBMISSION_QUEUE_KEY, queueId)
+    if (score !== null && score !== undefined) continue
+
+    const item = parseStoredTask(await redis.get(key))
+    if (!item) continue
+
+    const nextAttemptTime = Date.parse(item.nextAttemptAt)
+    const scoreTime = Number.isFinite(nextAttemptTime) ? nextAttemptTime : Date.now()
+
+    await redis.zadd(TASK_SUBMISSION_QUEUE_KEY, {
+      score: Math.min(scoreTime, Date.now()),
+      member: queueId,
+    })
+    recoveredCount += 1
+  }
+
+  return recoveredCount
+}
+
 export async function requeueTaskSubmission(item, { delayMs, error }) {
   const attempts = (item.attempts || 0) + 1
   const now = Date.now()

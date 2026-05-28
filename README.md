@@ -117,3 +117,5 @@ Slash command: `/new-task`.
 Після сабміту Slack-форму бот не тримає відкритою, поки Notion відповідає. Він одразу зберігає payload у Redis sorted set `task-submission-queue`, повідомляє користувачу, що задачу прийнято в чергу, а фоновий worker створює Notion page окремо.
 
 Якщо Notion повертає `429 rate_limited` або тимчасову 5xx-помилку, worker відкладає наступну спробу. Кількість спроб задається `TASK_SUBMISSION_QUEUE_MAX_ATTEMPTS`, інтервали — `TASK_SUBMISSION_QUEUE_RETRY_DELAY_MS` і `TASK_SUBMISSION_QUEUE_MAX_RETRY_DELAY_MS`.
+
+Під час старту worker також відновлює queue items, які були збережені як `task-submission-queue-item:*`, але випали з sorted set під час рестарту або деплою. Це не дає задачам зависати у статусі “прийнято в чергу”.
