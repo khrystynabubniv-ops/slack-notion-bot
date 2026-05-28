@@ -176,6 +176,10 @@ export async function updateStatus(pageId, newStatus) {
   }))
 }
 
+export async function deleteTask(pageId) {
+  await redis.del(`notion:${pageId}`)
+}
+
 export async function updateLastComment(pageId, { id, createdTime, commentId }) {
   const data = await redis.get(`notion:${pageId}`)
   if (!data) return

@@ -1,5 +1,5 @@
 import { Client } from '@notionhq/client'
-import { getAllTasks, updateLastComment, updateStatus } from '../redis/store.js'
+import { deleteTask, getAllTasks, updateLastComment, updateStatus } from '../redis/store.js'
 import { sendCommentUpdate, sendStatusUpdate } from '../slack/notify.js'
 import { buildTaskPageUrl } from './pageUrl.js'
 import { notionRequest } from './request.js'
@@ -11,6 +11,12 @@ const POLLING_RATE_LIMIT_COOLDOWN_MS = Number.parseInt(
   process.env.NOTION_POLL_RATE_LIMIT_COOLDOWN_MS || `${10 * 60 * 1000}`,
   10
 )
+const COMPLETED_STATUS_NAMES = (
+  process.env.NOTION_POLL_COMPLETED_STATUSES || 'Ready'
+)
+  .split(',')
+  .map((status) => status.trim().toLowerCase())
+  .filter(Boolean)
 let commentPollingEnabled = true
 let pollingInProgress = false
 let pollingPausedUntil = 0
@@ -51,6 +57,10 @@ function pausePollingAfterRateLimit(error, context) {
   console.warn(
     `Notion polling paused for ${cooldownMs}ms after rate limit during ${context}.`
   )
+}
+
+function isCompletedStatus(status) {
+  return status && COMPLETED_STATUS_NAMES.includes(status.toLowerCase())
 }
 
 function extractAssignee(page) {
@@ -264,16 +274,35 @@ export async function startPolling(slackClient) {
       const trackedTasks = await getAllTasks()
       if (!trackedTasks.length) return
 
+      const activeTrackedTasks = []
+      for (const task of trackedTasks) {
+        if (isCompletedStatus(task.lastStatus)) {
+          await deleteTask(task.pageId)
+          console.log(`🧹 Stopped polling completed task: ${task.taskName} → ${task.lastStatus}`)
+        } else {
+          activeTrackedTasks.push(task)
+        }
+      }
+
+      if (!activeTrackedTasks.length) return
+
       const currentTasks = await getCurrentTaskSnapshots()
 
-      for (const task of trackedTasks) {
+      for (const task of activeTrackedTasks) {
         const currentTask = currentTasks[task.pageId]
         if (!currentTask?.status) continue
         const pageUrl = buildTaskPageUrl(task.pageId)
+        const completed = isCompletedStatus(currentTask.status)
 
         if (!task.lastStatus) {
-          await updateStatus(task.pageId, currentTask.status)
-          console.log(`ℹ️ Status checkpoint initialized: ${task.taskName} → ${currentTask.status}`)
+          if (completed) {
+            await deleteTask(task.pageId)
+            console.log(`🧹 Completed task removed from polling: ${task.taskName} → ${currentTask.status}`)
+            continue
+          } else {
+            await updateStatus(task.pageId, currentTask.status)
+            console.log(`ℹ️ Status checkpoint initialized: ${task.taskName} → ${currentTask.status}`)
+          }
         } else if (currentTask.status !== task.lastStatus) {
           try {
             console.log(
@@ -292,14 +321,34 @@ export async function startPolling(slackClient) {
               pageUrl,
             })
 
-            await updateStatus(task.pageId, currentTask.status)
-            console.log(`✅ Status updated: ${task.taskName} → ${currentTask.status}`)
+            if (completed) {
+              await deleteTask(task.pageId)
+              console.log(`🧹 Completed task removed from polling: ${task.taskName} → ${currentTask.status}`)
+              continue
+            } else {
+              await updateStatus(task.pageId, currentTask.status)
+              console.log(`✅ Status updated: ${task.taskName} → ${currentTask.status}`)
+            }
           } catch (error) {
             console.error(
               `❌ Failed to notify about status change for page ${task.pageId} (${task.taskName}) and user ${task.slackUserId}:`,
               error
             )
+
+            if (completed) {
+              await deleteTask(task.pageId)
+              console.log(
+                `🧹 Completed task removed from polling after notification failure: ${task.taskName} → ${currentTask.status}`
+              )
+              continue
+            }
           }
+        }
+
+        if (completed) {
+          await deleteTask(task.pageId)
+          console.log(`🧹 Completed task removed from polling: ${task.taskName} → ${currentTask.status}`)
+          continue
         }
 
         try {
