@@ -7,8 +7,51 @@ import { getStatusPropertyNames } from './taskConfig.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const DATABASE_ID = process.env.NOTION_DATABASE_ID
+const POLLING_RATE_LIMIT_COOLDOWN_MS = Number.parseInt(
+  process.env.NOTION_POLL_RATE_LIMIT_COOLDOWN_MS || `${10 * 60 * 1000}`,
+  10
+)
 let commentPollingEnabled = true
+let pollingInProgress = false
+let pollingPausedUntil = 0
 const notionUserNameCache = new Map()
+
+function isRateLimited(error) {
+  return error?.code === 'rate_limited' || error?.status === 429 || error?.statusCode === 429
+}
+
+function getHeader(headers, headerName) {
+  if (!headers) return null
+  if (typeof headers.get === 'function') return headers.get(headerName)
+
+  const normalizedHeaderName = headerName.toLowerCase()
+  return Object.entries(headers)
+    .find(([key]) => key.toLowerCase() === normalizedHeaderName)
+    ?.[1]
+}
+
+function getPollingCooldownMs(error) {
+  const retryAfter = getHeader(error?.headers, 'retry-after')
+  const retryAfterSeconds = Number.parseFloat(Array.isArray(retryAfter) ? retryAfter[0] : retryAfter)
+  const configuredCooldown =
+    Number.isFinite(POLLING_RATE_LIMIT_COOLDOWN_MS) && POLLING_RATE_LIMIT_COOLDOWN_MS > 0
+      ? POLLING_RATE_LIMIT_COOLDOWN_MS
+      : 10 * 60 * 1000
+
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+    return Math.max(Math.ceil(retryAfterSeconds * 1000), configuredCooldown)
+  }
+
+  return configuredCooldown
+}
+
+function pausePollingAfterRateLimit(error, context) {
+  const cooldownMs = getPollingCooldownMs(error)
+  pollingPausedUntil = Date.now() + cooldownMs
+  console.warn(
+    `Notion polling paused for ${cooldownMs}ms after rate limit during ${context}.`
+  )
+}
 
 function extractAssignee(page) {
   const people = page.properties.Owner?.people || []
@@ -205,6 +248,18 @@ export async function startPolling(slackClient) {
   console.log('🔄 Polling started — every 3 minutes')
 
   setInterval(async () => {
+    if (pollingInProgress) {
+      console.warn('Notion polling skipped because the previous cycle is still running.')
+      return
+    }
+
+    if (Date.now() < pollingPausedUntil) {
+      console.log(`Notion polling paused until ${new Date(pollingPausedUntil).toISOString()}`)
+      return
+    }
+
+    pollingInProgress = true
+
     try {
       const trackedTasks = await getAllTasks()
       if (!trackedTasks.length) return
@@ -283,6 +338,11 @@ export async function startPolling(slackClient) {
             console.log(`✅ Comment checkpoint updated: ${task.taskName} → ${comment.id}`)
           }
         } catch (error) {
+          if (isRateLimited(error)) {
+            pausePollingAfterRateLimit(error, 'comments list')
+            break
+          }
+
           console.error(
             `❌ Failed to notify about comments for page ${task.pageId} (${task.taskName}) and user ${task.slackUserId}:`,
             error
@@ -290,7 +350,13 @@ export async function startPolling(slackClient) {
         }
       }
     } catch (err) {
+      if (isRateLimited(err)) {
+        pausePollingAfterRateLimit(err, 'polling cycle')
+      }
+
       console.error('Polling error:', err)
+    } finally {
+      pollingInProgress = false
     }
   }, 3 * 60 * 1000)
 }

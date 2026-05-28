@@ -9,7 +9,7 @@ import {
 } from '../redis/store.js'
 import { getModalBlocks } from './modalBlocks.js'
 
-const DESIGN_CHANNEL = process.env.DESIGN_CHANNEL_ID || 'C0ARG2KR5DX'
+const DESIGN_CHANNEL = process.env.DESIGN_CHANNEL_ID?.trim() || null
 const QUEUE_WORKER_INTERVAL_MS = Number.parseInt(
   process.env.TASK_SUBMISSION_QUEUE_INTERVAL_MS || '5000',
   10
@@ -126,6 +126,18 @@ function getTaskCreationRetryDelayMs(error, attempts) {
   return Math.min(QUEUE_BASE_RETRY_DELAY_MS * 2 ** Math.min(attempts, 4), QUEUE_MAX_RETRY_DELAY_MS)
 }
 
+function shouldNotifyQueueDelay(attempts) {
+  return attempts === 1 || attempts % 5 === 0
+}
+
+function formatQueueRetryTime(delayMs) {
+  return new Date(Date.now() + delayMs).toLocaleTimeString('uk-UA', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Kiev',
+  })
+}
+
 async function resolveSlackPersonName(client, { userId, userName }) {
   try {
     const userInfo = await client.users.info({ user: userId })
@@ -203,6 +215,7 @@ async function createTaskFromSubmissionPayload(client, payload) {
   try {
     await client.chat.postMessage({
       channel: userId,
+      text: requesterNotificationText,
       blocks: [
         {
           type: 'section',
@@ -228,41 +241,46 @@ async function createTaskFromSubmissionPayload(client, payload) {
     console.error(`Failed to send requester task-created notification to ${userId}:`, error)
   }
 
-  try {
-    await client.chat.postMessage({
-      channel: DESIGN_CHANNEL,
-      blocks: [
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `🆕 *Нова задача від <@${userId}>*`,
-          },
-        },
-        {
-          type: 'section',
-          fields: [
-            { type: 'mrkdwn', text: `*Задача:*\n${name || taskTypeLabel}` },
-            { type: 'mrkdwn', text: `*Тип:*\n${taskTypeLabel}` },
-            { type: 'mrkdwn', text: `*Пріоритет:*\n${priority || 'не вказано'}` },
-            { type: 'mrkdwn', text: `*Дедлайн:*\n${deadline || 'не вказано'}` },
-          ],
-        },
-        {
-          type: 'actions',
-          elements: [
-            {
-              type: 'button',
-              text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
-              url: pageUrl,
-              style: 'primary',
+  if (!DESIGN_CHANNEL) {
+    console.warn('DESIGN_CHANNEL_ID is not set; skipping design-channel task notification.')
+  } else {
+    try {
+      await client.chat.postMessage({
+        channel: DESIGN_CHANNEL,
+        text: `Нова задача від <@${userId}>: ${name || taskTypeLabel}`,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `🆕 *Нова задача від <@${userId}>*`,
             },
-          ],
-        },
-      ],
-    })
-  } catch (error) {
-    console.error(`Failed to send design-channel task notification for page ${pageId}:`, error)
+          },
+          {
+            type: 'section',
+            fields: [
+              { type: 'mrkdwn', text: `*Задача:*\n${name || taskTypeLabel}` },
+              { type: 'mrkdwn', text: `*Тип:*\n${taskTypeLabel}` },
+              { type: 'mrkdwn', text: `*Пріоритет:*\n${priority || 'не вказано'}` },
+              { type: 'mrkdwn', text: `*Дедлайн:*\n${deadline || 'не вказано'}` },
+            ],
+          },
+          {
+            type: 'actions',
+            elements: [
+              {
+                type: 'button',
+                text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
+                url: pageUrl,
+                style: 'primary',
+              },
+            ],
+          },
+        ],
+      })
+    } catch (error) {
+      console.error(`Failed to send design-channel task notification for page ${pageId}:`, error)
+    }
   }
 
   return { pageId, pageUrl }
@@ -293,6 +311,27 @@ async function failQueuedSubmission(client, payload, error) {
   )
 }
 
+async function notifyQueuedSubmissionDelayed(client, item, { delayMs, attempts, error }) {
+  if (!shouldNotifyQueueDelay(attempts)) return
+
+  const retryTime = formatQueueRetryTime(delayMs)
+  const taskName = item.payload.name || item.payload.taskTypeLabel
+  const reason = error?.code === 'rate_limited'
+    ? 'Notion зараз лімітує запити'
+    : 'Notion тимчасово не відповів'
+
+  try {
+    await client.chat.postMessage({
+      channel: item.payload.userId,
+      text:
+        `⏳ *${taskName}* ще в черзі.\n` +
+        `${reason}. Наступна спроба приблизно о ${retryTime}. Я напишу сюди, коли задача буде створена.`,
+    })
+  } catch (slackErr) {
+    console.error(`Failed to notify ${item.payload.userId} about delayed queued submission:`, slackErr)
+  }
+}
+
 async function processQueuedTaskSubmissions(client) {
   if (queueWorkerProcessing) return
   queueWorkerProcessing = true
@@ -312,12 +351,17 @@ async function processQueuedTaskSubmissions(client) {
         if (isRetriableTaskCreationError(error) && attempts < QUEUE_MAX_ATTEMPTS) {
           const delayMs = getTaskCreationRetryDelayMs(error, attempts)
           const errorSummary = serializeTaskCreationError(error)
-          await requeueTaskSubmission(item, { delayMs, error: errorSummary })
+          const requeuedItem = await requeueTaskSubmission(item, { delayMs, error: errorSummary })
           console.warn(
             `Queued task submission ${item.id} delayed for ${delayMs}ms ` +
               `(attempt ${attempts + 1}/${QUEUE_MAX_ATTEMPTS}):`,
             errorSummary
           )
+          await notifyQueuedSubmissionDelayed(client, requeuedItem, {
+            delayMs,
+            attempts: requeuedItem.attempts,
+            error: errorSummary,
+          })
           continue
         }
 
