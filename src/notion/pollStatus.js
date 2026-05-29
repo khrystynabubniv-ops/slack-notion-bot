@@ -120,6 +120,37 @@ async function sendQualitySurveyOnce(slackClient, task, { pageUrl, completedAt, 
   return true
 }
 
+async function stopPollingCompletedTask(
+  slackClient,
+  task,
+  { pageUrl, completedAt = new Date().toISOString(), status }
+) {
+  try {
+    await updateStatus(task.pageId, status)
+  } catch (error) {
+    console.error(
+      `❌ Failed to checkpoint completed task ${task.pageId} (${task.taskName}) as ${status}:`,
+      error
+    )
+  }
+
+  try {
+    await sendQualitySurveyOnce(slackClient, task, {
+      pageUrl,
+      completedAt,
+      status,
+    })
+  } catch (error) {
+    console.error(
+      `❌ Failed to send Ready quality survey for completed task ${task.pageId} (${task.taskName}); stopping polling anyway:`,
+      error
+    )
+  }
+
+  await deleteTask(task.pageId)
+  console.log(`🧹 Completed task removed from polling: ${task.taskName} → ${status}`)
+}
+
 function extractAssignee(page) {
   const people = page.properties.Owner?.people || []
   const names = people
@@ -378,17 +409,15 @@ export async function startPolling(slackClient) {
 
         if (isCompletedStatus(task.lastStatus)) {
           try {
-            await sendQualitySurveyOnce(slackClient, task, {
+            await stopPollingCompletedTask(slackClient, task, {
               pageUrl,
               completedAt: new Date().toISOString(),
               status: task.lastStatus,
             })
-            await deleteTask(task.pageId)
-            console.log(`🧹 Stopped polling completed task: ${task.taskName} → ${task.lastStatus}`)
           } catch (error) {
             activeTrackedTasks.push(task)
             console.error(
-              `❌ Failed to send Ready quality survey for completed task ${task.pageId} (${task.taskName}); keeping it for retry:`,
+              `❌ Failed to remove completed task ${task.pageId} (${task.taskName}) from polling; keeping it for retry:`,
               error
             )
           }
@@ -409,13 +438,11 @@ export async function startPolling(slackClient) {
 
         if (!task.lastStatus) {
           if (completed) {
-            await sendQualitySurveyOnce(slackClient, task, {
+            await stopPollingCompletedTask(slackClient, task, {
               pageUrl,
               completedAt: new Date().toISOString(),
               status: currentTask.status,
             })
-            await deleteTask(task.pageId)
-            console.log(`🧹 Completed task removed from polling: ${task.taskName} → ${currentTask.status}`)
             continue
           } else {
             await updateStatus(task.pageId, currentTask.status)
@@ -452,13 +479,11 @@ export async function startPolling(slackClient) {
             })
 
             if (completed) {
-              await sendQualitySurveyOnce(slackClient, task, {
+              await stopPollingCompletedTask(slackClient, task, {
                 pageUrl,
                 completedAt: new Date().toISOString(),
                 status: currentTask.status,
               })
-              await deleteTask(task.pageId)
-              console.log(`🧹 Completed task removed from polling: ${task.taskName} → ${currentTask.status}`)
               continue
             } else {
               await updateStatus(task.pageId, currentTask.status)
@@ -471,28 +496,22 @@ export async function startPolling(slackClient) {
             )
 
             if (completed) {
-              await sendQualitySurveyOnce(slackClient, task, {
+              await stopPollingCompletedTask(slackClient, task, {
                 pageUrl,
                 completedAt: new Date().toISOString(),
                 status: currentTask.status,
               })
-              await deleteTask(task.pageId)
-              console.log(
-                `🧹 Completed task removed from polling after notification failure: ${task.taskName} → ${currentTask.status}`
-              )
               continue
             }
           }
         }
 
         if (completed) {
-          await sendQualitySurveyOnce(slackClient, task, {
+          await stopPollingCompletedTask(slackClient, task, {
             pageUrl,
             completedAt: new Date().toISOString(),
             status: currentTask.status,
           })
-          await deleteTask(task.pageId)
-          console.log(`🧹 Completed task removed from polling: ${task.taskName} → ${currentTask.status}`)
           continue
         }
 
