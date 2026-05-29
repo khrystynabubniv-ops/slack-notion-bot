@@ -11,6 +11,8 @@ export async function sendStatusUpdate({
   finalProjectUrl,
   pageUrl,
   pageId,
+  slackChannelId,
+  slackThreadTs,
   roundsLeft = null,
   roundNumber = 1,
   designer,
@@ -81,6 +83,9 @@ export async function sendStatusUpdate({
   await postNotification(slackClient, slackUserId, {
     text: `${statusEmoji[newStatus] || '▪️'} Статус задачі «${taskName}» змінено на «${newStatus}».`,
     blocks,
+  }, {
+    channelId: slackChannelId,
+    threadTs: slackThreadTs,
   })
 }
 
@@ -95,6 +100,8 @@ export async function sendQualitySurvey({
   hub,
   requestType,
   completedAt,
+  slackChannelId,
+  slackThreadTs,
 }) {
   const ratings = [1, 2, 3, 4, 5]
   const baseValue = {
@@ -131,6 +138,9 @@ export async function sendQualitySurvey({
         })),
       },
     ],
+  }, {
+    channelId: slackChannelId,
+    threadTs: slackThreadTs,
   })
 }
 
@@ -141,6 +151,8 @@ export async function sendCommentUpdate({
   commentAuthor,
   commentText,
   pageUrl,
+  slackChannelId,
+  slackThreadTs,
 }) {
   const preview = formatCommentPreview(commentText)
 
@@ -187,10 +199,29 @@ export async function sendCommentUpdate({
         ],
       },
     ],
+  }, {
+    channelId: slackChannelId,
+    threadTs: slackThreadTs,
   })
 }
 
-async function postNotification(slackClient, slackUserId, message) {
+async function postNotification(slackClient, slackUserId, message, { channelId, threadTs } = {}) {
+  if (channelId) {
+    try {
+      return await slackClient.chat.postMessage({
+        ...message,
+        channel: channelId,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
+      })
+    } catch (error) {
+      if (!shouldTryNextChannel(error)) {
+        throw error
+      }
+
+      console.warn(`Failed to post threaded notification to ${channelId}, trying fallback DM:`, error)
+    }
+  }
+
   const channels = await resolveNotificationChannels(slackClient, slackUserId)
   let lastError
 

@@ -197,25 +197,14 @@ async function createTaskFromSubmissionPayload(client, payload) {
     slackPersonName,
   })
 
-  try {
-    await saveTask({
-      pageId,
-      slackUserId: userId,
-      slackChannelId: userId,
-      taskName: name || taskTypeLabel,
-      requesterName: slackPersonName,
-    })
-  } catch (redisErr) {
-    notificationTrackingEnabled = false
-    console.error('Redis saveTask failed; status/comment notifications will not be tracked:', redisErr)
-  }
-
-  const requesterNotificationText = notificationTrackingEnabled
-    ? `✅ *Задача створена!*\n*${name || taskTypeLabel}*\nДизайн-команда отримала бриф і розпочне роботу.`
-    : `✅ *Задача створена!*\n*${name || taskTypeLabel}*\nДизайн-команда отримала бриф, але автоапдейти про статус і коментарі зараз не підключилися.`
+  const requesterNotificationText =
+    `✅ *Задача створена!*\n` +
+    `*${name || taskTypeLabel}*\n` +
+    `Я відкрив окремий тред для цієї задачі. Усі апдейти по статусу й коментарях прийдуть сюди.`
+  let requesterMessage = null
 
   try {
-    await client.chat.postMessage({
+    requesterMessage = await client.chat.postMessage({
       channel: userId,
       text: requesterNotificationText,
       blocks: [
@@ -241,6 +230,33 @@ async function createTaskFromSubmissionPayload(client, payload) {
     })
   } catch (error) {
     console.error(`Failed to send requester task-created notification to ${userId}:`, error)
+  }
+
+  try {
+    await saveTask({
+      pageId,
+      slackUserId: userId,
+      slackChannelId: requesterMessage?.channel || userId,
+      slackMessageTs: requesterMessage?.ts || null,
+      slackThreadTs: requesterMessage?.ts || null,
+      taskName: name || taskTypeLabel,
+      requesterName: slackPersonName,
+      pageUrl,
+    })
+  } catch (redisErr) {
+    notificationTrackingEnabled = false
+    console.error('Redis saveTask failed; status/comment notifications will not be tracked:', redisErr)
+  }
+
+  if (!notificationTrackingEnabled) {
+    try {
+      await client.chat.postMessage({
+        channel: userId,
+        text: `⚠️ *${name || taskTypeLabel}* створено, але автоапдейти по статусу зараз не підключилися.`,
+      })
+    } catch (error) {
+      console.error(`Failed to notify ${userId} about disabled tracking for page ${pageId}:`, error)
+    }
   }
 
   if (!DESIGN_CHANNEL) {

@@ -1,5 +1,5 @@
 import { createFeedbackSubitem } from '../notion/createSubitem.js'
-import { getRoundsCount, incrementRoundsCount } from '../redis/store.js'
+import { getRoundsCount, getTask, incrementRoundsCount, saveTask } from '../redis/store.js'
 
 const DEFAULT_OPS_LEAD_SLACK_ID = 'U0APPD32H6D'
 
@@ -45,6 +45,40 @@ async function notifyUser(client, userId, text) {
   })
 }
 
+async function postFeedbackTaskCreatedMessage({ client, userId, taskName, roundNumber, pageUrl }) {
+  const text =
+    `✅ *Правки #${roundNumber} створено як окрему задачу*\n` +
+    `*${taskName}*\n` +
+    `Тут буде окремий тред для статусів і коментарів по цій правці.`
+
+  return await client.chat.postMessage({
+    channel: userId,
+    text,
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text:
+            `${text}\n\n` +
+            'Відкрий правку в Notion, якщо потрібно додати файли, скріншоти або уточнення.',
+        },
+      },
+      {
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: '📋 Відкрити в Notion / додати файли' },
+            url: pageUrl,
+            style: 'primary',
+          },
+        ],
+      },
+    ],
+  })
+}
+
 export async function handleFeedbackSubmission({ body, view, client }) {
   const metadata = parsePrivateMetadata(view.private_metadata)
   const pageId = metadata.pageId
@@ -76,7 +110,8 @@ export async function handleFeedbackSubmission({ body, view, client }) {
       return
     }
 
-    await createFeedbackSubitem({
+    const parentTask = await getTask(pageId)
+    const feedbackTask = await createFeedbackSubitem({
       parentPageId: pageId,
       taskName,
       roundNumber,
@@ -84,11 +119,43 @@ export async function handleFeedbackSubmission({ body, view, client }) {
     })
     await incrementRoundsCount(pageId)
 
-    await notifyUser(
-      client,
-      userId,
-      `✅ Правки #${roundNumber} прийнято і передано дизайнеру`
-    )
+    let feedbackMessage = null
+
+    try {
+      feedbackMessage = await postFeedbackTaskCreatedMessage({
+        client,
+        userId,
+        taskName: feedbackTask.taskName,
+        roundNumber,
+        pageUrl: feedbackTask.pageUrl,
+      })
+    } catch (notifyError) {
+      console.error(`Failed to send feedback task notification to ${userId}:`, notifyError)
+    }
+
+    try {
+      await saveTask({
+        pageId: feedbackTask.pageId,
+        slackUserId: userId,
+        slackChannelId: feedbackMessage?.channel || userId,
+        slackMessageTs: feedbackMessage?.ts || null,
+        slackThreadTs: feedbackMessage?.ts || null,
+        taskName: feedbackTask.taskName,
+        requesterName: parentTask?.requesterName || body.user?.name || userId,
+        taskKind: 'feedback',
+        parentPageId: pageId,
+        pageUrl: feedbackTask.pageUrl,
+        lastStatus: feedbackTask.initialStatus,
+      })
+    } catch (redisError) {
+      console.error(`Redis saveTask failed for feedback task ${feedbackTask.pageId}:`, redisError)
+
+      await notifyUser(
+        client,
+        userId,
+        `⚠️ Правки #${roundNumber} створено, але автоапдейти по статусу цієї правки зараз не підключилися.`
+      )
+    }
   } catch (error) {
     console.error(`Failed to handle feedback submission for page ${pageId}:`, error)
 

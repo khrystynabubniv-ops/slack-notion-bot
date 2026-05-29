@@ -54,13 +54,30 @@ function parseStoredTask(data) {
   return null
 }
 
-export async function saveTask({ pageId, slackUserId, slackChannelId, taskName, requesterName }) {
+export async function saveTask({
+  pageId,
+  slackUserId,
+  slackChannelId,
+  slackMessageTs,
+  slackThreadTs,
+  taskName,
+  requesterName,
+  taskKind = 'task',
+  parentPageId = null,
+  pageUrl = null,
+  lastStatus = 'To do',
+}) {
   await saveWithRetry(`notion:${pageId}`, JSON.stringify({
     slackUserId,
     slackChannelId,
+    slackMessageTs: slackMessageTs || null,
+    slackThreadTs: slackThreadTs || slackMessageTs || null,
     taskName,
     requesterName: requesterName || null,
-    lastStatus: 'To do',
+    taskKind,
+    parentPageId,
+    pageUrl,
+    lastStatus,
     lastCommentId: null,
     lastCommentCreatedTime: null,
     roundsCount: 0,

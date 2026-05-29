@@ -1,14 +1,25 @@
 import { Client } from '@notionhq/client'
+import { buildTaskPageUrl } from './pageUrl.js'
 import { notionRequest } from './request.js'
+import { DEFAULT_STATUS, resolveStatusPropertyName } from './taskConfig.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const DATABASE_ID = process.env.NOTION_DATABASE_ID
 const PARENT_ITEM_PROPERTY = process.env.NOTION_PARENT_ITEM_PROPERTY?.trim() || 'Parent item'
 const SUB_TYPE_PROPERTY = process.env.NOTION_SUB_TYPE_PROPERTY?.trim() || 'Sub-type'
 const FEEDBACK_SUB_TYPE = process.env.NOTION_FEEDBACK_SUB_TYPE?.trim() || 'правка'
+const DESCRIPTION_PROPERTY = process.env.NOTION_DESCRIPTION_PROPERTY?.trim() || 'Description'
 const RICH_TEXT_CONTENT_LIMIT = 2000
 const RICH_TEXT_OBJECT_LIMIT = 100
 const RICH_TEXT_TRUNCATED_NOTICE = '\n\n[Обрізано: Notion має ліміт на довжину rich text поля.]'
+const COPIED_PARENT_PROPERTIES = [
+  'Team',
+  'Priority',
+  'Deadline',
+  'Task Type',
+  'Designer',
+  'Slack Person',
+]
 let databasePropertiesPromise = null
 
 function clampText(value, limit = RICH_TEXT_CONTENT_LIMIT) {
@@ -67,12 +78,78 @@ function resolveTitlePropertyName(databaseProperties) {
     ?.[0]
 }
 
+function getPlainText(richText = []) {
+  return richText
+    .map((item) => item.plain_text || item.text?.content || '')
+    .join('')
+    .trim()
+}
+
+function buildPropertyValue(property, expectedType) {
+  if (!property) return null
+
+  switch (expectedType) {
+    case 'select':
+      return property.select?.name
+        ? { select: { name: property.select.name } }
+        : null
+    case 'multi_select':
+      return property.multi_select?.length
+        ? { multi_select: property.multi_select.map((option) => ({ name: option.name })) }
+        : null
+    case 'date':
+      return property.date
+        ? { date: property.date }
+        : null
+    case 'relation':
+      return property.relation?.length
+        ? { relation: property.relation.map((item) => ({ id: item.id })) }
+        : null
+    case 'people':
+      return property.people?.length
+        ? { people: property.people.map((person) => ({ id: person.id })) }
+        : null
+    case 'rich_text': {
+      const text = getPlainText(property.rich_text)
+      return text
+        ? { rich_text: buildRichText(text) }
+        : null
+    }
+    default:
+      return null
+  }
+}
+
+function addCopiedParentProperty(properties, databaseProperties, parentProperties, propertyName) {
+  const expectedType = databaseProperties[propertyName]?.type
+  if (!expectedType) return
+
+  const value = buildPropertyValue(parentProperties[propertyName], expectedType)
+  if (value) properties[propertyName] = value
+}
+
+function addDesignerOwner(properties, databaseProperties, parentProperties) {
+  if (!hasPropertyType(databaseProperties, 'Owner', ['people'])) return
+
+  const designerPeople = parentProperties.Designer?.people || parentProperties['Дизайнер']?.people || []
+  const ownerPeople = designerPeople.length ? designerPeople : parentProperties.Owner?.people || []
+  const value = buildPropertyValue({ people: ownerPeople }, 'people')
+
+  if (value) properties.Owner = value
+}
+
 export async function createFeedbackSubitem({ parentPageId, taskName, roundNumber, feedbackText }) {
   if (!parentPageId) {
     throw new Error('parentPageId is required')
   }
 
-  const databaseProperties = await getDatabaseProperties()
+  const [databaseProperties, parentPage] = await Promise.all([
+    getDatabaseProperties(),
+    notionRequest(
+      () => notion.pages.retrieve({ page_id: parentPageId }),
+      'parent task retrieve for feedback subitem'
+    ),
+  ])
   const titlePropertyName = resolveTitlePropertyName(databaseProperties)
 
   if (!titlePropertyName) {
@@ -91,31 +168,52 @@ export async function createFeedbackSubitem({ parentPageId, taskName, roundNumbe
   const safeRoundNumber = Number.isFinite(Number(roundNumber)) && Number(roundNumber) > 0
     ? Number(roundNumber)
     : 1
+  const feedbackTaskName = `Правка ${safeRoundNumber} — ${safeTaskName}`
+  const statusPropertyName = resolveStatusPropertyName(databaseProperties)
+  const properties = {
+    [titlePropertyName]: {
+      title: [{ text: { content: feedbackTaskName } }],
+    },
+    [PARENT_ITEM_PROPERTY]: {
+      relation: [{ id: parentPageId }],
+    },
+    [SUB_TYPE_PROPERTY]: {
+      select: { name: FEEDBACK_SUB_TYPE },
+    },
+  }
 
-  return await notionRequest(
+  for (const propertyName of COPIED_PARENT_PROPERTIES) {
+    addCopiedParentProperty(properties, databaseProperties, parentPage.properties || {}, propertyName)
+  }
+
+  addDesignerOwner(properties, databaseProperties, parentPage.properties || {})
+
+  if (hasPropertyType(databaseProperties, DESCRIPTION_PROPERTY, ['rich_text'])) {
+    properties[DESCRIPTION_PROPERTY] = {
+      rich_text: buildRichText(feedbackText),
+    }
+  }
+
+  if (hasPropertyType(databaseProperties, statusPropertyName, ['status'])) {
+    properties[statusPropertyName] = {
+      status: { name: DEFAULT_STATUS },
+    }
+  }
+
+  const response = await notionRequest(
     () => notion.pages.create({
       parent: { database_id: DATABASE_ID },
       properties: {
-        [titlePropertyName]: {
-          title: [{ text: { content: `Правка ${safeRoundNumber} — ${safeTaskName}` } }],
-        },
-        [PARENT_ITEM_PROPERTY]: {
-          relation: [{ id: parentPageId }],
-        },
-        [SUB_TYPE_PROPERTY]: {
-          select: { name: FEEDBACK_SUB_TYPE },
-        },
+        ...properties,
       },
-      children: [
-        {
-          object: 'block',
-          type: 'paragraph',
-          paragraph: {
-            rich_text: buildRichText(feedbackText),
-          },
-        },
-      ],
     }),
     'feedback subitem create'
   )
+
+  return {
+    pageId: response.id,
+    pageUrl: buildTaskPageUrl(response.id, response.url),
+    taskName: feedbackTaskName,
+    initialStatus: DEFAULT_STATUS,
+  }
 }

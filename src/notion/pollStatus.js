@@ -75,7 +75,13 @@ function isCompletedStatus(status) {
   )
 }
 
+function shouldSendQualitySurvey(task) {
+  return task.taskKind !== 'feedback'
+}
+
 async function sendQualitySurveyOnce(slackClient, task, { pageUrl, completedAt }) {
+  if (!shouldSendQualitySurvey(task)) return false
+
   const existingFeedback = await getQualityFeedback(task.pageId)
   if (existingFeedback?.feedbackSurveySentAt) return false
 
@@ -87,6 +93,8 @@ async function sendQualitySurveyOnce(slackClient, task, { pageUrl, completedAt }
     requesterName: task.requesterName,
     requestUrl: pageUrl,
     completedAt,
+    slackChannelId: task.slackChannelId,
+    slackThreadTs: task.slackThreadTs || task.slackMessageTs,
   })
 
   await markFeedbackSurveySent({
@@ -370,7 +378,7 @@ export async function startPolling(slackClient) {
       for (const task of activeTrackedTasks) {
         const currentTask = currentTasks[task.pageId]
         if (!currentTask?.status) continue
-        const pageUrl = buildTaskPageUrl(task.pageId)
+        const pageUrl = task.pageUrl || buildTaskPageUrl(task.pageId)
         const completed = isCompletedStatus(currentTask.status)
 
         if (!task.lastStatus) {
@@ -405,6 +413,8 @@ export async function startPolling(slackClient) {
               finalProjectUrl: currentTask.finalProjectUrl,
               pageUrl,
               pageId: task.pageId,
+              slackChannelId: task.slackChannelId,
+              slackThreadTs: task.slackThreadTs || task.slackMessageTs,
               roundsLeft,
               roundNumber: roundsCount + 1,
               designer: currentTask.designer,
@@ -482,6 +492,8 @@ export async function startPolling(slackClient) {
               commentAuthor: comment.author,
               commentText: comment.text,
               pageUrl,
+              slackChannelId: task.slackChannelId,
+              slackThreadTs: task.slackThreadTs || task.slackMessageTs,
             })
 
             await updateLastComment(task.pageId, comment)

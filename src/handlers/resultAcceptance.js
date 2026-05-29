@@ -180,6 +180,8 @@ export async function handleTaskAcceptance({ body, client }) {
         pageId,
         requestUrl: payload.requestUrl,
         completedAt,
+        slackChannelId: body.channel?.id,
+        slackThreadTs: body.message?.thread_ts || body.message?.ts,
       })
 
       await markFeedbackSurveySent({
