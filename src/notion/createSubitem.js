@@ -47,9 +47,6 @@ export async function createFeedbackSubitem({ parentPageId, taskName, roundNumbe
         title: {
           title: [{ text: { content: `Правка ${safeRoundNumber} — ${safeTaskName}` } }],
         },
-        'Sub-type': {
-          select: { name: 'правка' },
-        },
       },
       children: [
         {
