@@ -9,6 +9,7 @@ const SAVE_TASK_RETRY_DELAYS_MS = [300, 1000]
 const DEFAULT_FAILED_SUBMISSION_TTL_SECONDS = 60 * 60 * 24 * 30
 const TASK_SUBMISSION_QUEUE_KEY = 'task-submission-queue'
 const TASK_SUBMISSION_QUEUE_ITEM_PREFIX = 'task-submission-queue-item:'
+const FEEDBACK_KEY_PREFIX = 'feedback:'
 const FAILED_SUBMISSION_TTL_SECONDS = Number.parseInt(
   process.env.FAILED_SUBMISSION_TTL_SECONDS || `${DEFAULT_FAILED_SUBMISSION_TTL_SECONDS}`,
   10
@@ -209,6 +210,107 @@ export async function updateStatus(pageId, newStatus) {
 
 export async function deleteTask(pageId) {
   await redis.del(`notion:${pageId}`)
+}
+
+export async function markFeedbackSurveySent({
+  pageId,
+  slackUserId,
+  taskName,
+  requesterName,
+  requestUrl,
+  team,
+  hub,
+  requestType,
+  completedAt,
+}) {
+  const key = `${FEEDBACK_KEY_PREFIX}${pageId}`
+  const existing = parseStoredTask(await redis.get(key)) || {}
+
+  if (existing.feedbackSurveySentAt) {
+    return { alreadySent: true, record: existing }
+  }
+
+  const feedbackSurveySentAt = new Date().toISOString()
+  const record = {
+    ...existing,
+    pageId,
+    slackUserId: slackUserId || existing.slackUserId || null,
+    taskName: taskName || existing.taskName || null,
+    requesterName: requesterName || existing.requesterName || null,
+    requestUrl: requestUrl || existing.requestUrl || null,
+    team: team || existing.team || null,
+    hub: hub || existing.hub || null,
+    requestType: requestType || existing.requestType || null,
+    completedAt: completedAt || existing.completedAt || null,
+    feedbackSurveySentAt,
+  }
+
+  await redis.set(key, JSON.stringify(record))
+
+  const taskData = await redis.get(`notion:${pageId}`)
+  const task = parseStoredTask(taskData)
+  if (task) {
+    await redis.set(`notion:${pageId}`, JSON.stringify({
+      ...task,
+      feedbackSurveySentAt,
+    }))
+  }
+
+  return { alreadySent: false, record }
+}
+
+export async function getQualityFeedback(pageId) {
+  const data = await redis.get(`${FEEDBACK_KEY_PREFIX}${pageId}`)
+  return parseStoredTask(data)
+}
+
+export async function saveQualityFeedback({
+  pageId,
+  rating,
+  comment,
+  categories,
+  slackUserId,
+  taskName,
+  requesterName,
+  requestUrl,
+  team,
+  hub,
+  requestType,
+  completedAt,
+}) {
+  const key = `${FEEDBACK_KEY_PREFIX}${pageId}`
+  const existing = parseStoredTask(await redis.get(key)) || {}
+  const submittedAt = new Date().toISOString()
+  const record = {
+    ...existing,
+    pageId,
+    slackUserId: slackUserId || existing.slackUserId || null,
+    taskName: taskName || existing.taskName || null,
+    requesterName: requesterName || existing.requesterName || null,
+    requestUrl: requestUrl || existing.requestUrl || null,
+    team: team || existing.team || null,
+    hub: hub || existing.hub || null,
+    requestType: requestType || existing.requestType || null,
+    completedAt: completedAt || existing.completedAt || null,
+    rating,
+    comment: comment || null,
+    categories: Array.isArray(categories) ? categories : [],
+    feedbackSubmittedAt: submittedAt,
+  }
+
+  await redis.set(key, JSON.stringify(record))
+
+  const taskData = await redis.get(`notion:${pageId}`)
+  const task = parseStoredTask(taskData)
+  if (task) {
+    await redis.set(`notion:${pageId}`, JSON.stringify({
+      ...task,
+      feedbackRating: rating,
+      feedbackSubmittedAt: submittedAt,
+    }))
+  }
+
+  return record
 }
 
 export async function updateLastComment(pageId, { id, createdTime, commentId }) {

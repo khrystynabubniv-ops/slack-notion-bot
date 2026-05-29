@@ -1,6 +1,14 @@
 import { Client } from '@notionhq/client'
-import { deleteTask, getAllTasks, getRoundsCount, updateLastComment, updateStatus } from '../redis/store.js'
-import { sendCommentUpdate, sendStatusUpdate } from '../slack/notify.js'
+import {
+  deleteTask,
+  getAllTasks,
+  getQualityFeedback,
+  getRoundsCount,
+  markFeedbackSurveySent,
+  updateLastComment,
+  updateStatus,
+} from '../redis/store.js'
+import { sendCommentUpdate, sendQualitySurvey, sendStatusUpdate } from '../slack/notify.js'
 import { buildTaskPageUrl } from './pageUrl.js'
 import { notionRequest } from './request.js'
 import { getStatusPropertyNames } from './taskConfig.js'
@@ -60,7 +68,37 @@ function pausePollingAfterRateLimit(error, context) {
 }
 
 function isCompletedStatus(status) {
-  return status && COMPLETED_STATUS_NAMES.includes(status.toLowerCase())
+  const normalizedStatus = status?.toLowerCase()
+  return Boolean(
+    normalizedStatus &&
+      (COMPLETED_STATUS_NAMES.includes(normalizedStatus) || normalizedStatus.includes('done'))
+  )
+}
+
+async function sendQualitySurveyOnce(slackClient, task, { pageUrl, completedAt }) {
+  const existingFeedback = await getQualityFeedback(task.pageId)
+  if (existingFeedback?.feedbackSurveySentAt) return false
+
+  await sendQualitySurvey({
+    slackClient,
+    slackUserId: task.slackUserId,
+    taskName: task.taskName,
+    pageId: task.pageId,
+    requesterName: task.requesterName,
+    requestUrl: pageUrl,
+    completedAt,
+  })
+
+  await markFeedbackSurveySent({
+    pageId: task.pageId,
+    slackUserId: task.slackUserId,
+    taskName: task.taskName,
+    requesterName: task.requesterName,
+    requestUrl: pageUrl,
+    completedAt,
+  })
+
+  return true
 }
 
 function extractAssignee(page) {
@@ -81,6 +119,45 @@ function extractAssignee(page) {
   }
 
   if (slackPerson?.select?.name) return slackPerson.select.name
+
+  return null
+}
+
+function extractDesigner(page) {
+  const property = page.properties['Дизайнер'] || page.properties.Designer
+  if (!property) return null
+
+  if (property.people?.length) {
+    const names = property.people
+      .map((person) => person.name)
+      .filter(Boolean)
+
+    return {
+      name: names.join(', '),
+      userId: property.people[0]?.id || null,
+    }
+  }
+
+  if (property.title?.length) {
+    return {
+      name: property.title.map((item) => item.plain_text).join('').trim(),
+      userId: null,
+    }
+  }
+
+  if (property.rich_text?.length) {
+    return {
+      name: property.rich_text.map((item) => item.plain_text).join('').trim(),
+      userId: null,
+    }
+  }
+
+  if (property.select?.name) {
+    return {
+      name: property.select.name,
+      userId: null,
+    }
+  }
 
   return null
 }
@@ -128,6 +205,7 @@ async function getCurrentTaskSnapshots() {
       tasks[page.id] = {
         status,
         assignee: extractAssignee(page),
+        designer: extractDesigner(page),
         deadline: page.properties.Deadline?.date?.start || null,
         finalProjectUrl: extractUrlProperty(page, 'Final project'),
         maxRounds: page.properties['Макс. раундів правок']?.rollup?.number ?? null,
@@ -329,9 +407,14 @@ export async function startPolling(slackClient) {
               pageId: task.pageId,
               roundsLeft,
               roundNumber: roundsCount + 1,
+              designer: currentTask.designer,
             })
 
             if (completed) {
+              await sendQualitySurveyOnce(slackClient, task, {
+                pageUrl,
+                completedAt: new Date().toISOString(),
+              })
               await deleteTask(task.pageId)
               console.log(`🧹 Completed task removed from polling: ${task.taskName} → ${currentTask.status}`)
               continue
@@ -346,6 +429,10 @@ export async function startPolling(slackClient) {
             )
 
             if (completed) {
+              await sendQualitySurveyOnce(slackClient, task, {
+                pageUrl,
+                completedAt: new Date().toISOString(),
+              })
               await deleteTask(task.pageId)
               console.log(
                 `🧹 Completed task removed from polling after notification failure: ${task.taskName} → ${currentTask.status}`
@@ -356,6 +443,10 @@ export async function startPolling(slackClient) {
         }
 
         if (completed) {
+          await sendQualitySurveyOnce(slackClient, task, {
+            pageUrl,
+            completedAt: new Date().toISOString(),
+          })
           await deleteTask(task.pageId)
           console.log(`🧹 Completed task removed from polling: ${task.taskName} → ${currentTask.status}`)
           continue

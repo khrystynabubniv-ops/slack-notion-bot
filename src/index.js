@@ -4,6 +4,11 @@ const { App, ExpressReceiver } = pkg
 import { openFeedbackModal } from './handlers/feedbackModal.js'
 import { handleFeedbackSubmission } from './handlers/feedbackSubmission.js'
 import { registerNewTaskCommand } from './handlers/newTask.js'
+import {
+  handleQualityFeedbackSubmission,
+  handleQualityRating,
+  handleTaskAcceptance,
+} from './handlers/resultAcceptance.js'
 import { registerSubmissionHandlers } from './handlers/submission.js'
 import { registerNotionLaunchWebhook } from './notion/launchWebhook.js'
 import { registerHomeTab } from './slack/home.js'
@@ -141,6 +146,21 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
   app.view('feedback_submission', async ({ ack, body, view, client }) => {
     await ack()
     await handleFeedbackSubmission({ body, view, client })
+  })
+
+  app.action('accept_task_result', async ({ ack, body, client }) => {
+    await ack()
+    await handleTaskAcceptance({ body, client })
+  })
+
+  app.action('quality_rating', async ({ ack, body, client }) => {
+    await ack()
+    await handleQualityRating({ body, client })
+  })
+
+  app.view('quality_feedback_submission', async ({ ack, body, view, client }) => {
+    await ack()
+    await handleQualityFeedbackSubmission({ body, view, client })
   })
 
   const port = process.env.PORT || 3000

@@ -13,6 +13,7 @@ export async function sendStatusUpdate({
   pageId,
   roundsLeft = null,
   roundNumber = 1,
+  designer,
 }) {
   const statusEmoji = {
     'To do': '⬜',
@@ -30,13 +31,14 @@ export async function sendStatusUpdate({
 
   const formattedDeadline = formatDeadline(deadline)
   const resultUrl = normalizeUrl(finalProjectUrl)
+  const designerName = designer?.name || assignee || 'не призначено'
   const summaryLines = [
     `${infoEmoji.status} Статус: «${newStatus}»`,
     `${infoEmoji.task} Задача: ${taskName}`,
     `${infoEmoji.assignee} Виконавець: ${assignee || 'не призначено'}`,
     `${infoEmoji.deadline} Дедлайн: ${formattedDeadline}`,
   ]
-  const resultBlocks = resultUrl && ['Comments', 'Ready'].includes(newStatus)
+  const resultBlocks = resultUrl && newStatus === 'Ready'
     ? [
         {
           type: 'section',
@@ -56,54 +58,79 @@ export async function sendStatusUpdate({
     taskName,
     roundsLeft,
     roundNumber,
+    designer,
   })
-  const blocks = [
-    {
-      type: 'context',
-      elements: [
-        {
-          type: 'mrkdwn',
-          text: '*Design Bot*',
-        },
-        {
-          type: 'mrkdwn',
-          text: 'щойно',
-        },
-      ],
-    },
-    {
-      type: 'divider',
-    },
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: summaryLines.join('\n\n'),
-      },
-    },
-    ...resultBlocks,
-    ...feedbackNoticeBlocks,
-    {
-      type: 'context',
-      elements: [
-        {
-          type: 'mrkdwn',
-          text: `Було: ${statusEmoji[oldStatus] || '▪️'} ${oldStatus}`,
-        },
-      ],
-    },
-  ]
-
-  if (actionElements.length) {
-    blocks.push({
-      type: 'actions',
-      elements: actionElements,
-    })
-  }
+  const blocks = newStatus === 'Comments'
+    ? buildCommentsReviewBlocks({
+        taskName,
+        newStatus,
+        designerName,
+        resultUrl,
+        feedbackNoticeBlocks,
+        actionElements,
+      })
+    : buildDefaultStatusBlocks({
+        summaryLines,
+        resultBlocks,
+        feedbackNoticeBlocks,
+        oldStatus,
+        oldStatusEmoji: statusEmoji[oldStatus] || '▪️',
+        actionElements,
+      })
 
   await postNotification(slackClient, slackUserId, {
     text: `${statusEmoji[newStatus] || '▪️'} Статус задачі «${taskName}» змінено на «${newStatus}».`,
     blocks,
+  })
+}
+
+export async function sendQualitySurvey({
+  slackClient,
+  slackUserId,
+  taskName,
+  pageId,
+  requesterName,
+  requestUrl,
+  team,
+  hub,
+  requestType,
+  completedAt,
+}) {
+  const ratings = [1, 2, 3, 4, 5]
+  const baseValue = {
+    pageId,
+    taskName: String(taskName || 'Без назви').slice(0, 1000),
+    requesterName: requesterName || null,
+    requestUrl: requestUrl || null,
+    team: team || null,
+    hub: hub || null,
+    requestType: requestType || null,
+    completedAt: completedAt || null,
+  }
+
+  await postNotification(slackClient, slackUserId, {
+    text: `Оціни якість виконання задачі «${taskName}».`,
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `⭐ *Оціни якість виконання роботи*\n*${escapeMrkdwn(taskName)}*\nНаскільки тобі ок результат?`,
+        },
+      },
+      {
+        type: 'actions',
+        elements: ratings.map((rating) => ({
+          type: 'button',
+          text: { type: 'plain_text', text: `⭐ ${rating}` },
+          action_id: 'quality_rating',
+          value: JSON.stringify({
+            ...baseValue,
+            rating,
+          }),
+        })),
+      },
+    ],
   })
 }
 
@@ -236,6 +263,112 @@ function getResultText(status, resultUrl) {
   return `✨ *Ось результати:* <${resultUrl}|відкрити фінальний проєкт>\nПереглянь і за потреби залиш правки.`
 }
 
+function buildCommentsReviewBlocks({
+  taskName,
+  newStatus,
+  designerName,
+  resultUrl,
+  feedbackNoticeBlocks,
+  actionElements,
+}) {
+  const blocks = [
+    {
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: '*Design Bot*',
+        },
+        {
+          type: 'mrkdwn',
+          text: 'щойно',
+        },
+      ],
+    },
+    {
+      type: 'divider',
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: [
+          "👀 *Твоя задача очікує твоє рев'ю*",
+          `*${escapeMrkdwn(taskName)}*`,
+          `Оновлено статус: «${newStatus}»`,
+          `Дизайнер: ${escapeMrkdwn(designerName)}`,
+          resultUrl ? `:sparkles: Ось результати: <${resultUrl}|відкрити!>` : ':sparkles: Ось результати: посилання ще не додано.',
+        ].join('\n\n'),
+      },
+    },
+    ...feedbackNoticeBlocks,
+  ]
+
+  if (actionElements.length) {
+    blocks.push({
+      type: 'actions',
+      elements: actionElements,
+    })
+  }
+
+  return blocks
+}
+
+function buildDefaultStatusBlocks({
+  summaryLines,
+  resultBlocks,
+  feedbackNoticeBlocks,
+  oldStatus,
+  oldStatusEmoji,
+  actionElements,
+}) {
+  const blocks = [
+    {
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: '*Design Bot*',
+        },
+        {
+          type: 'mrkdwn',
+          text: 'щойно',
+        },
+      ],
+    },
+    {
+      type: 'divider',
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: summaryLines.join('\n\n'),
+      },
+    },
+    ...resultBlocks,
+    ...feedbackNoticeBlocks,
+    {
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: `Було: ${oldStatusEmoji} ${oldStatus}`,
+        },
+      ],
+    },
+  ]
+
+  if (actionElements.length) {
+    blocks.push({
+      type: 'actions',
+      elements: actionElements,
+    })
+  }
+
+  return blocks
+}
+
 function getStatusActionElements({
   newStatus,
   pageUrl,
@@ -244,16 +377,18 @@ function getStatusActionElements({
   taskName,
   roundsLeft,
   roundNumber,
+  designer,
 }) {
   if (newStatus === 'Comments') {
     const elements = []
 
-    if (resultUrl) {
+    if (pageId) {
       elements.push({
         type: 'button',
-        text: { type: 'plain_text', text: '🔍 Переглянути результат' },
-        url: resultUrl,
+        text: { type: 'plain_text', text: '✅ Приймаю, правок немає' },
+        action_id: 'accept_task_result',
         style: 'primary',
+        value: buildAcceptActionValue({ pageId, taskName, designer, requestUrl: pageUrl }),
       })
     }
 
@@ -302,6 +437,16 @@ function getStatusActionElements({
   }
 
   return elements
+}
+
+function buildAcceptActionValue({ pageId, taskName, designer, requestUrl }) {
+  return JSON.stringify({
+    pageId,
+    taskName: String(taskName || 'Без назви').slice(0, 1000),
+    designerName: designer?.name || null,
+    designerUserId: designer?.userId || null,
+    requestUrl: requestUrl || null,
+  })
 }
 
 function buildFeedbackActionValue({ pageId, taskName, roundsLeft, roundNumber }) {
@@ -378,6 +523,13 @@ function getOpsLeadMention() {
   if (/^[UW][A-Z0-9]+$/.test(slackId || '')) return `<@${slackId}>`
 
   return 'ops-lead'
+}
+
+function escapeMrkdwn(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }
 
 function formatDeadline(deadline) {
