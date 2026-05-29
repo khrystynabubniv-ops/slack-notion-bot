@@ -45,11 +45,24 @@ async function notifyUser(client, userId, text) {
   })
 }
 
-async function postFeedbackTaskCreatedMessage({ client, userId, taskName, roundNumber, pageUrl }) {
-  const text =
-    `✅ *Правки #${roundNumber} створено як окрему задачу*\n` +
-    `*${taskName}*\n` +
-    `Тут буде окремий тред для статусів і коментарів по цій правці.`
+function buildFeedbackThreadText({
+  taskName,
+  status = 'To do',
+  responsible = 'дизайнер',
+}) {
+  return [
+    'Готово, твоя правка вже в дизайн-команді ✨',
+    `*${taskName}*`,
+    '',
+    `🟢 *Статус:* ${status}`,
+    `🧭 *Відповідальний:* ${responsible}`,
+    '',
+    '💬 Цей тред — робоче місце правки. Пиши сюди все, що допоможе рухатись далі: контекст, апдейти, посилання, файли. Оновлення з Notion також прийдуть сюди.',
+  ].join('\n')
+}
+
+async function postFeedbackTaskCreatedMessage({ client, userId, taskName, pageUrl }) {
+  const text = buildFeedbackThreadText({ taskName })
 
   return await client.chat.postMessage({
     channel: userId,
@@ -59,9 +72,7 @@ async function postFeedbackTaskCreatedMessage({ client, userId, taskName, roundN
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text:
-            `${text}\n\n` +
-            'Відкрий правку в Notion, якщо потрібно додати файли, скріншоти або уточнення.',
+          text,
         },
       },
       {
@@ -126,7 +137,6 @@ export async function handleFeedbackSubmission({ body, view, client }) {
         client,
         userId,
         taskName: feedbackTask.taskName,
-        roundNumber,
         pageUrl: feedbackTask.pageUrl,
       })
     } catch (notifyError) {

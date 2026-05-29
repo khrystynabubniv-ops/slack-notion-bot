@@ -140,6 +140,18 @@ function formatQueueRetryTime(delayMs) {
   })
 }
 
+function buildTaskThreadText({ taskName, status = 'To do', responsible = 'дизайн-команда' }) {
+  return [
+    'Готово, твій запит уже в дизайн-команді ✨',
+    `*${taskName}*`,
+    '',
+    `🟢 *Статус:* ${status}`,
+    `🧭 *Відповідальний:* ${responsible}`,
+    '',
+    '💬 Цей тред — робоче місце задачі. Пиши сюди все, що допоможе рухатись далі: контекст, апдейти, посилання, файли. Оновлення з Notion також прийдуть сюди.',
+  ].join('\n')
+}
+
 async function resolveSlackPersonName(client, { userId, userName }) {
   try {
     const userInfo = await client.users.info({ user: userId })
@@ -197,10 +209,9 @@ async function createTaskFromSubmissionPayload(client, payload) {
     slackPersonName,
   })
 
-  const requesterNotificationText =
-    `✅ *Задача створена!*\n` +
-    `*${name || taskTypeLabel}*\n` +
-    `Я відкрив окремий тред для цієї задачі. Усі апдейти по статусу й коментарях прийдуть сюди.`
+  const requesterNotificationText = buildTaskThreadText({
+    taskName: name || taskTypeLabel,
+  })
   let requesterMessage = null
 
   try {
@@ -220,7 +231,7 @@ async function createTaskFromSubmissionPayload(client, payload) {
           elements: [
             {
               type: 'button',
-              text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
+              text: { type: 'plain_text', text: '📋 Відкрити в Notion / додати файли' },
               url: pageUrl,
               style: 'primary',
             },
