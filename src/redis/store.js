@@ -62,6 +62,7 @@ export async function saveTask({ pageId, slackUserId, slackChannelId, taskName, 
     lastStatus: 'To do',
     lastCommentId: null,
     lastCommentCreatedTime: null,
+    roundsCount: 0,
   }))
 }
 
@@ -221,6 +222,27 @@ export async function updateLastComment(pageId, { id, createdTime, commentId }) 
     lastCommentId: commentId || id || null,
     lastCommentCreatedTime: createdTime || null,
   }))
+}
+
+export async function incrementRoundsCount(pageId) {
+  const data = await redis.get(`notion:${pageId}`)
+  if (!data) return 0
+  const parsed = parseStoredTask(data)
+  if (!parsed) return 0
+
+  const newCount = (parsed.roundsCount || 0) + 1
+  await redis.set(`notion:${pageId}`, JSON.stringify({
+    ...parsed,
+    roundsCount: newCount,
+  }))
+  return newCount
+}
+
+export async function getRoundsCount(pageId) {
+  const data = await redis.get(`notion:${pageId}`)
+  if (!data) return 0
+  const parsed = parseStoredTask(data)
+  return parsed?.roundsCount || 0
 }
 
 export async function getAllTasks() {

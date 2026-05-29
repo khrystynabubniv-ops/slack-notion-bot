@@ -25,10 +25,13 @@ src/
 ├── index.js                 # Точка входу, запуск Bolt App (є stub-режим без токена)
 ├── handlers/
 │   ├── newTask.js           # /new-task — відкриває модалку з вибором типу
+│   ├── feedbackModal.js     # Модалка для раундів правок
+│   ├── feedbackSubmission.js # Обробка сабміту правок
 │   ├── modalBlocks.js       # Блоки полів для кожного типу задачі
 │   └── submission.js        # Обробка сабмітів модалок
 ├── notion/
 │   ├── createPage.js        # Створення сторінки в Notion
+│   ├── createSubitem.js     # Створення sub-item для правок
 │   └── pollStatus.js        # Поллінг статусів (інтервал 3 хв)
 ├── slack/
 │   ├── home.js              # App Home tab + групи типів задач
@@ -58,6 +61,7 @@ TASK_SUBMISSION_QUEUE_MAX_ATTEMPTS=20
 TASK_SUBMISSION_QUEUE_RETRY_DELAY_MS=60000
 TASK_SUBMISSION_QUEUE_MAX_RETRY_DELAY_MS=600000
 NOTION_BRAND_DESIGN_HUB_URL=https://www.notion.so/Brand-Design-Hub-33cce9899cb7814488c0f439326aaf2a?source=copy_link
+OPS_LEAD_SLACK_ID=U0APPD32H6D
 UPSTASH_REDIS_REST_URL=https://...
 UPSTASH_REDIS_REST_TOKEN=...
 FAILED_SUBMISSION_TTL_SECONDS=2592000

@@ -1,5 +1,5 @@
 import { Client } from '@notionhq/client'
-import { deleteTask, getAllTasks, updateLastComment, updateStatus } from '../redis/store.js'
+import { deleteTask, getAllTasks, getRoundsCount, updateLastComment, updateStatus } from '../redis/store.js'
 import { sendCommentUpdate, sendStatusUpdate } from '../slack/notify.js'
 import { buildTaskPageUrl } from './pageUrl.js'
 import { notionRequest } from './request.js'
@@ -130,6 +130,7 @@ async function getCurrentTaskSnapshots() {
         assignee: extractAssignee(page),
         deadline: page.properties.Deadline?.date?.start || null,
         finalProjectUrl: extractUrlProperty(page, 'Final project'),
+        maxRounds: page.properties['Макс. раундів правок']?.rollup?.number ?? null,
       }
     }
 
@@ -305,6 +306,12 @@ export async function startPolling(slackClient) {
           }
         } else if (currentTask.status !== task.lastStatus) {
           try {
+            const roundsCount = await getRoundsCount(task.pageId)
+            const maxRounds = currentTask.maxRounds
+            const roundsLeft = maxRounds !== null
+              ? Math.max(maxRounds - roundsCount, 0)
+              : null
+
             console.log(
               `📣 Sending status update for page ${task.pageId}: ${task.lastStatus} -> ${currentTask.status} (user ${task.slackUserId})`
             )
@@ -319,6 +326,9 @@ export async function startPolling(slackClient) {
               deadline: currentTask.deadline,
               finalProjectUrl: currentTask.finalProjectUrl,
               pageUrl,
+              pageId: task.pageId,
+              roundsLeft,
+              roundNumber: roundsCount + 1,
             })
 
             if (completed) {

@@ -1,3 +1,5 @@
+const DEFAULT_OPS_LEAD_SLACK_ID = 'U0APPD32H6D'
+
 export async function sendStatusUpdate({
   slackClient,
   slackUserId,
@@ -8,6 +10,9 @@ export async function sendStatusUpdate({
   deadline,
   finalProjectUrl,
   pageUrl,
+  pageId,
+  roundsLeft = null,
+  roundNumber = 1,
 }) {
   const statusEmoji = {
     'To do': '⬜',
@@ -31,75 +36,74 @@ export async function sendStatusUpdate({
     `${infoEmoji.assignee} Виконавець: ${assignee || 'не призначено'}`,
     `${infoEmoji.deadline} Дедлайн: ${formattedDeadline}`,
   ]
-  const resultBlocks = resultUrl
+  const resultBlocks = resultUrl && ['Comments', 'Ready'].includes(newStatus)
     ? [
         {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `✨ *Ось результати:* <${resultUrl}|відкрити фінальний проєкт>\nПереглянь і повернися до дизайнера з фідбеком.`,
+            text: getResultText(newStatus, resultUrl),
           },
         },
       ]
     : []
-  const actionElements = [
+  const feedbackNoticeBlocks = getFeedbackNoticeBlocks(newStatus, roundsLeft)
+  const actionElements = getStatusActionElements({
+    newStatus,
+    pageUrl,
+    resultUrl,
+    pageId,
+    taskName,
+    roundsLeft,
+    roundNumber,
+  })
+  const blocks = [
     {
-      type: 'button',
-      text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
-      url: pageUrl,
-      style: 'primary',
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: '*Design Bot*',
+        },
+        {
+          type: 'mrkdwn',
+          text: 'щойно',
+        },
+      ],
+    },
+    {
+      type: 'divider',
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: summaryLines.join('\n\n'),
+      },
+    },
+    ...resultBlocks,
+    ...feedbackNoticeBlocks,
+    {
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: `Було: ${statusEmoji[oldStatus] || '▪️'} ${oldStatus}`,
+        },
+      ],
     },
   ]
 
-  if (resultUrl) {
-    actionElements.push({
-      type: 'button',
-      text: { type: 'plain_text', text: '🔗 Відкрити результат' },
-      url: resultUrl,
+  if (actionElements.length) {
+    blocks.push({
+      type: 'actions',
+      elements: actionElements,
     })
   }
 
   await postNotification(slackClient, slackUserId, {
     text: `${statusEmoji[newStatus] || '▪️'} Статус задачі «${taskName}» змінено на «${newStatus}».`,
-    blocks: [
-      {
-        type: 'context',
-        elements: [
-          {
-            type: 'mrkdwn',
-            text: '*Design Bot*',
-          },
-          {
-            type: 'mrkdwn',
-            text: 'щойно',
-          },
-        ],
-      },
-      {
-        type: 'divider',
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: summaryLines.join('\n\n'),
-        },
-      },
-      ...resultBlocks,
-      {
-        type: 'context',
-        elements: [
-          {
-            type: 'mrkdwn',
-            text: `Було: ${statusEmoji[oldStatus] || '▪️'} ${oldStatus}`,
-          },
-        ],
-      },
-      {
-        type: 'actions',
-        elements: actionElements,
-      },
-    ],
+    blocks,
   })
 }
 
@@ -222,6 +226,158 @@ function normalizeUrl(value) {
       return null
     }
   }
+}
+
+function getResultText(status, resultUrl) {
+  if (status === 'Ready') {
+    return `✨ *Результат готовий:* <${resultUrl}|відкрити фінальний проєкт>\nПереглянь фінальну версію.`
+  }
+
+  return `✨ *Ось результати:* <${resultUrl}|відкрити фінальний проєкт>\nПереглянь і за потреби залиш правки.`
+}
+
+function getStatusActionElements({
+  newStatus,
+  pageUrl,
+  resultUrl,
+  pageId,
+  taskName,
+  roundsLeft,
+  roundNumber,
+}) {
+  if (newStatus === 'Comments') {
+    const elements = []
+
+    if (resultUrl) {
+      elements.push({
+        type: 'button',
+        text: { type: 'plain_text', text: '🔍 Переглянути результат' },
+        url: resultUrl,
+        style: 'primary',
+      })
+    }
+
+    if (pageId && !isRoundsLimitReached(roundsLeft)) {
+      elements.push({
+        type: 'button',
+        text: { type: 'plain_text', text: '✏️ Дати правки' },
+        action_id: 'open_feedback_modal',
+        value: buildFeedbackActionValue({ pageId, taskName, roundsLeft, roundNumber }),
+      })
+    }
+
+    return elements
+  }
+
+  if (newStatus === 'Ready') {
+    return resultUrl
+      ? [
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: '🔍 Переглянути результат' },
+            url: resultUrl,
+            style: 'primary',
+          },
+        ]
+      : []
+  }
+
+  const elements = []
+
+  if (pageUrl) {
+    elements.push({
+      type: 'button',
+      text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
+      url: pageUrl,
+      style: 'primary',
+    })
+  }
+
+  if (resultUrl) {
+    elements.push({
+      type: 'button',
+      text: { type: 'plain_text', text: '🔗 Відкрити результат' },
+      url: resultUrl,
+    })
+  }
+
+  return elements
+}
+
+function buildFeedbackActionValue({ pageId, taskName, roundsLeft, roundNumber }) {
+  const normalizedRoundNumber = normalizePositiveInteger(roundNumber, 1)
+  const normalizedRoundsLeft = normalizeRoundsLeft(roundsLeft)
+  const maxRounds = normalizedRoundsLeft === null
+    ? null
+    : normalizedRoundNumber + normalizedRoundsLeft - 1
+
+  return JSON.stringify({
+    pageId,
+    taskName: String(taskName || 'Без назви').slice(0, 1000),
+    roundNumber: normalizedRoundNumber,
+    maxRounds,
+  })
+}
+
+function getFeedbackNoticeBlocks(status, roundsLeft) {
+  if (status !== 'Comments') return []
+
+  const normalizedRoundsLeft = normalizeRoundsLeft(roundsLeft)
+  if (normalizedRoundsLeft === null) return []
+
+  if (normalizedRoundsLeft <= 0) {
+    return [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `⛔ Ліміт раундів правок вичерпано. Напишіть ${getOpsLeadMention()} для вирішення.`,
+        },
+      },
+    ]
+  }
+
+  if (normalizedRoundsLeft === 1) {
+    return [
+      {
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: '⚠️ Це останній раунд правок.',
+          },
+        ],
+      },
+    ]
+  }
+
+  return []
+}
+
+function isRoundsLimitReached(roundsLeft) {
+  const normalizedRoundsLeft = normalizeRoundsLeft(roundsLeft)
+  return normalizedRoundsLeft !== null && normalizedRoundsLeft <= 0
+}
+
+function normalizeRoundsLeft(roundsLeft) {
+  if (roundsLeft === null || roundsLeft === undefined) return null
+
+  const parsed = Number.parseInt(roundsLeft, 10)
+  if (!Number.isFinite(parsed)) return null
+
+  return Math.max(parsed, 0)
+}
+
+function normalizePositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function getOpsLeadMention() {
+  const slackId = process.env.OPS_LEAD_SLACK_ID?.trim() || DEFAULT_OPS_LEAD_SLACK_ID
+  if (/^[UW][A-Z0-9]+$/.test(slackId || '')) return `<@${slackId}>`
+
+  return 'ops-lead'
 }
 
 function formatDeadline(deadline) {

@@ -1,6 +1,8 @@
 import 'dotenv/config'
 import pkg from '@slack/bolt'
 const { App, ExpressReceiver } = pkg
+import { openFeedbackModal } from './handlers/feedbackModal.js'
+import { handleFeedbackSubmission } from './handlers/feedbackSubmission.js'
 import { registerNewTaskCommand } from './handlers/newTask.js'
 import { registerSubmissionHandlers } from './handlers/submission.js'
 import { registerNotionLaunchWebhook } from './notion/launchWebhook.js'
@@ -40,6 +42,18 @@ function logSlackReceiverIssue(message, req, error) {
     ...context,
     error: error?.message || String(error || ''),
   })
+}
+
+function parseFeedbackActionValue(value) {
+  if (!value) return {}
+
+  try {
+    const parsed = JSON.parse(value)
+    if (typeof parsed === 'string') return { pageId: parsed }
+    return parsed || {}
+  } catch {
+    return { pageId: value }
+  }
 }
 
 if (!token || token.trim() === '' || token.trim() === 'placeholder') {
@@ -104,6 +118,30 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
   registerHomeTab(app)
   registerNewTaskCommand(app)
   registerSubmissionHandlers(app)
+
+  app.action('open_feedback_modal', async ({ ack, body, client }) => {
+    await ack()
+
+    const payload = parseFeedbackActionValue(body.actions?.[0]?.value)
+    if (!payload.pageId) {
+      console.error('Cannot open feedback modal: missing pageId in action value.')
+      return
+    }
+
+    await openFeedbackModal({
+      client,
+      triggerId: body.trigger_id,
+      pageId: payload.pageId,
+      taskName: payload.taskName,
+      roundNumber: payload.roundNumber,
+      maxRounds: payload.maxRounds,
+    })
+  })
+
+  app.view('feedback_submission', async ({ ack, body, view, client }) => {
+    await ack()
+    await handleFeedbackSubmission({ body, view, client })
+  })
 
   const port = process.env.PORT || 3000
   await app.start(port)
