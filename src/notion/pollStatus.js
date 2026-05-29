@@ -23,12 +23,17 @@ const COMPLETED_STATUS_NAMES = (
   process.env.NOTION_POLL_COMPLETED_STATUSES || 'Ready'
 )
   .split(',')
-  .map((status) => status.trim().toLowerCase())
+  .map(normalizeStatusName)
   .filter(Boolean)
+const QUALITY_SURVEY_STATUS_NAME = 'ready'
 let commentPollingEnabled = true
 let pollingInProgress = false
 let pollingPausedUntil = 0
 const notionUserNameCache = new Map()
+
+function normalizeStatusName(status) {
+  return String(status || '').trim().toLowerCase()
+}
 
 function isRateLimited(error) {
   return error?.code === 'rate_limited' || error?.status === 429 || error?.statusCode === 429
@@ -68,19 +73,25 @@ function pausePollingAfterRateLimit(error, context) {
 }
 
 function isCompletedStatus(status) {
-  const normalizedStatus = status?.toLowerCase()
+  const normalizedStatus = normalizeStatusName(status)
   return Boolean(
     normalizedStatus &&
-      (COMPLETED_STATUS_NAMES.includes(normalizedStatus) || normalizedStatus.includes('done'))
+      (isQualitySurveyStatus(status) ||
+        COMPLETED_STATUS_NAMES.includes(normalizedStatus) ||
+        normalizedStatus.includes('done'))
   )
 }
 
-function shouldSendQualitySurvey(task) {
-  return task.taskKind !== 'feedback'
+function isQualitySurveyStatus(status) {
+  return normalizeStatusName(status) === QUALITY_SURVEY_STATUS_NAME
 }
 
-async function sendQualitySurveyOnce(slackClient, task, { pageUrl, completedAt }) {
-  if (!shouldSendQualitySurvey(task)) return false
+function shouldSendQualitySurvey(task, status) {
+  return isQualitySurveyStatus(status) && task.taskKind !== 'feedback'
+}
+
+async function sendQualitySurveyOnce(slackClient, task, { pageUrl, completedAt, status }) {
+  if (!shouldSendQualitySurvey(task, status)) return false
 
   const existingFeedback = await getQualityFeedback(task.pageId)
   if (existingFeedback?.feedbackSurveySentAt) return false
@@ -363,9 +374,24 @@ export async function startPolling(slackClient) {
 
       const activeTrackedTasks = []
       for (const task of trackedTasks) {
+        const pageUrl = task.pageUrl || buildTaskPageUrl(task.pageId)
+
         if (isCompletedStatus(task.lastStatus)) {
-          await deleteTask(task.pageId)
-          console.log(`🧹 Stopped polling completed task: ${task.taskName} → ${task.lastStatus}`)
+          try {
+            await sendQualitySurveyOnce(slackClient, task, {
+              pageUrl,
+              completedAt: new Date().toISOString(),
+              status: task.lastStatus,
+            })
+            await deleteTask(task.pageId)
+            console.log(`🧹 Stopped polling completed task: ${task.taskName} → ${task.lastStatus}`)
+          } catch (error) {
+            activeTrackedTasks.push(task)
+            console.error(
+              `❌ Failed to send Ready quality survey for completed task ${task.pageId} (${task.taskName}); keeping it for retry:`,
+              error
+            )
+          }
         } else {
           activeTrackedTasks.push(task)
         }
@@ -383,6 +409,11 @@ export async function startPolling(slackClient) {
 
         if (!task.lastStatus) {
           if (completed) {
+            await sendQualitySurveyOnce(slackClient, task, {
+              pageUrl,
+              completedAt: new Date().toISOString(),
+              status: currentTask.status,
+            })
             await deleteTask(task.pageId)
             console.log(`🧹 Completed task removed from polling: ${task.taskName} → ${currentTask.status}`)
             continue
@@ -424,6 +455,7 @@ export async function startPolling(slackClient) {
               await sendQualitySurveyOnce(slackClient, task, {
                 pageUrl,
                 completedAt: new Date().toISOString(),
+                status: currentTask.status,
               })
               await deleteTask(task.pageId)
               console.log(`🧹 Completed task removed from polling: ${task.taskName} → ${currentTask.status}`)
@@ -442,6 +474,7 @@ export async function startPolling(slackClient) {
               await sendQualitySurveyOnce(slackClient, task, {
                 pageUrl,
                 completedAt: new Date().toISOString(),
+                status: currentTask.status,
               })
               await deleteTask(task.pageId)
               console.log(
@@ -456,6 +489,7 @@ export async function startPolling(slackClient) {
           await sendQualitySurveyOnce(slackClient, task, {
             pageUrl,
             completedAt: new Date().toISOString(),
+            status: currentTask.status,
           })
           await deleteTask(task.pageId)
           console.log(`🧹 Completed task removed from polling: ${task.taskName} → ${currentTask.status}`)
