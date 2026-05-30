@@ -55,7 +55,12 @@ function buildFallbackDesignerHandle(designerName) {
   return handle ? `@${handle} ` : ''
 }
 
-function buildAcceptanceCommentRichText({ designerUserId, designerName }) {
+function buildAcceptanceCommentRichText({
+  designerUserId,
+  designerName,
+  acceptedStatus = 'Ready',
+  taskKind = 'task',
+}) {
   const richText = []
 
   if (designerUserId) {
@@ -86,17 +91,27 @@ function buildAcceptanceCommentRichText({ designerUserId, designerName }) {
     }
   }
 
+  const acceptedText = taskKind === 'feedback'
+    ? `замовник прийняв правку, статус оновлено на «${acceptedStatus}».`
+    : 'замовник прийняв задачу, позначено як готово!'
+
   richText.push({
     type: 'text',
     text: {
-      content: 'замовник прийняв задачу, позначено як готово!',
+      content: acceptedText,
     },
   })
 
   return richText
 }
 
-export async function acceptTaskResult({ pageId, designerName, designerUserId }) {
+export async function acceptTaskResult({
+  pageId,
+  designerName,
+  designerUserId,
+  acceptedStatus = 'Ready',
+  taskKind = 'task',
+}) {
   if (!pageId) {
     throw new Error('pageId is required')
   }
@@ -117,7 +132,7 @@ export async function acceptTaskResult({ pageId, designerName, designerUserId })
       page_id: pageId,
       properties: {
         [statusPropertyName]: {
-          status: { name: 'Ready' },
+          status: { name: acceptedStatus },
         },
       },
     }),
@@ -131,6 +146,8 @@ export async function acceptTaskResult({ pageId, designerName, designerUserId })
         rich_text: buildAcceptanceCommentRichText({
           designerUserId: resolvedDesigner.userId,
           designerName: resolvedDesigner.name,
+          acceptedStatus,
+          taskKind,
         }),
       }),
       'task accept comment create'

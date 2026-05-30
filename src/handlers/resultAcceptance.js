@@ -3,10 +3,13 @@ import { syncQualityFeedbackToNotion } from '../notion/feedbackDatabase.js'
 import {
   deleteTask,
   getQualityFeedback,
+  getRoundsCount,
   markFeedbackSurveySent,
   saveQualityFeedback,
 } from '../redis/store.js'
 import { sendQualitySurvey, updateRootTaskMessage } from '../slack/notify.js'
+
+const FEEDBACK_ACCEPTED_STATUS = 'Правка Done'
 
 function parseActionValue(value) {
   if (!value) return {}
@@ -27,17 +30,84 @@ async function postUserMessage(client, userId, text) {
   })
 }
 
-async function updateSourceMessage(client, body, text) {
+function isFeedbackTask(taskKind) {
+  return taskKind === 'feedback'
+}
+
+function getAcceptedStatus(taskKind) {
+  return isFeedbackTask(taskKind) ? FEEDBACK_ACCEPTED_STATUS : 'Ready'
+}
+
+function getAcceptanceText(taskName, roundsCount, taskKind, acceptedStatus) {
+  if (isFeedbackTask(taskKind)) {
+    return `✅ *${taskName}* прийнято. Статус правки у Notion оновлено на «${acceptedStatus}».`
+  }
+
+  const acceptedCopy = roundsCount > 0
+    ? 'прийнято після внесених правок'
+    : 'прийнято без правок'
+
+  return `✅ *${taskName}* ${acceptedCopy}. Статус у Notion оновлено на «${acceptedStatus}».`
+}
+
+function normalizeNonNegativeInteger(value, fallback = 0) {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
+}
+
+function buildQualitySurveyBlocks({ text, taskName, pageId, requestUrl, completedAt }) {
+  const ratings = [1, 2, 3, 4, 5]
+  const baseValue = {
+    pageId,
+    taskName: String(taskName || 'Без назви').slice(0, 1000),
+    requestUrl: requestUrl || null,
+    completedAt: completedAt || null,
+  }
+
+  return [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text,
+      },
+    },
+    {
+      type: 'divider',
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `⭐ *Оціни якість виконання роботи*\n*${taskName}*\nНаскільки тобі ок результат?`,
+      },
+    },
+    {
+      type: 'actions',
+      elements: ratings.map((rating) => ({
+        type: 'button',
+        text: { type: 'plain_text', text: `⭐ ${rating}` },
+        action_id: 'quality_rating',
+        value: JSON.stringify({
+          ...baseValue,
+          rating,
+        }),
+      })),
+    },
+  ]
+}
+
+async function updateSourceMessage(client, body, text, blocks = null) {
   const channel = body.channel?.id
   const ts = body.message?.ts
-  if (!channel || !ts) return
+  if (!channel || !ts) return false
 
   try {
     await client.chat.update({
       channel,
       ts,
       text,
-      blocks: [
+      blocks: blocks || [
         {
           type: 'section',
           text: {
@@ -47,27 +117,31 @@ async function updateSourceMessage(client, body, text) {
         },
       ],
     })
+    return true
   } catch (error) {
     console.error('Failed to update acceptance source message:', error)
+    return false
   }
 }
 
-async function updateAcceptedTaskRootMessage(client, body, payload, taskName) {
+async function updateAcceptedTaskRootMessage(client, body, payload, taskName, acceptedStatus, roundsCount) {
   const channelId = body.channel?.id
-  const rootTs = body.message?.thread_ts || body.message?.ts
+  const rootTs = payload.rootMessageTs || body.message?.thread_ts || body.message?.ts
   if (!channelId || !rootTs) return
 
   await updateRootTaskMessage(client, {
     channelId,
     messageTs: rootTs,
     taskName,
-    status: 'Ready',
+    status: acceptedStatus,
     responsible: {
       name: payload.designerName,
       userId: payload.designerUserId,
     },
     pageUrl: payload.requestUrl,
+    resultUrl: payload.resultUrl,
     taskKind: payload.taskKind,
+    completedRounds: roundsCount,
   })
 }
 
@@ -161,6 +235,8 @@ export async function handleTaskAcceptance({ body, client }) {
   const pageId = payload.pageId
   const taskName = payload.taskName || 'Без назви'
   const userId = body.user?.id
+  const taskKind = payload.taskKind || 'task'
+  const acceptedStatus = getAcceptedStatus(taskKind)
 
   if (!pageId) {
     await postUserMessage(client, userId, '❌ Не вдалося визначити задачу. Спробуй відкрити повідомлення ще раз.')
@@ -172,27 +248,52 @@ export async function handleTaskAcceptance({ body, client }) {
       pageId,
       designerName: payload.designerName,
       designerUserId: payload.designerUserId,
+      acceptedStatus,
+      taskKind,
     })
 
     const completedAt = new Date().toISOString()
+    const storedRoundsCount = await getRoundsCount(pageId)
+    const payloadRoundsCount = normalizeNonNegativeInteger(payload.completedRounds, 0)
+    const roundsCount = Math.max(storedRoundsCount, payloadRoundsCount)
     const existingFeedback = await getQualityFeedback(pageId)
-
-    await updateSourceMessage(
+    const acceptanceText = getAcceptanceText(taskName, roundsCount, taskKind, acceptedStatus)
+    const shouldSendSurvey = !isFeedbackTask(taskKind) && !existingFeedback?.feedbackSubmittedAt
+    const sourceMessageUpdated = await updateSourceMessage(
       client,
       body,
-      `✅ *${taskName}* прийнято без правок. Статус у Notion оновлено на «Ready».`
+      acceptanceText,
+      shouldSendSurvey
+        ? buildQualitySurveyBlocks({
+            text: acceptanceText,
+            taskName,
+            pageId,
+            requestUrl: payload.requestUrl,
+            completedAt,
+          })
+        : null
     )
-    await updateAcceptedTaskRootMessage(client, body, payload, taskName)
+    await updateAcceptedTaskRootMessage(client, body, payload, taskName, acceptedStatus, roundsCount)
 
     if (!result.commentCreated) {
       await postUserMessage(
         client,
         userId,
-        '✅ Задачу прийнято і позначено як готову, але коментар для дизайнера не вдалося додати автоматично.'
+        isFeedbackTask(taskKind)
+          ? '✅ Правку прийнято, але коментар для дизайнера не вдалося додати автоматично.'
+          : '✅ Задачу прийнято і позначено як готову, але коментар для дизайнера не вдалося додати автоматично.'
       )
     }
 
-    if (!existingFeedback?.feedbackSurveySentAt) {
+    if (shouldSendSurvey && sourceMessageUpdated) {
+      await markFeedbackSurveySent({
+        pageId,
+        slackUserId: userId,
+        taskName,
+        requestUrl: payload.requestUrl,
+        completedAt,
+      })
+    } else if (shouldSendSurvey && !existingFeedback?.feedbackSurveySentAt) {
       await sendQualitySurvey({
         slackClient: client,
         slackUserId: userId,
@@ -215,12 +316,14 @@ export async function handleTaskAcceptance({ body, client }) {
 
     await deleteTask(pageId)
   } catch (error) {
-    console.error(`Failed to accept task result for page ${pageId}:`, error)
+    console.error(`Failed to accept ${isFeedbackTask(taskKind) ? 'feedback' : 'task'} result for page ${pageId}:`, error)
 
     await postUserMessage(
       client,
       userId,
-      '❌ Не вдалося прийняти задачу автоматично. Спробуй ще раз або напиши ops-lead.'
+      isFeedbackTask(taskKind)
+        ? '❌ Не вдалося прийняти правку автоматично. Спробуй ще раз або напиши ops-lead.'
+        : '❌ Не вдалося прийняти задачу автоматично. Спробуй ще раз або напиши ops-lead.'
     )
   }
 }

@@ -2,7 +2,7 @@ import { formatDesignerForSlack } from './designerMentions.js'
 
 const DEFAULT_OPS_LEAD_SLACK_ID = 'U0APPD32H6D'
 const STATUS_EMOJI = {
-  'To do': '⬜',
+  'To do': '⚪',
   'In progress': '🔵',
   Comments: '🟠',
   Ready: '🟢',
@@ -45,6 +45,7 @@ export async function sendStatusUpdate({
   taskKind = 'task',
   roundsLeft = null,
   roundNumber = 1,
+  completedRounds = null,
   designer,
 }) {
   const infoEmoji = {
@@ -83,6 +84,7 @@ export async function sendStatusUpdate({
     pageUrl,
     resultUrl,
     pageId,
+    rootMessageTs: slackMessageTs,
     taskName,
     roundsLeft,
     roundNumber,
@@ -132,12 +134,13 @@ export async function sendStatusUpdate({
     pageUrl,
     resultUrl,
     taskKind,
+    completedRounds: completedRounds ?? Math.max(normalizePositiveInteger(roundNumber, 1) - 1, 0),
   })
 
+  if (feedbackDoneStatus) return
+
   await postNotification(slackClient, slackUserId, {
-    text: feedbackDoneStatus
-      ? `${getStatusEmoji(newStatus)} Правку «${taskName}» завершено.`
-      : `${getStatusEmoji(newStatus)} Статус задачі «${taskName}» змінено на «${newStatus}».`,
+    text: `${getStatusEmoji(newStatus)} Статус задачі «${taskName}» змінено на «${newStatus}».`,
     blocks,
   }, {
     channelId: slackChannelId,
@@ -214,6 +217,7 @@ export async function sendReviewRequest({
     pageUrl,
     resultUrl,
     pageId,
+    rootMessageTs: slackMessageTs,
     taskName,
     roundsLeft,
     roundNumber,
@@ -279,6 +283,7 @@ export async function updateRootTaskMessage(slackClient, {
   pageUrl,
   resultUrl,
   taskKind = 'task',
+  completedRounds = 0,
 }) {
   if (!channelId || !messageTs) return
 
@@ -288,6 +293,7 @@ export async function updateRootTaskMessage(slackClient, {
     statusEmoji: getStatusEmoji(status),
     responsible,
     taskKind,
+    completedRounds,
   })
   const actionElements = []
 
@@ -343,10 +349,40 @@ function buildRootTaskText({
   statusEmoji,
   responsible,
   taskKind,
+  completedRounds = 0,
 }) {
   const isFeedback = taskKind === 'feedback'
   const feedbackDone = isFeedback && isDoneStatus(status)
+  const feedbackReady = isFeedback && isReadyStatus(status)
+  const taskReady = !isFeedback && isReadyStatus(status)
+  const normalizedCompletedRounds = normalizeNonNegativeInteger(completedRounds, 0)
   const responsibleText = formatDesignerForSlack(responsible)
+
+  if (feedbackReady) {
+    return [
+      'Готово, твоя правка вже внесена!',
+      `*${taskName}*`,
+      '',
+      `${statusEmoji} *Статус правки:* ${status}`,
+    ].join('\n')
+  }
+
+  if (taskReady) {
+    const lines = [
+      normalizedCompletedRounds > 0
+        ? 'Готово, результат прийнято після правок ✅'
+        : 'Готово, результат задачі прийнято ✅',
+      `*${taskName}*`,
+      '',
+      `${statusEmoji} *Статус:* ${status}`,
+    ]
+
+    if (normalizedCompletedRounds > 0) {
+      lines.push(`✏️ *Раундів правок:* ${normalizedCompletedRounds}`)
+    }
+
+    return lines.join('\n')
+  }
 
   return [
     feedbackDone
@@ -681,7 +717,7 @@ function buildFeedbackReviewBlocks({
           `Оновлено статус: «${newStatus}»`,
           `Дизайнер: ${designerDisplay}`,
           resultUrl ? `✨ Результат правки: <${resultUrl}|відкрити>` : '✨ Посилання на результат ще не додано.',
-          'Переглянь внесені зміни. Якщо все ок, відпиши в коментарях у Notion і тегни дизайнера, щоб зафіксувати апрув.',
+          'Переглянь внесені зміни. Якщо все ок, натисни «Прийняти правку», щоб зафіксувати апрув.',
         ].join('\n\n'),
       },
     },
@@ -881,6 +917,7 @@ function getStatusActionElements({
   pageUrl,
   resultUrl,
   pageId,
+  rootMessageTs,
   taskName,
   roundsLeft,
   roundNumber,
@@ -890,12 +927,22 @@ function getStatusActionElements({
   if (isCommentsStatus(newStatus) && taskKind === 'feedback') {
     const elements = []
 
-    if (pageUrl) {
+    if (pageId) {
       elements.push({
         type: 'button',
-        text: { type: 'plain_text', text: '📋 Відкрити правку в Notion' },
-        url: pageUrl,
+        text: { type: 'plain_text', text: '✅ Прийняти правку' },
+        action_id: 'accept_task_result',
         style: 'primary',
+        value: buildAcceptActionValue({
+          pageId,
+          taskName,
+          designer,
+          requestUrl: pageUrl,
+          resultUrl,
+          rootMessageTs,
+          taskKind,
+          roundNumber,
+        }),
       })
     }
 
@@ -912,14 +959,29 @@ function getStatusActionElements({
 
   if (isCommentsStatus(newStatus)) {
     const elements = []
+    const completedRounds = Math.max(normalizePositiveInteger(roundNumber, 1) - 1, 0)
 
     if (pageId) {
       elements.push({
         type: 'button',
-        text: { type: 'plain_text', text: '✅ Приймаю, правок немає' },
+        text: {
+          type: 'plain_text',
+          text: completedRounds > 0
+            ? '✅ Приймаю, більше правок немає'
+            : '✅ Приймаю, правок немає',
+        },
         action_id: 'accept_task_result',
         style: 'primary',
-        value: buildAcceptActionValue({ pageId, taskName, designer, requestUrl: pageUrl, taskKind }),
+        value: buildAcceptActionValue({
+          pageId,
+          taskName,
+          designer,
+          requestUrl: pageUrl,
+          resultUrl,
+          rootMessageTs,
+          taskKind,
+          roundNumber,
+        }),
       })
     }
 
@@ -970,14 +1032,26 @@ function getStatusActionElements({
   return elements
 }
 
-function buildAcceptActionValue({ pageId, taskName, designer, requestUrl, taskKind }) {
+function buildAcceptActionValue({
+  pageId,
+  taskName,
+  designer,
+  requestUrl,
+  resultUrl,
+  rootMessageTs,
+  taskKind,
+  roundNumber,
+}) {
   return JSON.stringify({
     pageId,
     taskName: String(taskName || 'Без назви').slice(0, 1000),
     designerName: designer?.name || null,
     designerUserId: designer?.userId || null,
     requestUrl: requestUrl || null,
+    resultUrl: resultUrl || null,
+    rootMessageTs: rootMessageTs || null,
     taskKind: taskKind || 'task',
+    completedRounds: Math.max(normalizePositiveInteger(roundNumber, 1) - 1, 0),
   })
 }
 
@@ -1048,6 +1122,11 @@ function normalizeRoundsLeft(roundsLeft) {
 function normalizePositiveInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function normalizeNonNegativeInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
 }
 
 function getOpsLeadMention() {
