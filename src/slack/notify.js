@@ -418,8 +418,6 @@ export async function sendQualitySurvey({
   hub,
   requestType,
   completedAt,
-  slackChannelId,
-  slackThreadTs,
 }) {
   const ratings = [1, 2, 3, 4, 5]
   const baseValue = {
@@ -433,7 +431,7 @@ export async function sendQualitySurvey({
     completedAt: completedAt || null,
   }
 
-  await postNotification(slackClient, slackUserId, {
+  return await postNotification(slackClient, slackUserId, {
     text: `Оціни якість виконання задачі «${taskName}».`,
     blocks: [
       {
@@ -456,9 +454,6 @@ export async function sendQualitySurvey({
         })),
       },
     ],
-  }, {
-    channelId: slackChannelId,
-    threadTs: slackThreadTs,
   })
 }
 

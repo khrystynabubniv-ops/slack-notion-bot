@@ -29,6 +29,7 @@ function getSlackRequestContext(req) {
     retryReason: req.headers['x-slack-retry-reason'] || null,
     bodyType: payload.type || body.type || null,
     callbackId: payload.callback_id || payload.view?.callback_id || null,
+    actionId: payload.actions?.[0]?.action_id || null,
     command: body.command || null,
     userId: user.id || body.user_id || null,
   }

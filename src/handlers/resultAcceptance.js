@@ -55,48 +55,6 @@ function normalizeNonNegativeInteger(value, fallback = 0) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
 }
 
-function buildQualitySurveyBlocks({ text, taskName, pageId, requestUrl, completedAt }) {
-  const ratings = [1, 2, 3, 4, 5]
-  const baseValue = {
-    pageId,
-    taskName: String(taskName || 'Без назви').slice(0, 1000),
-    requestUrl: requestUrl || null,
-    completedAt: completedAt || null,
-  }
-
-  return [
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text,
-      },
-    },
-    {
-      type: 'divider',
-    },
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `⭐ *Оціни якість виконання роботи*\n*${taskName}*\nНаскільки тобі ок результат?`,
-      },
-    },
-    {
-      type: 'actions',
-      elements: ratings.map((rating) => ({
-        type: 'button',
-        text: { type: 'plain_text', text: `⭐ ${rating}` },
-        action_id: `quality_rating_${rating}`,
-        value: JSON.stringify({
-          ...baseValue,
-          rating,
-        }),
-      })),
-    },
-  ]
-}
-
 async function updateSourceMessage(client, body, text, blocks = null) {
   const channel = body.channel?.id
   const ts = body.message?.ts
@@ -259,20 +217,7 @@ export async function handleTaskAcceptance({ body, client }) {
     const existingFeedback = await getQualityFeedback(pageId)
     const acceptanceText = getAcceptanceText(taskName, roundsCount, taskKind, acceptedStatus)
     const shouldSendSurvey = !isFeedbackTask(taskKind) && !existingFeedback?.feedbackSubmittedAt
-    const sourceMessageUpdated = await updateSourceMessage(
-      client,
-      body,
-      acceptanceText,
-      shouldSendSurvey
-        ? buildQualitySurveyBlocks({
-            text: acceptanceText,
-            taskName,
-            pageId,
-            requestUrl: payload.requestUrl,
-            completedAt,
-          })
-        : null
-    )
+    await updateSourceMessage(client, body, acceptanceText)
     await updateAcceptedTaskRootMessage(client, body, payload, taskName, acceptedStatus, roundsCount)
 
     if (!result.commentCreated) {
@@ -285,15 +230,7 @@ export async function handleTaskAcceptance({ body, client }) {
       )
     }
 
-    if (shouldSendSurvey && sourceMessageUpdated) {
-      await markFeedbackSurveySent({
-        pageId,
-        slackUserId: userId,
-        taskName,
-        requestUrl: payload.requestUrl,
-        completedAt,
-      })
-    } else if (shouldSendSurvey && !existingFeedback?.feedbackSurveySentAt) {
+    if (shouldSendSurvey && !existingFeedback?.feedbackSurveySentAt) {
       await sendQualitySurvey({
         slackClient: client,
         slackUserId: userId,
@@ -301,8 +238,6 @@ export async function handleTaskAcceptance({ body, client }) {
         pageId,
         requestUrl: payload.requestUrl,
         completedAt,
-        slackChannelId: body.channel?.id,
-        slackThreadTs: body.message?.thread_ts || body.message?.ts,
       })
 
       await markFeedbackSurveySent({
