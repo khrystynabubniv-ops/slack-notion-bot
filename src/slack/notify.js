@@ -525,22 +525,9 @@ async function postNotification(slackClient, slackUserId, message, { channelId, 
       return await slackClient.chat.postMessage({
         ...message,
         channel: channelId,
-        ...(threadTs ? { thread_ts: threadTs, reply_broadcast: true } : {}),
+        ...(threadTs ? { thread_ts: threadTs } : {}),
       })
     } catch (error) {
-      if (threadTs && shouldRetryWithoutReplyBroadcast(error)) {
-        console.warn(
-          `Failed to broadcast threaded notification to ${channelId}, retrying as a regular thread reply:`,
-          error
-        )
-
-        return await slackClient.chat.postMessage({
-          ...message,
-          channel: channelId,
-          thread_ts: threadTs,
-        })
-      }
-
       if (!shouldTryNextChannel(error)) {
         throw error
       }
@@ -594,16 +581,6 @@ async function resolveNotificationChannels(slackClient, slackUserId) {
 function shouldTryNextChannel(error) {
   const slackError = error?.data?.error || error?.message
   return ['channel_not_found', 'not_in_channel', 'is_archived'].includes(slackError)
-}
-
-function shouldRetryWithoutReplyBroadcast(error) {
-  const slackError = error?.data?.error || error?.message
-  const messages = error?.data?.messages || []
-
-  return (
-    slackError === 'invalid_arguments' &&
-    messages.some((message) => String(message).includes('reply_broadcast'))
-  )
 }
 
 function normalizeUrl(value) {
