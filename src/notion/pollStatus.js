@@ -152,9 +152,12 @@ async function stopPollingCompletedTask(
     })
   } catch (error) {
     console.error(
-      `❌ Failed to send Ready quality survey for completed task ${task.pageId} (${task.taskName}); stopping polling anyway:`,
+      `❌ Failed to send Ready quality survey for completed task ${task.pageId} (${task.taskName}); keeping task for retry:`,
       error
     )
+    if (shouldSendQualitySurvey(task, status)) {
+      return
+    }
   }
 
   await deleteTask(task.pageId)
@@ -617,6 +620,7 @@ export async function startPolling(slackClient) {
               taskKind: task.taskKind,
               roundsLeft,
               roundNumber: roundsCount + 1,
+              completedRounds: roundsCount,
               designer: currentTask.designer,
             })
 
