@@ -614,7 +614,6 @@ export async function startPolling(slackClient) {
 
             await sendStatusUpdate({
               slackClient,
-              slackUserId: task.slackUserId,
               taskName: task.taskName,
               newStatus: currentTask.status,
               assignee: currentTask.assignee,
@@ -702,7 +701,6 @@ export async function startPolling(slackClient) {
               if (shouldSendReviewRequest) {
                 await sendReviewRequest({
                   slackClient,
-                  slackUserId: task.slackUserId,
                   taskName: task.taskName,
                   status: currentTask.status,
                   assignee: currentTask.assignee,
@@ -768,6 +766,8 @@ export async function startPolling(slackClient) {
               commentAuthor: comment.author,
               commentText: comment.text,
               pageUrl,
+              slackChannelId: task.slackChannelId,
+              slackThreadTs: task.slackThreadTs || task.slackMessageTs,
             })
 
             await updateLastComment(task.pageId, comment)

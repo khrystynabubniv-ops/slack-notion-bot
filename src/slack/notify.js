@@ -43,7 +43,6 @@ function isToDoStatus(status) {
 
 export async function sendStatusUpdate({
   slackClient,
-  slackUserId,
   taskName,
   newStatus,
   assignee,
@@ -59,7 +58,6 @@ export async function sendStatusUpdate({
   designer,
 }) {
   const resultUrl = normalizeUrl(finalProjectUrl)
-  const feedbackDoneStatus = taskKind === 'feedback' && isDoneStatus(newStatus)
 
   await updateRootTaskMessage(slackClient, {
     channelId: slackChannelId,
@@ -75,16 +73,6 @@ export async function sendStatusUpdate({
     roundsLeft,
     roundNumber,
     designer: designer || assignee,
-  })
-
-  if (feedbackDoneStatus) return
-
-  await sendDirectStatusPing(slackClient, slackUserId, {
-    taskName,
-    status: newStatus,
-    pageUrl,
-    resultUrl,
-    taskKind,
   })
 }
 
@@ -123,7 +111,6 @@ export async function sendTaskFieldUpdate({
 
 export async function sendReviewRequest({
   slackClient,
-  slackUserId,
   taskName,
   status,
   assignee,
@@ -154,13 +141,6 @@ export async function sendReviewRequest({
     designer: designer || assignee,
   })
 
-  await sendDirectStatusPing(slackClient, slackUserId, {
-    taskName,
-    status,
-    pageUrl,
-    resultUrl,
-    taskKind,
-  })
 }
 
 function getStatusEmoji(status) {
@@ -266,6 +246,7 @@ function buildRootTaskText({
   const responsibleText = formatDesignerForSlack(responsible)
 
   return [
+    isFeedback ? null : 'Ми отримали твій запит!',
     `*${taskName}*`,
     `${statusEmoji} *Статус${isFeedback ? ' правки' : ''}:* ${status}`,
     ready ? null : `🎨 *Дизайнер:* ${responsibleText}`,
@@ -313,12 +294,12 @@ function getRootTaskStatusText({
   }
 
   if (isInProgressStatus(status)) {
-    return 'Твоя задача вже в роботі у дизайнера. Ти отримаєш сповіщення, коли вона буде готова до ревʼю.'
+    return 'Твоя задача вже в роботі у дизайнера. Коли вона буде готова до ревʼю, статус і кнопки оновляться тут.'
   }
 
   if (isToDoStatus(status)) {
     return isFeedback
-      ? 'Правку передано дизайнеру. Апдейти по ній приходитимуть у цей тред.'
+      ? 'Правку передано дизайнеру.'
       : 'Задачу передано в дизайн-команду. Щойно дизайнер візьме її в роботу, ти побачиш оновлення в цьому треді.'
   }
 
@@ -389,7 +370,11 @@ export async function sendCommentUpdate({
   commentAuthor,
   commentText,
   pageUrl,
+  slackChannelId,
+  slackThreadTs,
 }) {
+  if (!slackChannelId || !slackThreadTs) return
+
   const preview = formatCommentPreview(commentText)
 
   await postNotification(slackClient, slackUserId, {
@@ -435,70 +420,10 @@ export async function sendCommentUpdate({
         ],
       },
     ],
+  }, {
+    channelId: slackChannelId,
+    threadTs: slackThreadTs,
   })
-}
-
-async function sendDirectStatusPing(slackClient, slackUserId, {
-  taskName,
-  status,
-  pageUrl,
-  resultUrl,
-  taskKind = 'task',
-}) {
-  if (!shouldSendDirectStatusPing(status)) return
-
-  const isFeedback = taskKind === 'feedback'
-  const text = getDirectStatusPingText({
-    taskName,
-    status,
-    isFeedback,
-  })
-  const actionElements = getPassiveActionElements({
-    pageUrl,
-    resultUrl,
-    status,
-  })
-  const blocks = [
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text,
-      },
-    },
-  ]
-
-  if (actionElements.length) {
-    blocks.push({
-      type: 'actions',
-      elements: actionElements,
-    })
-  }
-
-  await postNotification(slackClient, slackUserId, {
-    text,
-    blocks,
-  })
-}
-
-function shouldSendDirectStatusPing(status) {
-  return isInProgressStatus(status) || isCommentsStatus(status)
-}
-
-function getDirectStatusPingText({ taskName, status, isFeedback }) {
-  if (isCommentsStatus(status)) {
-    return isFeedback
-      ? `👀 Правка «${escapeMrkdwn(taskName)}» готова до ревʼю. Я оновив повідомлення правки в треді, кнопки вже там.`
-      : `👀 Задача «${escapeMrkdwn(taskName)}» готова до ревʼю. Я оновив головне повідомлення задачі в треді, кнопки вже там.`
-  }
-
-  if (isInProgressStatus(status)) {
-    return isFeedback
-      ? `🔵 Правка «${escapeMrkdwn(taskName)}» вже в роботі у дизайнера.`
-      : `🔵 Задача «${escapeMrkdwn(taskName)}» вже в роботі у дизайнера.`
-  }
-
-  return `${getStatusEmoji(status)} Оновлено статус «${escapeMrkdwn(taskName)}»: ${escapeMrkdwn(status)}.`
 }
 
 async function postNotification(slackClient, slackUserId, message, { channelId, threadTs } = {}) {

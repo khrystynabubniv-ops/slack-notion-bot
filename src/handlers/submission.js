@@ -145,6 +145,7 @@ function buildTaskThreadText({ taskName, status = 'To do', responsible = null })
   const responsibleText = formatDesignerForSlack(responsible)
 
   return [
+    'Ми отримали твій запит!',
     `*${taskName}*`,
     `⚪ *Статус:* ${status}`,
     `🎨 *Дизайнер:* ${responsibleText}`,

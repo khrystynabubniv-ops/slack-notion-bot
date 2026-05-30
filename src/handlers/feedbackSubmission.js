@@ -184,7 +184,7 @@ function buildFeedbackThreadText({
     `🎨 *Дизайнер:* ${responsibleText}`,
     `📝 *Правка:* ${formatFeedbackPreview(feedbackText)}`,
     '',
-    'Правку передано дизайнеру. Апдейти по ній приходитимуть у цей тред.',
+    'Правку передано дизайнеру.',
   ].join('\n')
 }
 
