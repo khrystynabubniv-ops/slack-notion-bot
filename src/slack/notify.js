@@ -32,6 +32,16 @@ function isDoneStatus(status) {
   return normalized.includes('done')
 }
 
+function isInProgressStatus(status) {
+  const normalized = getNormalizedStatus(status)
+  return normalized.includes('progress') || normalized.includes('в робот')
+}
+
+function isToDoStatus(status) {
+  const normalized = getNormalizedStatus(status)
+  return normalized.includes('to do') || normalized.includes('todo') || normalized.includes('ту ду')
+}
+
 export async function sendStatusUpdate({
   slackClient,
   slackUserId,
@@ -359,52 +369,66 @@ function buildRootTaskText({
   const feedbackDone = isFeedback && isDoneStatus(status)
   const feedbackReady = isFeedback && isReadyStatus(status)
   const taskReady = !isFeedback && isReadyStatus(status)
+  const ready = feedbackReady || taskReady
   const normalizedCompletedRounds = normalizeNonNegativeInteger(completedRounds, 0)
   const responsibleText = formatDesignerForSlack(responsible)
 
+  return [
+    `*${taskName}*`,
+    `${statusEmoji} *Статус${isFeedback ? ' правки' : ''}:* ${status}`,
+    ready ? null : `🎨 *Дизайнер:* ${responsibleText}`,
+    taskReady ? `✏️ *Раундів правок:* ${normalizedCompletedRounds}` : null,
+    '',
+    getRootTaskStatusText({
+      status,
+      isFeedback,
+      feedbackDone,
+      feedbackReady,
+      taskReady,
+      completedRounds: normalizedCompletedRounds,
+    }),
+  ].filter((line) => line !== null).join('\n')
+}
+
+function getRootTaskStatusText({
+  status,
+  isFeedback,
+  feedbackDone,
+  feedbackReady,
+  taskReady,
+  completedRounds,
+}) {
+  if (feedbackDone) {
+    return 'Правки внесено, апрув зафіксовано :white_check_mark:'
+  }
+
   if (feedbackReady) {
-    return [
-      'Готово, твоя правка вже внесена!',
-      `*${taskName}*`,
-      '',
-      `${statusEmoji} *Статус правки:* ${status}`,
-    ].join('\n')
+    return 'Правка готова до ревʼю. Переглянь результат і прийми її, якщо все ок.'
   }
 
   if (taskReady) {
-    const lines = [
-      normalizedCompletedRounds > 0
-        ? 'Готово, результат прийнято після правок ✅'
-        : 'Готово, результат задачі прийнято ✅',
-      `*${taskName}*`,
-      '',
-      `${statusEmoji} *Статус:* ${status}`,
-    ]
-
-    if (normalizedCompletedRounds > 0) {
-      lines.push(`✏️ *Раундів правок:* ${normalizedCompletedRounds}`)
-    }
-
-    return lines.join('\n')
+    return completedRounds > 0
+      ? 'Готово, результат прийнято після правок :white_check_mark:'
+      : 'Готово, результат прийнято без правок :white_check_mark:'
   }
 
-  return [
-    feedbackDone
-      ? 'Правки внесено, апрув зафіксовано ✅'
-      : isFeedback
-        ? 'Готово, твоя правка вже в дизайн-команді ✨'
-        : 'Готово, твій запит уже в дизайн-команді ✨',
-    `*${taskName}*`,
-    '',
-    `${statusEmoji} *Статус${isFeedback ? ' правки' : ''}:* ${status}`,
-    `🧭 *Відповідальний:* ${responsibleText}`,
-    '',
-    feedbackDone
-      ? 'Дизайнер вніс зміни, а апрув по цій правці вже є. Можна рухатись далі по основній задачі.'
-      : isFeedback
-      ? '💬 Цей тред — робоче місце правки. Пиши сюди все, що допоможе рухатись далі: контекст, апдейти, посилання, файли. Оновлення з Notion також прийдуть сюди.'
-      : '💬 Цей тред — робоче місце задачі. Пиши сюди все, що допоможе рухатись далі: контекст, апдейти, посилання, файли. Оновлення з Notion також прийдуть сюди.',
-  ].join('\n')
+  if (isCommentsStatus(status)) {
+    return 'Задача перебуває на етапі ревʼю або правок. Заглянь у задачу, щоб мати актуальний статус.'
+  }
+
+  if (isInProgressStatus(status)) {
+    return 'Твоя задача вже в роботі у дизайнера. Ти отримаєш сповіщення, коли вона буде готова до ревʼю.'
+  }
+
+  if (isToDoStatus(status)) {
+    return isFeedback
+      ? 'Правку передано дизайнеру. Апдейти по ній приходитимуть у цей тред.'
+      : 'Задачу передано в дизайн-команду. Щойно дизайнер візьме її в роботу, ти побачиш оновлення в цьому треді.'
+  }
+
+  return isFeedback
+    ? 'Оновлення по правці зафіксовано. Слідкуй за цим тредом, щоб не пропустити наступний апдейт.'
+    : 'Оновлення по задачі зафіксовано. Слідкуй за цим тредом, щоб не пропустити наступний апдейт.'
 }
 
 export async function sendQualitySurvey({

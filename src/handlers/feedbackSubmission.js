@@ -126,14 +126,12 @@ function buildFeedbackThreadText({
     : formatDesignerForSlack(designer)
 
   return [
-    'Правку передано дизайнеру ✨',
     `*${taskName}*`,
-    '',
-    `🟢 *Статус:* ${status}`,
-    `🧭 *Відповідальний:* ${responsibleText}`,
+    `⚪ *Статус правки:* ${status}`,
+    `🎨 *Дизайнер:* ${responsibleText}`,
     `📝 *Правка:* ${formatFeedbackPreview(feedbackText)}`,
     '',
-    '💬 Апдейти по цій правці приходитимуть у цей тред основної задачі.',
+    'Правку передано дизайнеру. Апдейти по ній приходитимуть у цей тред.',
   ].join('\n')
 }
 

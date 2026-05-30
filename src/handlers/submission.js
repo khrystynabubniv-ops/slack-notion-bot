@@ -145,13 +145,11 @@ function buildTaskThreadText({ taskName, status = 'To do', responsible = null })
   const responsibleText = formatDesignerForSlack(responsible)
 
   return [
-    'Готово, твій запит уже в дизайн-команді ✨',
     `*${taskName}*`,
+    `⚪ *Статус:* ${status}`,
+    `🎨 *Дизайнер:* ${responsibleText}`,
     '',
-    `🟢 *Статус:* ${status}`,
-    `🧭 *Відповідальний:* ${responsibleText}`,
-    '',
-    '💬 Цей тред — робоче місце задачі. Пиши сюди все, що допоможе рухатись далі: контекст, апдейти, посилання, файли. Оновлення з Notion також прийдуть сюди.',
+    'Задачу передано в дизайн-команду. Щойно дизайнер візьме її в роботу, ти побачиш оновлення в цьому треді.',
   ].join('\n')
 }
 
