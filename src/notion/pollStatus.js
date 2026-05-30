@@ -7,8 +7,16 @@ import {
   markFeedbackSurveySent,
   updateLastComment,
   updateStatus,
+  updateTaskSnapshot,
 } from '../redis/store.js'
-import { sendCommentUpdate, sendQualitySurvey, sendStatusUpdate } from '../slack/notify.js'
+import {
+  sendCommentUpdate,
+  sendQualitySurvey,
+  sendReviewRequest,
+  sendStatusUpdate,
+  sendTaskFieldUpdate,
+  updateRootTaskMessage,
+} from '../slack/notify.js'
 import { buildTaskPageUrl } from './pageUrl.js'
 import { notionRequest } from './request.js'
 import { getStatusPropertyNames } from './taskConfig.js'
@@ -25,7 +33,6 @@ const COMPLETED_STATUS_NAMES = (
   .split(',')
   .map(normalizeStatusName)
   .filter(Boolean)
-const QUALITY_SURVEY_STATUS_NAME = 'ready'
 let commentPollingEnabled = true
 let pollingInProgress = false
 let pollingPausedUntil = 0
@@ -83,7 +90,10 @@ function isCompletedStatus(status) {
 }
 
 function isQualitySurveyStatus(status) {
-  return normalizeStatusName(status) === QUALITY_SURVEY_STATUS_NAME
+  const normalizedStatus = normalizeStatusName(status)
+  return normalizedStatus === 'ready' ||
+    normalizedStatus.includes('ready') ||
+    normalizedStatus.includes('реді')
 }
 
 function shouldSendQualitySurvey(task, status) {
@@ -383,6 +393,135 @@ function isOwnComment(latestComment, task) {
   return normalizePersonName(task.requesterName) === normalizePersonName(latestComment.author)
 }
 
+function isCommentsStatus(status) {
+  const normalizedStatus = normalizeStatusName(status)
+  return normalizedStatus === 'comments' ||
+    normalizedStatus.includes('comment') ||
+    normalizedStatus.includes('комент')
+}
+
+function normalizeTrackedValue(value) {
+  return String(value || '').trim()
+}
+
+function normalizeTrackedUrl(value) {
+  const trimmed = normalizeTrackedValue(value)
+  if (!trimmed) return ''
+
+  try {
+    return new URL(trimmed).toString()
+  } catch (_) {
+    try {
+      return new URL(`https://${trimmed}`).toString()
+    } catch (_) {
+      return trimmed
+    }
+  }
+}
+
+function getCurrentResponsible(currentTask) {
+  return currentTask.designer || currentTask.assignee || null
+}
+
+function getCurrentResponsibleLabel(currentTask) {
+  return currentTask.designer?.name || currentTask.assignee || null
+}
+
+function getStoredResponsibleLabel(task) {
+  return task.lastDesignerName || task.lastAssignee || null
+}
+
+function getCurrentResponsibleKey(currentTask) {
+  return [
+    normalizeTrackedValue(currentTask.designer?.name),
+    normalizeTrackedValue(currentTask.designer?.userId),
+    normalizeTrackedValue(currentTask.assignee),
+  ].join('|')
+}
+
+function getStoredResponsibleKey(task) {
+  return [
+    normalizeTrackedValue(task.lastDesignerName),
+    normalizeTrackedValue(task.lastDesignerUserId),
+    normalizeTrackedValue(task.lastAssignee),
+  ].join('|')
+}
+
+function hasStoredSnapshot(task) {
+  return task.snapshotInitialized === true
+}
+
+function getTaskSnapshotPatch(currentTask) {
+  return {
+    lastStatus: currentTask.status,
+    lastAssignee: currentTask.assignee || null,
+    lastDesignerName: currentTask.designer?.name || null,
+    lastDesignerUserId: currentTask.designer?.userId || null,
+    lastDeadline: currentTask.deadline || null,
+    lastFinalProjectUrl: currentTask.finalProjectUrl || null,
+    snapshotInitialized: true,
+  }
+}
+
+function formatTextChangeValue(value) {
+  const text = normalizeTrackedValue(value)
+  if (!text) return null
+
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function formatUrlChangeValue(value) {
+  const url = normalizeTrackedUrl(value)
+  return url ? `<${url}|відкрити>` : null
+}
+
+function getTrackedFieldChanges(task, currentTask) {
+  const changes = []
+  const responsibleChanged = getCurrentResponsibleKey(currentTask) !== getStoredResponsibleKey(task)
+  const finalProjectChanged =
+    normalizeTrackedUrl(currentTask.finalProjectUrl) !== normalizeTrackedUrl(task.lastFinalProjectUrl)
+
+  if (responsibleChanged) {
+    changes.push({
+      type: 'responsible',
+      label: 'Відповідальний',
+      oldValue: formatTextChangeValue(getStoredResponsibleLabel(task)),
+      newValue: formatTextChangeValue(getCurrentResponsibleLabel(currentTask)),
+    })
+  }
+
+  if (finalProjectChanged) {
+    changes.push({
+      type: 'finalProject',
+      label: 'Фінальний проєкт',
+      oldValue: formatUrlChangeValue(task.lastFinalProjectUrl),
+      newValue: formatUrlChangeValue(currentTask.finalProjectUrl),
+    })
+  }
+
+  return changes
+}
+
+async function checkpointTaskSnapshot(pageId, currentTask) {
+  await updateTaskSnapshot(pageId, getTaskSnapshotPatch(currentTask))
+}
+
+async function refreshRootTaskMessage(slackClient, task, currentTask, pageUrl) {
+  await updateRootTaskMessage(slackClient, {
+    channelId: task.slackChannelId,
+    messageTs: task.slackMessageTs,
+    taskName: task.taskName,
+    status: currentTask.status,
+    responsible: getCurrentResponsible(currentTask),
+    pageUrl,
+    resultUrl: currentTask.finalProjectUrl,
+    taskKind: task.taskKind,
+  })
+}
+
 export async function startPolling(slackClient) {
   console.log('🔄 Polling started — every 3 minutes')
 
@@ -445,8 +584,9 @@ export async function startPolling(slackClient) {
             })
             continue
           } else {
-            await updateStatus(task.pageId, currentTask.status)
-            console.log(`ℹ️ Status checkpoint initialized: ${task.taskName} → ${currentTask.status}`)
+            await refreshRootTaskMessage(slackClient, task, currentTask, pageUrl)
+            await checkpointTaskSnapshot(task.pageId, currentTask)
+            console.log(`ℹ️ Task snapshot initialized: ${task.taskName} → ${currentTask.status}`)
           }
         } else if (currentTask.status !== task.lastStatus) {
           try {
@@ -488,8 +628,8 @@ export async function startPolling(slackClient) {
               })
               continue
             } else {
-              await updateStatus(task.pageId, currentTask.status)
-              console.log(`✅ Status updated: ${task.taskName} → ${currentTask.status}`)
+              await checkpointTaskSnapshot(task.pageId, currentTask)
+              console.log(`✅ Status snapshot updated: ${task.taskName} → ${currentTask.status}`)
             }
           } catch (error) {
             console.error(
@@ -504,6 +644,75 @@ export async function startPolling(slackClient) {
                 status: currentTask.status,
               })
               continue
+            }
+          }
+        } else if (!hasStoredSnapshot(task)) {
+          await refreshRootTaskMessage(slackClient, task, currentTask, pageUrl)
+          await checkpointTaskSnapshot(task.pageId, currentTask)
+          console.log(`ℹ️ Task field snapshot initialized: ${task.taskName}`)
+        } else {
+          const fieldChanges = getTrackedFieldChanges(task, currentTask)
+
+          if (fieldChanges.length) {
+            try {
+              const roundsCount = await getRoundsCount(task.pageId)
+              const maxRounds = currentTask.maxRounds
+              const roundsLeft = maxRounds !== null
+                ? Math.max(maxRounds - roundsCount, 0)
+                : null
+              const finalProjectChanged = fieldChanges.some((change) => change.type === 'finalProject')
+              const shouldSendReviewRequest =
+                finalProjectChanged &&
+                isCommentsStatus(currentTask.status) &&
+                Boolean(normalizeTrackedUrl(currentTask.finalProjectUrl))
+              const regularFieldChanges = shouldSendReviewRequest
+                ? fieldChanges.filter((change) => change.type !== 'finalProject')
+                : fieldChanges
+
+              if (regularFieldChanges.length) {
+                await sendTaskFieldUpdate({
+                  slackClient,
+                  slackUserId: task.slackUserId,
+                  taskName: task.taskName,
+                  status: currentTask.status,
+                  responsible: getCurrentResponsible(currentTask),
+                  finalProjectUrl: currentTask.finalProjectUrl,
+                  pageUrl,
+                  changes: regularFieldChanges,
+                  slackChannelId: task.slackChannelId,
+                  slackMessageTs: task.slackMessageTs,
+                  slackThreadTs: task.slackThreadTs || task.slackMessageTs,
+                  taskKind: task.taskKind,
+                })
+              }
+
+              if (shouldSendReviewRequest) {
+                await sendReviewRequest({
+                  slackClient,
+                  slackUserId: task.slackUserId,
+                  taskName: task.taskName,
+                  status: currentTask.status,
+                  assignee: currentTask.assignee,
+                  finalProjectUrl: currentTask.finalProjectUrl,
+                  pageUrl,
+                  pageId: task.pageId,
+                  slackChannelId: task.slackChannelId,
+                  slackMessageTs: task.slackMessageTs,
+                  slackThreadTs: task.slackThreadTs || task.slackMessageTs,
+                  taskKind: task.taskKind,
+                  roundsLeft,
+                  roundNumber: roundsCount + 1,
+                  designer: currentTask.designer,
+                })
+              }
+
+              await checkpointTaskSnapshot(task.pageId, currentTask)
+              console.log(`✅ Field snapshot updated: ${task.taskName}`)
+            } catch (error) {
+              console.error(
+                `❌ Failed to notify about field change for page ${task.pageId} (${task.taskName}) and user ${task.slackUserId}:`,
+                error
+              )
             }
           }
         }

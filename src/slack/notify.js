@@ -9,6 +9,25 @@ const STATUS_EMOJI = {
   Done: '✅',
 }
 
+function getNormalizedStatus(status) {
+  return String(status || '').trim().toLowerCase()
+}
+
+function isCommentsStatus(status) {
+  const normalized = getNormalizedStatus(status)
+  return normalized === 'comments' || normalized.includes('comment') || normalized.includes('комент')
+}
+
+function isReadyStatus(status) {
+  const normalized = getNormalizedStatus(status)
+  return normalized === 'ready' || normalized.includes('ready') || normalized.includes('реді')
+}
+
+function isDoneStatus(status) {
+  const normalized = getNormalizedStatus(status)
+  return normalized.includes('done')
+}
+
 export async function sendStatusUpdate({
   slackClient,
   slackUserId,
@@ -38,13 +57,16 @@ export async function sendStatusUpdate({
   const formattedDeadline = formatDeadline(deadline)
   const resultUrl = normalizeUrl(finalProjectUrl)
   const assigneeDisplay = formatDesignerForSlack(designer || assignee)
+  const commentsStatus = isCommentsStatus(newStatus)
+  const readyStatus = isReadyStatus(newStatus)
+  const feedbackDoneStatus = taskKind === 'feedback' && isDoneStatus(newStatus)
   const summaryLines = [
     `${infoEmoji.status} Статус: «${newStatus}»`,
     `${infoEmoji.task} Задача: ${taskName}`,
     `${infoEmoji.assignee} Виконавець: ${assigneeDisplay}`,
     `${infoEmoji.deadline} Дедлайн: ${formattedDeadline}`,
   ]
-  const resultBlocks = resultUrl && newStatus === 'Ready'
+  const resultBlocks = resultUrl && readyStatus
     ? [
         {
           type: 'section',
@@ -67,23 +89,39 @@ export async function sendStatusUpdate({
     designer,
     taskKind,
   })
-  const blocks = newStatus === 'Comments'
-    ? buildCommentsReviewBlocks({
+  const blocks = feedbackDoneStatus
+    ? buildFeedbackDoneBlocks({
         taskName,
         newStatus,
         designerDisplay: assigneeDisplay,
-        resultUrl,
-        feedbackNoticeBlocks,
-        actionElements,
+        pageUrl,
       })
-    : buildDefaultStatusBlocks({
-        summaryLines,
-        resultBlocks,
-        feedbackNoticeBlocks,
-        oldStatus,
-        oldStatusEmoji: getStatusEmoji(oldStatus),
-        actionElements,
-      })
+    : commentsStatus
+      ? taskKind === 'feedback'
+        ? buildFeedbackReviewBlocks({
+            taskName,
+            newStatus,
+            designerDisplay: assigneeDisplay,
+            resultUrl,
+            feedbackNoticeBlocks,
+            actionElements,
+          })
+        : buildCommentsReviewBlocks({
+            taskName,
+            newStatus,
+            designerDisplay: assigneeDisplay,
+            resultUrl,
+            feedbackNoticeBlocks,
+            actionElements,
+          })
+      : buildDefaultStatusBlocks({
+          summaryLines,
+          resultBlocks,
+          feedbackNoticeBlocks,
+          oldStatus,
+          oldStatusEmoji: getStatusEmoji(oldStatus),
+          actionElements,
+        })
 
   await updateRootTaskMessage(slackClient, {
     channelId: slackChannelId,
@@ -97,8 +135,122 @@ export async function sendStatusUpdate({
   })
 
   await postNotification(slackClient, slackUserId, {
-    text: `${getStatusEmoji(newStatus)} Статус задачі «${taskName}» змінено на «${newStatus}».`,
+    text: feedbackDoneStatus
+      ? `${getStatusEmoji(newStatus)} Правку «${taskName}» завершено.`
+      : `${getStatusEmoji(newStatus)} Статус задачі «${taskName}» змінено на «${newStatus}».`,
     blocks,
+  }, {
+    channelId: slackChannelId,
+    threadTs: slackThreadTs,
+  })
+}
+
+export async function sendTaskFieldUpdate({
+  slackClient,
+  slackUserId,
+  taskName,
+  status,
+  responsible,
+  finalProjectUrl,
+  pageUrl,
+  changes,
+  slackChannelId,
+  slackMessageTs,
+  slackThreadTs,
+  taskKind = 'task',
+}) {
+  const resultUrl = normalizeUrl(finalProjectUrl)
+  const normalizedChanges = Array.isArray(changes) ? changes.filter(Boolean) : []
+  if (!normalizedChanges.length) return
+
+  await updateRootTaskMessage(slackClient, {
+    channelId: slackChannelId,
+    messageTs: slackMessageTs,
+    taskName,
+    status,
+    responsible,
+    pageUrl,
+    resultUrl,
+    taskKind,
+  })
+
+  await postNotification(slackClient, slackUserId, {
+    text: `Оновлено задачу «${taskName}».`,
+    blocks: buildFieldUpdateBlocks({
+      taskName,
+      status,
+      changes: normalizedChanges,
+      pageUrl,
+      resultUrl,
+    }),
+  }, {
+    channelId: slackChannelId,
+    threadTs: slackThreadTs,
+  })
+}
+
+export async function sendReviewRequest({
+  slackClient,
+  slackUserId,
+  taskName,
+  status,
+  assignee,
+  finalProjectUrl,
+  pageUrl,
+  pageId,
+  slackChannelId,
+  slackMessageTs,
+  slackThreadTs,
+  taskKind = 'task',
+  roundsLeft = null,
+  roundNumber = 1,
+  designer,
+}) {
+  const resultUrl = normalizeUrl(finalProjectUrl)
+  const assigneeDisplay = formatDesignerForSlack(designer || assignee)
+  const feedbackNoticeBlocks = getFeedbackNoticeBlocks(status, roundsLeft)
+  const actionElements = getStatusActionElements({
+    newStatus: status,
+    pageUrl,
+    resultUrl,
+    pageId,
+    taskName,
+    roundsLeft,
+    roundNumber,
+    designer,
+    taskKind,
+  })
+
+  await updateRootTaskMessage(slackClient, {
+    channelId: slackChannelId,
+    messageTs: slackMessageTs,
+    taskName,
+    status,
+    responsible: designer || assignee,
+    pageUrl,
+    resultUrl,
+    taskKind,
+  })
+
+  await postNotification(slackClient, slackUserId, {
+    text: `Потрібне рев'ю задачі «${taskName}».`,
+    blocks: taskKind === 'feedback'
+      ? buildFeedbackReviewBlocks({
+          taskName,
+          newStatus: status,
+          designerDisplay: assigneeDisplay,
+          resultUrl,
+          feedbackNoticeBlocks,
+          actionElements,
+        })
+      : buildCommentsReviewBlocks({
+          taskName,
+          newStatus: status,
+          designerDisplay: assigneeDisplay,
+          resultUrl,
+          feedbackNoticeBlocks,
+          actionElements,
+        }),
   }, {
     channelId: slackChannelId,
     threadTs: slackThreadTs,
@@ -108,10 +260,10 @@ export async function sendStatusUpdate({
 function getStatusEmoji(status) {
   if (STATUS_EMOJI[status]) return STATUS_EMOJI[status]
 
-  const normalized = String(status || '').trim().toLowerCase()
+  const normalized = getNormalizedStatus(status)
   if (normalized.includes('done')) return STATUS_EMOJI.Done
-  if (normalized.includes('ready')) return STATUS_EMOJI.Ready
-  if (normalized.includes('comment')) return STATUS_EMOJI.Comments
+  if (normalized.includes('ready') || normalized.includes('реді')) return STATUS_EMOJI.Ready
+  if (normalized.includes('comment') || normalized.includes('комент')) return STATUS_EMOJI.Comments
   if (normalized.includes('progress')) return STATUS_EMOJI['In progress']
   if (normalized.includes('to do')) return STATUS_EMOJI['To do']
 
@@ -193,18 +345,23 @@ function buildRootTaskText({
   taskKind,
 }) {
   const isFeedback = taskKind === 'feedback'
+  const feedbackDone = isFeedback && isDoneStatus(status)
   const responsibleText = formatDesignerForSlack(responsible)
 
   return [
-    isFeedback
-      ? 'Готово, твоя правка вже в дизайн-команді ✨'
-      : 'Готово, твій запит уже в дизайн-команді ✨',
+    feedbackDone
+      ? 'Правки внесено, апрув зафіксовано ✅'
+      : isFeedback
+        ? 'Готово, твоя правка вже в дизайн-команді ✨'
+        : 'Готово, твій запит уже в дизайн-команді ✨',
     `*${taskName}*`,
     '',
-    `${statusEmoji} *Статус:* ${status}`,
+    `${statusEmoji} *Статус${isFeedback ? ' правки' : ''}:* ${status}`,
     `🧭 *Відповідальний:* ${responsibleText}`,
     '',
-    isFeedback
+    feedbackDone
+      ? 'Дизайнер вніс зміни, а апрув по цій правці вже є. Можна рухатись далі по основній задачі.'
+      : isFeedback
       ? '💬 Цей тред — робоче місце правки. Пиши сюди все, що допоможе рухатись далі: контекст, апдейти, посилання, файли. Оновлення з Notion також прийдуть сюди.'
       : '💬 Цей тред — робоче місце задачі. Пиши сюди все, що допоможе рухатись далі: контекст, апдейти, посилання, файли. Оновлення з Notion також прийдуть сюди.',
   ].join('\n')
@@ -408,7 +565,7 @@ function normalizeUrl(value) {
 }
 
 function getResultText(status, resultUrl) {
-  if (status === 'Ready') {
+  if (isReadyStatus(status)) {
     return `✨ *Результат готовий:* <${resultUrl}|відкрити фінальний проєкт>\nПереглянь фінальну версію.`
   }
 
@@ -455,6 +612,181 @@ function buildCommentsReviewBlocks({
     },
     ...feedbackNoticeBlocks,
   ]
+
+  if (actionElements.length) {
+    blocks.push({
+      type: 'actions',
+      elements: actionElements,
+    })
+  }
+
+  return blocks
+}
+
+function buildFeedbackReviewBlocks({
+  taskName,
+  newStatus,
+  designerDisplay,
+  resultUrl,
+  feedbackNoticeBlocks,
+  actionElements,
+}) {
+  const blocks = [
+    {
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: '*Design Bot*',
+        },
+        {
+          type: 'mrkdwn',
+          text: 'щойно',
+        },
+      ],
+    },
+    {
+      type: 'divider',
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: [
+          "👀 *Правка очікує твоє рев'ю*",
+          `*${escapeMrkdwn(taskName)}*`,
+          `Оновлено статус: «${newStatus}»`,
+          `Дизайнер: ${designerDisplay}`,
+          resultUrl ? `✨ Результат правки: <${resultUrl}|відкрити>` : '✨ Посилання на результат ще не додано.',
+          'Переглянь внесені зміни. Якщо все ок, відпиши в коментарях у Notion і тегни дизайнера, щоб зафіксувати апрув.',
+        ].join('\n\n'),
+      },
+    },
+    ...feedbackNoticeBlocks,
+  ]
+
+  if (actionElements.length) {
+    blocks.push({
+      type: 'actions',
+      elements: actionElements,
+    })
+  }
+
+  return blocks
+}
+
+function buildFeedbackDoneBlocks({
+  taskName,
+  newStatus,
+  designerDisplay,
+  pageUrl,
+}) {
+  const blocks = [
+    {
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: '*Design Bot*',
+        },
+        {
+          type: 'mrkdwn',
+          text: 'щойно',
+        },
+      ],
+    },
+    {
+      type: 'divider',
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: [
+          '✅ *Правки внесено, апрув зафіксовано*',
+          `*${escapeMrkdwn(taskName)}*`,
+          `Статус правки: «${newStatus}»`,
+          `Дизайнер: ${designerDisplay}`,
+          'Цю правку можна вважати закритою: зміни внесені, погодження отримано.',
+        ].join('\n\n'),
+      },
+    },
+  ]
+
+  if (pageUrl) {
+    blocks.push({
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
+          url: pageUrl,
+          style: 'primary',
+        },
+      ],
+    })
+  }
+
+  return blocks
+}
+
+function buildFieldUpdateBlocks({
+  taskName,
+  status,
+  changes,
+  pageUrl,
+  resultUrl,
+}) {
+  const blocks = [
+    {
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: '*Design Bot*',
+        },
+        {
+          type: 'mrkdwn',
+          text: 'щойно',
+        },
+      ],
+    },
+    {
+      type: 'divider',
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: [
+          '🔄 *Оновлення по задачі*',
+          `*${escapeMrkdwn(taskName)}*`,
+          `Поточний статус: ${getStatusEmoji(status)} «${status}»`,
+          ...changes.map(({ label, oldValue, newValue }) => {
+            return `*${label}:* ${oldValue || 'не вказано'} → ${newValue || 'не вказано'}`
+          }),
+        ].join('\n\n'),
+      },
+    },
+  ]
+
+  const actionElements = []
+  if (pageUrl) {
+    actionElements.push({
+      type: 'button',
+      text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
+      url: pageUrl,
+      style: 'primary',
+    })
+  }
+
+  if (resultUrl) {
+    actionElements.push({
+      type: 'button',
+      text: { type: 'plain_text', text: '🔗 Відкрити результат' },
+      url: resultUrl,
+    })
+  }
 
   if (actionElements.length) {
     blocks.push({
@@ -532,7 +864,30 @@ function getStatusActionElements({
   designer,
   taskKind,
 }) {
-  if (newStatus === 'Comments') {
+  if (isCommentsStatus(newStatus) && taskKind === 'feedback') {
+    const elements = []
+
+    if (pageUrl) {
+      elements.push({
+        type: 'button',
+        text: { type: 'plain_text', text: '📋 Відкрити правку в Notion' },
+        url: pageUrl,
+        style: 'primary',
+      })
+    }
+
+    if (resultUrl) {
+      elements.push({
+        type: 'button',
+        text: { type: 'plain_text', text: '🔗 Відкрити результат' },
+        url: resultUrl,
+      })
+    }
+
+    return elements
+  }
+
+  if (isCommentsStatus(newStatus)) {
     const elements = []
 
     if (pageId) {
@@ -557,7 +912,7 @@ function getStatusActionElements({
     return elements
   }
 
-  if (newStatus === 'Ready') {
+  if (isReadyStatus(newStatus)) {
     return resultUrl
       ? [
           {
@@ -619,7 +974,7 @@ function buildFeedbackActionValue({ pageId, taskName, roundsLeft, roundNumber })
 }
 
 function getFeedbackNoticeBlocks(status, roundsLeft) {
-  if (status !== 'Comments') return []
+  if (!isCommentsStatus(status)) return []
 
   const normalizedRoundsLeft = normalizeRoundsLeft(roundsLeft)
   if (normalizedRoundsLeft === null) return []

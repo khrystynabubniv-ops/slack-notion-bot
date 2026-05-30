@@ -66,6 +66,12 @@ export async function saveTask({
   parentPageId = null,
   pageUrl = null,
   lastStatus = 'To do',
+  lastAssignee = null,
+  lastDesignerName = null,
+  lastDesignerUserId = null,
+  lastDeadline = null,
+  lastFinalProjectUrl = null,
+  snapshotInitialized = false,
 }) {
   await saveWithRetry(`notion:${pageId}`, JSON.stringify({
     slackUserId,
@@ -78,6 +84,12 @@ export async function saveTask({
     parentPageId,
     pageUrl,
     lastStatus,
+    lastAssignee,
+    lastDesignerName,
+    lastDesignerUserId,
+    lastDeadline,
+    lastFinalProjectUrl,
+    snapshotInitialized,
     lastCommentId: null,
     lastCommentCreatedTime: null,
     roundsCount: 0,
@@ -222,6 +234,18 @@ export async function updateStatus(pageId, newStatus) {
   await redis.set(`notion:${pageId}`, JSON.stringify({
     ...parsed,
     lastStatus: newStatus,
+  }))
+}
+
+export async function updateTaskSnapshot(pageId, snapshot) {
+  const data = await redis.get(`notion:${pageId}`)
+  if (!data) return
+  const parsed = parseStoredTask(data)
+  if (!parsed) return
+
+  await redis.set(`notion:${pageId}`, JSON.stringify({
+    ...parsed,
+    ...snapshot,
   }))
 }
 

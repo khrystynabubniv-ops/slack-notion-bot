@@ -37,6 +37,13 @@ function getFeedbackText(view) {
   return view.state.values.feedback_text?.feedback_input?.value?.trim() || ''
 }
 
+function formatFeedbackPreview(feedbackText) {
+  const normalized = (feedbackText || '').replace(/\s+/g, ' ').trim()
+  if (!normalized) return 'Без тексту'
+  if (normalized.length <= 240) return `«${normalized}»`
+  return `«${normalized.slice(0, 237)}...»`
+}
+
 async function notifyUser(client, userId, text) {
   if (!userId) return
 
@@ -51,27 +58,39 @@ function buildFeedbackThreadText({
   status = 'To do',
   designer = null,
   responsible = null,
+  feedbackText = null,
 }) {
   const responsibleText = responsible
     ? formatDesignerForSlack(responsible)
     : formatDesignerForSlack(designer)
 
   return [
-    'Готово, твоя правка вже в дизайн-команді ✨',
+    'Правку передано дизайнеру ✨',
     `*${taskName}*`,
     '',
     `🟢 *Статус:* ${status}`,
     `🧭 *Відповідальний:* ${responsibleText}`,
+    `📝 *Правка:* ${formatFeedbackPreview(feedbackText)}`,
     '',
-    '💬 Цей тред — робоче місце правки. Пиши сюди все, що допоможе рухатись далі: контекст, апдейти, посилання, файли. Оновлення з Notion також прийдуть сюди.',
+    '💬 Апдейти по цій правці приходитимуть у цей тред основної задачі.',
   ].join('\n')
 }
 
-async function postFeedbackTaskCreatedMessage({ client, userId, taskName, pageUrl, designer }) {
-  const text = buildFeedbackThreadText({ taskName, designer })
+async function postFeedbackTaskCreatedMessage({
+  client,
+  userId,
+  channelId,
+  threadTs,
+  taskName,
+  pageUrl,
+  designer,
+  feedbackText,
+}) {
+  const text = buildFeedbackThreadText({ taskName, designer, feedbackText })
 
   return await client.chat.postMessage({
-    channel: userId,
+    channel: channelId || userId,
+    ...(threadTs ? { thread_ts: threadTs } : {}),
     text,
     blocks: [
       {
@@ -137,32 +156,42 @@ export async function handleFeedbackSubmission({ body, view, client }) {
     await incrementRoundsCount(pageId)
 
     let feedbackMessage = null
+    const parentChannelId = parentTask?.slackChannelId || userId
+    const parentThreadTs = parentTask?.slackThreadTs || parentTask?.slackMessageTs || null
 
     try {
       feedbackMessage = await postFeedbackTaskCreatedMessage({
         client,
         userId,
+        channelId: parentChannelId,
+        threadTs: parentThreadTs,
         taskName: feedbackTask.taskName,
         pageUrl: feedbackTask.pageUrl,
         designer: feedbackTask.designer,
+        feedbackText,
       })
     } catch (notifyError) {
       console.error(`Failed to send feedback task notification to ${userId}:`, notifyError)
     }
 
     try {
+      const feedbackChannelId = feedbackMessage?.channel || parentChannelId || userId
+      const feedbackThreadTs = parentThreadTs || feedbackMessage?.ts || null
+
       await saveTask({
         pageId: feedbackTask.pageId,
         slackUserId: userId,
-        slackChannelId: feedbackMessage?.channel || userId,
+        slackChannelId: feedbackChannelId,
         slackMessageTs: feedbackMessage?.ts || null,
-        slackThreadTs: feedbackMessage?.ts || null,
+        slackThreadTs: feedbackThreadTs,
         taskName: feedbackTask.taskName,
         requesterName: parentTask?.requesterName || body.user?.name || userId,
         taskKind: 'feedback',
         parentPageId: pageId,
         pageUrl: feedbackTask.pageUrl,
         lastStatus: feedbackTask.initialStatus,
+        lastDesignerName: feedbackTask.designer?.name || null,
+        lastDesignerUserId: feedbackTask.designer?.userId || null,
       })
     } catch (redisError) {
       console.error(`Redis saveTask failed for feedback task ${feedbackTask.pageId}:`, redisError)
