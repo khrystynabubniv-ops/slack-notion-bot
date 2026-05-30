@@ -418,6 +418,8 @@ export async function sendQualitySurvey({
   hub,
   requestType,
   completedAt,
+  slackChannelId,
+  slackThreadTs,
 }) {
   const ratings = [1, 2, 3, 4, 5]
   const baseValue = {
@@ -454,6 +456,9 @@ export async function sendQualitySurvey({
         })),
       },
     ],
+  }, {
+    channelId: slackChannelId,
+    threadTs: slackThreadTs,
   })
 }
 

@@ -56,15 +56,42 @@ function normalizeNonNegativeInteger(value, fallback = 0) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
 }
 
-async function updateSourceMessage(client, body, text, blocks = null) {
-  const channel = body.channel?.id
-  const ts = body.message?.ts
-  if (!channel || !ts) return false
+function escapeMrkdwn(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function formatRatingStars(rating) {
+  const normalizedRating = Math.min(Math.max(normalizeNonNegativeInteger(rating, 0), 0), 5)
+  return '⭐'.repeat(normalizedRating) + '☆'.repeat(5 - normalizedRating)
+}
+
+function buildFeedbackAcceptedText({ taskName, rating, comment }) {
+  const lines = [
+    '✅ *Фідбек прийняли*',
+    `*${escapeMrkdwn(taskName || 'Без назви')}*`,
+    '',
+    `✨ *Твоя оцінка:* ${formatRatingStars(rating)}`,
+  ]
+
+  if (comment) {
+    lines.push('', '*Твій фідбек:*', `>${escapeMrkdwn(comment)}`)
+  }
+
+  lines.push('', 'Дякуємо. Так ми бачимо, що вже працює, а що підняти на наступний рівень.')
+
+  return lines.join('\n')
+}
+
+async function updateMessage(client, { channelId, messageTs, text, blocks = null }) {
+  if (!channelId || !messageTs) return false
 
   try {
     await client.chat.update({
-      channel,
-      ts,
+      channel: channelId,
+      ts: messageTs,
       text,
       blocks: blocks || [
         {
@@ -78,9 +105,29 @@ async function updateSourceMessage(client, body, text, blocks = null) {
     })
     return true
   } catch (error) {
-    console.error('Failed to update acceptance source message:', error)
+    console.error(`Failed to update Slack message ${channelId}/${messageTs}:`, error)
     return false
   }
+}
+
+async function updateSourceMessage(client, body, text, blocks = null) {
+  const channel = body.channel?.id
+  const ts = body.message?.ts
+  return await updateMessage(client, { channelId: channel, messageTs: ts, text, blocks })
+}
+
+async function updateQualitySurveyMessage(client, payload, { channelId, messageTs, comment = null }) {
+  const text = buildFeedbackAcceptedText({
+    taskName: payload.taskName,
+    rating: payload.rating,
+    comment,
+  })
+
+  return await updateMessage(client, {
+    channelId: payload.sourceChannelId || channelId,
+    messageTs: payload.sourceMessageTs || messageTs,
+    text,
+  })
 }
 
 async function updateAcceptedTaskRootMessage(client, body, payload, taskName, acceptedStatus, roundsCount) {
@@ -251,6 +298,8 @@ export async function handleTaskAcceptance({ body, client }) {
         hub: feedbackContext.hub,
         requestType: feedbackContext.requestType,
         completedAt,
+        slackChannelId: body.channel?.id,
+        slackThreadTs: body.message?.thread_ts || body.message?.ts,
       })
 
       await markFeedbackSurveySent({
@@ -293,11 +342,16 @@ export async function handleQualityRating({ body, client }) {
   const normalizedPayload = {
     ...payload,
     rating,
+    sourceChannelId: body.channel?.id || payload.sourceChannelId || null,
+    sourceMessageTs: body.message?.ts || payload.sourceMessageTs || null,
   }
 
   if (rating === 5) {
     await saveAndSyncFeedback(normalizedPayload, { slackUserId: userId })
-    await updateSourceMessage(client, body, '✅ Фідбек прийняли. Дякую за оцінку 5/5!')
+    await updateQualitySurveyMessage(client, normalizedPayload, {
+      channelId: body.channel?.id,
+      messageTs: body.message?.ts,
+    })
     return
   }
 
@@ -321,5 +375,7 @@ export async function handleQualityFeedbackSubmission({ body, view, client }) {
     categories,
   })
 
-  await postUserMessage(client, userId, '✅ Фідбек прийняли. Дякую, це допоможе покращити наступні задачі.')
+  await updateQualitySurveyMessage(client, payload, {
+    comment,
+  })
 }
