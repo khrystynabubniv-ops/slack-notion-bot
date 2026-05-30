@@ -1,6 +1,13 @@
 import { formatDesignerForSlack } from './designerMentions.js'
 
 const DEFAULT_OPS_LEAD_SLACK_ID = 'U0APPD32H6D'
+const STATUS_EMOJI = {
+  'To do': '⬜',
+  'In progress': '🔵',
+  Comments: '🟠',
+  Ready: '🟢',
+  Done: '✅',
+}
 
 export async function sendStatusUpdate({
   slackClient,
@@ -14,18 +21,13 @@ export async function sendStatusUpdate({
   pageUrl,
   pageId,
   slackChannelId,
+  slackMessageTs,
   slackThreadTs,
+  taskKind = 'task',
   roundsLeft = null,
   roundNumber = 1,
   designer,
 }) {
-  const statusEmoji = {
-    'To do': '⬜',
-    'In progress': '🔵',
-    Comments: '🟠',
-    Ready: '🟢',
-    Done: '✅',
-  }
   const infoEmoji = {
     status: '🔄',
     task: '🏷️',
@@ -63,6 +65,7 @@ export async function sendStatusUpdate({
     roundsLeft,
     roundNumber,
     designer,
+    taskKind,
   })
   const blocks = newStatus === 'Comments'
     ? buildCommentsReviewBlocks({
@@ -78,17 +81,133 @@ export async function sendStatusUpdate({
         resultBlocks,
         feedbackNoticeBlocks,
         oldStatus,
-        oldStatusEmoji: statusEmoji[oldStatus] || '▪️',
+        oldStatusEmoji: getStatusEmoji(oldStatus),
         actionElements,
       })
 
+  await updateRootTaskMessage(slackClient, {
+    channelId: slackChannelId,
+    messageTs: slackMessageTs,
+    taskName,
+    status: newStatus,
+    responsible: designer || assignee,
+    pageUrl,
+    resultUrl,
+    taskKind,
+  })
+
   await postNotification(slackClient, slackUserId, {
-    text: `${statusEmoji[newStatus] || '▪️'} Статус задачі «${taskName}» змінено на «${newStatus}».`,
+    text: `${getStatusEmoji(newStatus)} Статус задачі «${taskName}» змінено на «${newStatus}».`,
     blocks,
   }, {
     channelId: slackChannelId,
     threadTs: slackThreadTs,
   })
+}
+
+function getStatusEmoji(status) {
+  if (STATUS_EMOJI[status]) return STATUS_EMOJI[status]
+
+  const normalized = String(status || '').trim().toLowerCase()
+  if (normalized.includes('done')) return STATUS_EMOJI.Done
+  if (normalized.includes('ready')) return STATUS_EMOJI.Ready
+  if (normalized.includes('comment')) return STATUS_EMOJI.Comments
+  if (normalized.includes('progress')) return STATUS_EMOJI['In progress']
+  if (normalized.includes('to do')) return STATUS_EMOJI['To do']
+
+  return '▪️'
+}
+
+export async function updateRootTaskMessage(slackClient, {
+  channelId,
+  messageTs,
+  taskName,
+  status,
+  responsible = null,
+  pageUrl,
+  resultUrl,
+  taskKind = 'task',
+}) {
+  if (!channelId || !messageTs) return
+
+  const text = buildRootTaskText({
+    taskName,
+    status,
+    statusEmoji: getStatusEmoji(status),
+    responsible,
+    taskKind,
+  })
+  const actionElements = []
+
+  if (pageUrl) {
+    actionElements.push({
+      type: 'button',
+      text: { type: 'plain_text', text: '📋 Відкрити в Notion / додати файли' },
+      url: pageUrl,
+      style: 'primary',
+    })
+  }
+
+  if (resultUrl) {
+    actionElements.push({
+      type: 'button',
+      text: { type: 'plain_text', text: '🔗 Відкрити результат' },
+      url: resultUrl,
+    })
+  }
+
+  const blocks = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text,
+      },
+    },
+  ]
+
+  if (actionElements.length) {
+    blocks.push({
+      type: 'actions',
+      elements: actionElements,
+    })
+  }
+
+  try {
+    await slackClient.chat.update({
+      channel: channelId,
+      ts: messageTs,
+      text,
+      blocks,
+    })
+  } catch (error) {
+    console.error(`Failed to update root Slack task message ${channelId}/${messageTs}:`, error)
+  }
+}
+
+function buildRootTaskText({
+  taskName,
+  status,
+  statusEmoji,
+  responsible,
+  taskKind,
+}) {
+  const isFeedback = taskKind === 'feedback'
+  const responsibleText = formatDesignerForSlack(responsible)
+
+  return [
+    isFeedback
+      ? 'Готово, твоя правка вже в дизайн-команді ✨'
+      : 'Готово, твій запит уже в дизайн-команді ✨',
+    `*${taskName}*`,
+    '',
+    `${statusEmoji} *Статус:* ${status}`,
+    `🧭 *Відповідальний:* ${responsibleText}`,
+    '',
+    isFeedback
+      ? '💬 Цей тред — робоче місце правки. Пиши сюди все, що допоможе рухатись далі: контекст, апдейти, посилання, файли. Оновлення з Notion також прийдуть сюди.'
+      : '💬 Цей тред — робоче місце задачі. Пиши сюди все, що допоможе рухатись далі: контекст, апдейти, посилання, файли. Оновлення з Notion також прийдуть сюди.',
+  ].join('\n')
 }
 
 export async function sendQualitySurvey({
@@ -411,6 +530,7 @@ function getStatusActionElements({
   roundsLeft,
   roundNumber,
   designer,
+  taskKind,
 }) {
   if (newStatus === 'Comments') {
     const elements = []
@@ -421,7 +541,7 @@ function getStatusActionElements({
         text: { type: 'plain_text', text: '✅ Приймаю, правок немає' },
         action_id: 'accept_task_result',
         style: 'primary',
-        value: buildAcceptActionValue({ pageId, taskName, designer, requestUrl: pageUrl }),
+        value: buildAcceptActionValue({ pageId, taskName, designer, requestUrl: pageUrl, taskKind }),
       })
     }
 
@@ -472,13 +592,14 @@ function getStatusActionElements({
   return elements
 }
 
-function buildAcceptActionValue({ pageId, taskName, designer, requestUrl }) {
+function buildAcceptActionValue({ pageId, taskName, designer, requestUrl, taskKind }) {
   return JSON.stringify({
     pageId,
     taskName: String(taskName || 'Без назви').slice(0, 1000),
     designerName: designer?.name || null,
     designerUserId: designer?.userId || null,
     requestUrl: requestUrl || null,
+    taskKind: taskKind || 'task',
   })
 }
 

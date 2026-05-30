@@ -6,7 +6,7 @@ import {
   markFeedbackSurveySent,
   saveQualityFeedback,
 } from '../redis/store.js'
-import { sendQualitySurvey } from '../slack/notify.js'
+import { sendQualitySurvey, updateRootTaskMessage } from '../slack/notify.js'
 
 function parseActionValue(value) {
   if (!value) return {}
@@ -50,6 +50,25 @@ async function updateSourceMessage(client, body, text) {
   } catch (error) {
     console.error('Failed to update acceptance source message:', error)
   }
+}
+
+async function updateAcceptedTaskRootMessage(client, body, payload, taskName) {
+  const channelId = body.channel?.id
+  const rootTs = body.message?.thread_ts || body.message?.ts
+  if (!channelId || !rootTs) return
+
+  await updateRootTaskMessage(client, {
+    channelId,
+    messageTs: rootTs,
+    taskName,
+    status: 'Ready',
+    responsible: {
+      name: payload.designerName,
+      userId: payload.designerUserId,
+    },
+    pageUrl: payload.requestUrl,
+    taskKind: payload.taskKind,
+  })
 }
 
 function getQualityFeedbackModal(payload) {
@@ -163,6 +182,7 @@ export async function handleTaskAcceptance({ body, client }) {
       body,
       `✅ *${taskName}* прийнято без правок. Статус у Notion оновлено на «Ready».`
     )
+    await updateAcceptedTaskRootMessage(client, body, payload, taskName)
 
     if (!result.commentCreated) {
       await postUserMessage(
