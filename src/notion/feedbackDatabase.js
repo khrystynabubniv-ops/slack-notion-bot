@@ -2,7 +2,8 @@ import { Client } from '@notionhq/client'
 import { notionRequest } from './request.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
-const FEEDBACK_DATABASE_ID = process.env.NOTION_FEEDBACK_DATABASE_ID?.trim()
+const DEFAULT_FEEDBACK_DATABASE_ID = '164e70dbe0774b8ca7fa761ab2f0e6a5'
+const FEEDBACK_DATABASE_ID = process.env.NOTION_FEEDBACK_DATABASE_ID?.trim() || DEFAULT_FEEDBACK_DATABASE_ID
 let feedbackDatabasePropertiesPromise = null
 
 async function getFeedbackDatabaseProperties() {

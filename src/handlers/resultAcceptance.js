@@ -4,6 +4,7 @@ import {
   deleteTask,
   getQualityFeedback,
   getRoundsCount,
+  getTask,
   markFeedbackSurveySent,
   saveQualityFeedback,
 } from '../redis/store.js'
@@ -214,6 +215,14 @@ export async function handleTaskAcceptance({ body, client }) {
     const storedRoundsCount = await getRoundsCount(pageId)
     const payloadRoundsCount = normalizeNonNegativeInteger(payload.completedRounds, 0)
     const roundsCount = Math.max(storedRoundsCount, payloadRoundsCount)
+    const storedTask = await getTask(pageId)
+    const feedbackContext = {
+      requesterName: payload.requesterName || storedTask?.requesterName || null,
+      requestUrl: payload.requestUrl || storedTask?.pageUrl || null,
+      team: payload.team || storedTask?.team || null,
+      hub: payload.hub || storedTask?.hub || null,
+      requestType: payload.requestType || storedTask?.requestType || null,
+    }
     const existingFeedback = await getQualityFeedback(pageId)
     const acceptanceText = getAcceptanceText(taskName, roundsCount, taskKind, acceptedStatus)
     const shouldSendSurvey = !isFeedbackTask(taskKind) && !existingFeedback?.feedbackSubmittedAt
@@ -236,7 +245,11 @@ export async function handleTaskAcceptance({ body, client }) {
         slackUserId: userId,
         taskName,
         pageId,
-        requestUrl: payload.requestUrl,
+        requesterName: feedbackContext.requesterName,
+        requestUrl: feedbackContext.requestUrl,
+        team: feedbackContext.team,
+        hub: feedbackContext.hub,
+        requestType: feedbackContext.requestType,
         completedAt,
       })
 
@@ -244,7 +257,11 @@ export async function handleTaskAcceptance({ body, client }) {
         pageId,
         slackUserId: userId,
         taskName,
-        requestUrl: payload.requestUrl,
+        requesterName: feedbackContext.requesterName,
+        requestUrl: feedbackContext.requestUrl,
+        team: feedbackContext.team,
+        hub: feedbackContext.hub,
+        requestType: feedbackContext.requestType,
         completedAt,
       })
     }
