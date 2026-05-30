@@ -8,6 +8,7 @@ import {
   saveFailedSubmission,
   saveTask,
 } from '../redis/store.js'
+import { formatDesignerForSlack } from '../slack/designerMentions.js'
 import { getModalBlocks } from './modalBlocks.js'
 
 const DESIGN_CHANNEL = process.env.DESIGN_CHANNEL_ID?.trim() || null
@@ -140,13 +141,15 @@ function formatQueueRetryTime(delayMs) {
   })
 }
 
-function buildTaskThreadText({ taskName, status = 'To do', responsible = 'дизайн-команда' }) {
+function buildTaskThreadText({ taskName, status = 'To do', responsible = null }) {
+  const responsibleText = formatDesignerForSlack(responsible)
+
   return [
     'Готово, твій запит уже в дизайн-команді ✨',
     `*${taskName}*`,
     '',
     `🟢 *Статус:* ${status}`,
-    `🧭 *Відповідальний:* ${responsible}`,
+    `🧭 *Відповідальний:* ${responsibleText}`,
     '',
     '💬 Цей тред — робоче місце задачі. Пиши сюди все, що допоможе рухатись далі: контекст, апдейти, посилання, файли. Оновлення з Notion також прийдуть сюди.',
   ].join('\n')

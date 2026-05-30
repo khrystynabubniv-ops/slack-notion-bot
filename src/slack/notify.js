@@ -1,3 +1,5 @@
+import { formatDesignerForSlack } from './designerMentions.js'
+
 const DEFAULT_OPS_LEAD_SLACK_ID = 'U0APPD32H6D'
 
 export async function sendStatusUpdate({
@@ -33,11 +35,11 @@ export async function sendStatusUpdate({
 
   const formattedDeadline = formatDeadline(deadline)
   const resultUrl = normalizeUrl(finalProjectUrl)
-  const designerName = designer?.name || assignee || 'не призначено'
+  const assigneeDisplay = formatDesignerForSlack(designer || assignee)
   const summaryLines = [
     `${infoEmoji.status} Статус: «${newStatus}»`,
     `${infoEmoji.task} Задача: ${taskName}`,
-    `${infoEmoji.assignee} Виконавець: ${assignee || 'не призначено'}`,
+    `${infoEmoji.assignee} Виконавець: ${assigneeDisplay}`,
     `${infoEmoji.deadline} Дедлайн: ${formattedDeadline}`,
   ]
   const resultBlocks = resultUrl && newStatus === 'Ready'
@@ -66,7 +68,7 @@ export async function sendStatusUpdate({
     ? buildCommentsReviewBlocks({
         taskName,
         newStatus,
-        designerName,
+        designerDisplay: assigneeDisplay,
         resultUrl,
         feedbackNoticeBlocks,
         actionElements,
@@ -297,7 +299,7 @@ function getResultText(status, resultUrl) {
 function buildCommentsReviewBlocks({
   taskName,
   newStatus,
-  designerName,
+  designerDisplay,
   resultUrl,
   feedbackNoticeBlocks,
   actionElements,
@@ -327,7 +329,7 @@ function buildCommentsReviewBlocks({
           "👀 *Твоя задача очікує твоє рев'ю*",
           `*${escapeMrkdwn(taskName)}*`,
           `Оновлено статус: «${newStatus}»`,
-          `Дизайнер: ${escapeMrkdwn(designerName)}`,
+          `Дизайнер: ${designerDisplay}`,
           resultUrl ? `:sparkles: Ось результати: <${resultUrl}|відкрити!>` : ':sparkles: Ось результати: посилання ще не додано.',
         ].join('\n\n'),
       },

@@ -1,5 +1,6 @@
 import { createFeedbackSubitem } from '../notion/createSubitem.js'
 import { getRoundsCount, getTask, incrementRoundsCount, saveTask } from '../redis/store.js'
+import { formatDesignerForSlack } from '../slack/designerMentions.js'
 
 const DEFAULT_OPS_LEAD_SLACK_ID = 'U0APPD32H6D'
 
@@ -48,21 +49,26 @@ async function notifyUser(client, userId, text) {
 function buildFeedbackThreadText({
   taskName,
   status = 'To do',
-  responsible = 'дизайнер',
+  designer = null,
+  responsible = null,
 }) {
+  const responsibleText = responsible
+    ? formatDesignerForSlack(responsible)
+    : formatDesignerForSlack(designer)
+
   return [
     'Готово, твоя правка вже в дизайн-команді ✨',
     `*${taskName}*`,
     '',
     `🟢 *Статус:* ${status}`,
-    `🧭 *Відповідальний:* ${responsible}`,
+    `🧭 *Відповідальний:* ${responsibleText}`,
     '',
     '💬 Цей тред — робоче місце правки. Пиши сюди все, що допоможе рухатись далі: контекст, апдейти, посилання, файли. Оновлення з Notion також прийдуть сюди.',
   ].join('\n')
 }
 
-async function postFeedbackTaskCreatedMessage({ client, userId, taskName, pageUrl }) {
-  const text = buildFeedbackThreadText({ taskName })
+async function postFeedbackTaskCreatedMessage({ client, userId, taskName, pageUrl, designer }) {
+  const text = buildFeedbackThreadText({ taskName, designer })
 
   return await client.chat.postMessage({
     channel: userId,
@@ -138,6 +144,7 @@ export async function handleFeedbackSubmission({ body, view, client }) {
         userId,
         taskName: feedbackTask.taskName,
         pageUrl: feedbackTask.pageUrl,
+        designer: feedbackTask.designer,
       })
     } catch (notifyError) {
       console.error(`Failed to send feedback task notification to ${userId}:`, notifyError)

@@ -138,6 +138,45 @@ function addDesignerOwner(properties, databaseProperties, parentProperties) {
   if (value) properties.Owner = value
 }
 
+function extractDesigner(parentProperties) {
+  const property = parentProperties.Designer || parentProperties['Дизайнер']
+  if (!property) return null
+
+  if (property.people?.length) {
+    const names = property.people
+      .map((person) => person.name)
+      .filter(Boolean)
+
+    return {
+      name: names.join(', '),
+      userId: property.people[0]?.id || null,
+    }
+  }
+
+  if (property.title?.length) {
+    return {
+      name: property.title.map((item) => item.plain_text).join('').trim(),
+      userId: null,
+    }
+  }
+
+  if (property.rich_text?.length) {
+    return {
+      name: property.rich_text.map((item) => item.plain_text).join('').trim(),
+      userId: null,
+    }
+  }
+
+  if (property.select?.name) {
+    return {
+      name: property.select.name,
+      userId: null,
+    }
+  }
+
+  return null
+}
+
 export async function createFeedbackSubitem({ parentPageId, taskName, roundNumber, feedbackText }) {
   if (!parentPageId) {
     throw new Error('parentPageId is required')
@@ -150,7 +189,9 @@ export async function createFeedbackSubitem({ parentPageId, taskName, roundNumbe
       'parent task retrieve for feedback subitem'
     ),
   ])
+  const parentProperties = parentPage.properties || {}
   const titlePropertyName = resolveTitlePropertyName(databaseProperties)
+  const designer = extractDesigner(parentProperties)
 
   if (!titlePropertyName) {
     throw new Error('Notion database is missing a title property for feedback sub-items.')
@@ -183,10 +224,10 @@ export async function createFeedbackSubitem({ parentPageId, taskName, roundNumbe
   }
 
   for (const propertyName of COPIED_PARENT_PROPERTIES) {
-    addCopiedParentProperty(properties, databaseProperties, parentPage.properties || {}, propertyName)
+    addCopiedParentProperty(properties, databaseProperties, parentProperties, propertyName)
   }
 
-  addDesignerOwner(properties, databaseProperties, parentPage.properties || {})
+  addDesignerOwner(properties, databaseProperties, parentProperties)
 
   if (hasPropertyType(databaseProperties, DESCRIPTION_PROPERTY, ['rich_text'])) {
     properties[DESCRIPTION_PROPERTY] = {
@@ -215,5 +256,6 @@ export async function createFeedbackSubitem({ parentPageId, taskName, roundNumbe
     pageUrl: buildTaskPageUrl(response.id, response.url),
     taskName: feedbackTaskName,
     initialStatus: DEFAULT_STATUS,
+    designer,
   }
 }
