@@ -157,7 +157,7 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
     await handleTaskAcceptance({ body, client })
   })
 
-  app.action('quality_rating', async ({ ack, body, client }) => {
+  app.action(/^quality_rating(?:_\d+)?$/, async ({ ack, body, client }) => {
     await ack()
     await handleQualityRating({ body, client })
   })

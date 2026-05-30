@@ -87,7 +87,7 @@ function buildQualitySurveyBlocks({ text, taskName, pageId, requestUrl, complete
       elements: ratings.map((rating) => ({
         type: 'button',
         text: { type: 'plain_text', text: `⭐ ${rating}` },
-        action_id: 'quality_rating',
+        action_id: `quality_rating_${rating}`,
         value: JSON.stringify({
           ...baseValue,
           rating,

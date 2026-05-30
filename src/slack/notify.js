@@ -23,6 +23,10 @@ function isReadyStatus(status) {
   return normalized === 'ready' || normalized.includes('ready') || normalized.includes('реді')
 }
 
+function shouldShowResultAction(status) {
+  return isCommentsStatus(status) || isReadyStatus(status)
+}
+
 function isDoneStatus(status) {
   const normalized = getNormalizedStatus(status)
   return normalized.includes('done')
@@ -306,7 +310,7 @@ export async function updateRootTaskMessage(slackClient, {
     })
   }
 
-  if (resultUrl) {
+  if (resultUrl && shouldShowResultAction(status)) {
     actionElements.push({
       type: 'button',
       text: { type: 'plain_text', text: '🔗 Відкрити результат' },
@@ -444,7 +448,7 @@ export async function sendQualitySurvey({
         elements: ratings.map((rating) => ({
           type: 'button',
           text: { type: 'plain_text', text: `⭐ ${rating}` },
-          action_id: 'quality_rating',
+          action_id: `quality_rating_${rating}`,
           value: JSON.stringify({
             ...baseValue,
             rating,
@@ -816,7 +820,7 @@ function buildFieldUpdateBlocks({
     })
   }
 
-  if (resultUrl) {
+  if (resultUrl && shouldShowResultAction(status)) {
     actionElements.push({
       type: 'button',
       text: { type: 'plain_text', text: '🔗 Відкрити результат' },
@@ -971,6 +975,14 @@ function getStatusActionElements({
       })
     }
 
+    if (resultUrl) {
+      elements.push({
+        type: 'button',
+        text: { type: 'plain_text', text: '🔗 Відкрити результат' },
+        url: resultUrl,
+      })
+    }
+
     return elements
   }
 
@@ -995,14 +1007,6 @@ function getStatusActionElements({
       text: { type: 'plain_text', text: '📋 Відкрити в Notion' },
       url: pageUrl,
       style: 'primary',
-    })
-  }
-
-  if (resultUrl) {
-    elements.push({
-      type: 'button',
-      text: { type: 'plain_text', text: '🔗 Відкрити результат' },
-      url: resultUrl,
     })
   }
 
