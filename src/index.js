@@ -140,6 +140,10 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
       taskName: payload.taskName,
       roundNumber: payload.roundNumber,
       maxRounds: payload.maxRounds,
+      sourceMessage: {
+        channelId: body.channel?.id,
+        messageTs: body.message?.ts,
+      },
     })
   })
 

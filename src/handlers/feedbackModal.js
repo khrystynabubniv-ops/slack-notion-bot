@@ -17,7 +17,15 @@ function normalizeMaxRounds(maxRounds) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
 }
 
-export async function openFeedbackModal({ client, triggerId, pageId, taskName, roundNumber, maxRounds }) {
+export async function openFeedbackModal({
+  client,
+  triggerId,
+  pageId,
+  taskName,
+  roundNumber,
+  maxRounds,
+  sourceMessage,
+}) {
   const normalizedRoundNumber = normalizeRoundNumber(roundNumber)
   const normalizedTaskName = taskName || 'Без назви'
 
@@ -31,6 +39,8 @@ export async function openFeedbackModal({ client, triggerId, pageId, taskName, r
         taskName: normalizedTaskName,
         roundNumber: normalizedRoundNumber,
         maxRounds: normalizeMaxRounds(maxRounds),
+        sourceChannelId: sourceMessage?.channelId || null,
+        sourceMessageTs: sourceMessage?.messageTs || null,
       }),
       title: { type: 'plain_text', text: `Правка #${normalizedRoundNumber}` },
       submit: { type: 'plain_text', text: 'Надіслати правки' },

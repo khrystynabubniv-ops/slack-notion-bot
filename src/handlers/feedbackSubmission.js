@@ -44,6 +44,13 @@ function formatFeedbackPreview(feedbackText) {
   return `«${normalized.slice(0, 237)}...»`
 }
 
+function escapeMrkdwn(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
 async function notifyUser(client, userId, text) {
   if (!userId) return
 
@@ -51,6 +58,60 @@ async function notifyUser(client, userId, text) {
     channel: userId,
     text,
   })
+}
+
+function buildClosedReviewPromptText({ taskName, roundNumber, alreadySubmitted = false }) {
+  return [
+    alreadySubmitted
+      ? `✏️ *Правки #${roundNumber} вже передано дизайнеру*`
+      : `✏️ *Правки #${roundNumber} передано дизайнеру*`,
+    `*${escapeMrkdwn(taskName)}*`,
+    "Кнопки цього рев'ю вимкнено. Нове рев'ю прийде окремим повідомленням, коли статус задачі знову стане «Comments».",
+  ].join('\n\n')
+}
+
+async function updateReviewPromptAfterFeedback(client, metadata, options) {
+  const channel = metadata.sourceChannelId
+  const ts = metadata.sourceMessageTs
+
+  if (!channel || !ts) return
+
+  const text = buildClosedReviewPromptText(options)
+
+  try {
+    await client.chat.update({
+      channel,
+      ts,
+      text,
+      blocks: [
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: '*Design Bot*',
+            },
+            {
+              type: 'mrkdwn',
+              text: 'щойно',
+            },
+          ],
+        },
+        {
+          type: 'divider',
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text,
+          },
+        },
+      ],
+    })
+  } catch (error) {
+    console.error('Failed to remove feedback buttons from review prompt:', error)
+  }
 }
 
 function buildFeedbackThreadText({
@@ -135,7 +196,22 @@ export async function handleFeedbackSubmission({ body, view, client }) {
 
   try {
     const roundsCount = await getRoundsCount(pageId)
-    const roundNumber = Math.max(normalizeRoundNumber(metadata.roundNumber), roundsCount + 1)
+    const roundNumber = normalizeRoundNumber(metadata.roundNumber)
+    const expectedRoundNumber = roundsCount + 1
+
+    if (roundNumber !== expectedRoundNumber) {
+      await updateReviewPromptAfterFeedback(client, metadata, {
+        taskName,
+        roundNumber,
+        alreadySubmitted: true,
+      })
+      await notifyUser(
+        client,
+        userId,
+        "⚠️ Це рев'ю вже неактуальне. Дочекайся нового повідомлення, коли статус знову стане «Comments»."
+      )
+      return
+    }
 
     if (maxRounds !== null && roundNumber > maxRounds) {
       await notifyUser(
@@ -154,6 +230,10 @@ export async function handleFeedbackSubmission({ body, view, client }) {
       feedbackText,
     })
     await incrementRoundsCount(pageId)
+    await updateReviewPromptAfterFeedback(client, metadata, {
+      taskName,
+      roundNumber,
+    })
 
     let feedbackMessage = null
     const parentChannelId = parentTask?.slackChannelId || userId

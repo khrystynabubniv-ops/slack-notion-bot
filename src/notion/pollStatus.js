@@ -661,10 +661,12 @@ export async function startPolling(slackClient) {
                 ? Math.max(maxRounds - roundsCount, 0)
                 : null
               const finalProjectChanged = fieldChanges.some((change) => change.type === 'finalProject')
+              const canRequestReviewFromResultChange = roundsCount === 0
               const shouldSendReviewRequest =
                 finalProjectChanged &&
                 isCommentsStatus(currentTask.status) &&
-                Boolean(normalizeTrackedUrl(currentTask.finalProjectUrl))
+                Boolean(normalizeTrackedUrl(currentTask.finalProjectUrl)) &&
+                canRequestReviewFromResultChange
               const regularFieldChanges = shouldSendReviewRequest
                 ? fieldChanges.filter((change) => change.type !== 'finalProject')
                 : fieldChanges
