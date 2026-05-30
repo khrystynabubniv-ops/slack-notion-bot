@@ -1,6 +1,7 @@
 import { createFeedbackSubitem } from '../notion/createSubitem.js'
 import { getRoundsCount, getTask, incrementRoundsCount, saveTask } from '../redis/store.js'
 import { formatDesignerForSlack } from '../slack/designerMentions.js'
+import { updateRootTaskMessage } from '../slack/notify.js'
 
 const DEFAULT_OPS_LEAD_SLACK_ID = 'U0APPD32H6D'
 
@@ -66,7 +67,7 @@ function buildClosedReviewPromptText({ taskName, roundNumber, alreadySubmitted =
       ? `✏️ *Правки #${roundNumber} вже передано дизайнеру*`
       : `✏️ *Правки #${roundNumber} передано дизайнеру*`,
     `*${escapeMrkdwn(taskName)}*`,
-    "Кнопки цього рев'ю вимкнено. Нове рев'ю прийде окремим повідомленням, коли статус задачі знову стане «Comments».",
+    "Кнопки цього рев'ю вимкнено. Коли статус задачі знову стане «Comments», актуальні кнопки зʼявляться в головному повідомленні задачі.",
   ].join('\n\n')
 }
 
@@ -112,6 +113,58 @@ async function updateReviewPromptAfterFeedback(client, metadata, options) {
   } catch (error) {
     console.error('Failed to remove feedback buttons from review prompt:', error)
   }
+}
+
+function isRootTaskSource(metadata, parentTask) {
+  return Boolean(
+    parentTask?.slackMessageTs &&
+      metadata.sourceMessageTs &&
+      parentTask.slackMessageTs === metadata.sourceMessageTs
+  )
+}
+
+function getParentResponsible(parentTask) {
+  if (parentTask?.lastDesignerName || parentTask?.lastDesignerUserId) {
+    return {
+      name: parentTask.lastDesignerName || null,
+      userId: parentTask.lastDesignerUserId || null,
+    }
+  }
+
+  return parentTask?.lastAssignee || null
+}
+
+async function updateReviewSourceAfterFeedback(client, metadata, {
+  parentTask,
+  taskName,
+  roundNumber,
+  alreadySubmitted = false,
+  roundsCount = null,
+}) {
+  if (!isRootTaskSource(metadata, parentTask)) {
+    await updateReviewPromptAfterFeedback(client, metadata, {
+      taskName,
+      roundNumber,
+      alreadySubmitted,
+    })
+    return
+  }
+
+  await updateRootTaskMessage(client, {
+    channelId: parentTask.slackChannelId,
+    messageTs: parentTask.slackMessageTs,
+    taskName: parentTask.taskName || taskName,
+    status: parentTask.lastStatus || 'Comments',
+    responsible: getParentResponsible(parentTask),
+    pageUrl: parentTask.pageUrl,
+    resultUrl: parentTask.lastFinalProjectUrl,
+    taskKind: parentTask.taskKind || 'task',
+    completedRounds: roundsCount ?? parentTask.roundsCount ?? 0,
+    statusNote: alreadySubmitted
+      ? `Правки #${roundNumber} уже передано дизайнеру. Коли буде нове ревʼю, кнопки знову зʼявляться тут.`
+      : `Правки #${roundNumber} передано дизайнеру. Коли буде нове ревʼю, кнопки знову зʼявляться тут.`,
+    suppressStatusActions: true,
+  })
 }
 
 function buildFeedbackThreadText({
@@ -196,17 +249,20 @@ export async function handleFeedbackSubmission({ body, view, client }) {
     const roundsCount = await getRoundsCount(pageId)
     const roundNumber = normalizeRoundNumber(metadata.roundNumber)
     const expectedRoundNumber = roundsCount + 1
+    const parentTask = await getTask(pageId)
 
     if (roundNumber !== expectedRoundNumber) {
-      await updateReviewPromptAfterFeedback(client, metadata, {
+      await updateReviewSourceAfterFeedback(client, metadata, {
+        parentTask,
         taskName,
         roundNumber,
         alreadySubmitted: true,
+        roundsCount,
       })
       await notifyUser(
         client,
         userId,
-        "⚠️ Це рев'ю вже неактуальне. Дочекайся нового повідомлення, коли статус знову стане «Comments»."
+        "⚠️ Це рев'ю вже неактуальне. Дочекайся оновлення головного повідомлення, коли статус знову стане «Comments»."
       )
       return
     }
@@ -220,17 +276,18 @@ export async function handleFeedbackSubmission({ body, view, client }) {
       return
     }
 
-    const parentTask = await getTask(pageId)
     const feedbackTask = await createFeedbackSubitem({
       parentPageId: pageId,
       taskName,
       roundNumber,
       feedbackText,
     })
-    await incrementRoundsCount(pageId)
-    await updateReviewPromptAfterFeedback(client, metadata, {
+    const updatedRoundsCount = await incrementRoundsCount(pageId)
+    await updateReviewSourceAfterFeedback(client, metadata, {
+      parentTask,
       taskName,
       roundNumber,
+      roundsCount: updatedRoundsCount,
     })
 
     let feedbackMessage = null

@@ -513,6 +513,11 @@ async function checkpointTaskSnapshot(pageId, currentTask) {
 }
 
 async function refreshRootTaskMessage(slackClient, task, currentTask, pageUrl) {
+  const roundsCount = await getRoundsCount(task.pageId)
+  const roundsLeft = currentTask.maxRounds !== null
+    ? Math.max(currentTask.maxRounds - roundsCount, 0)
+    : null
+
   await updateRootTaskMessage(slackClient, {
     channelId: task.slackChannelId,
     messageTs: task.slackMessageTs,
@@ -522,6 +527,10 @@ async function refreshRootTaskMessage(slackClient, task, currentTask, pageUrl) {
     pageUrl,
     resultUrl: currentTask.finalProjectUrl,
     taskKind: task.taskKind,
+    pageId: task.pageId,
+    roundsLeft,
+    roundNumber: roundsCount + 1,
+    designer: currentTask.designer,
   })
 }
 
@@ -607,16 +616,13 @@ export async function startPolling(slackClient) {
               slackClient,
               slackUserId: task.slackUserId,
               taskName: task.taskName,
-              oldStatus: task.lastStatus,
               newStatus: currentTask.status,
               assignee: currentTask.assignee,
-              deadline: currentTask.deadline,
               finalProjectUrl: currentTask.finalProjectUrl,
               pageUrl,
               pageId: task.pageId,
               slackChannelId: task.slackChannelId,
               slackMessageTs: task.slackMessageTs,
-              slackThreadTs: task.slackThreadTs || task.slackMessageTs,
               taskKind: task.taskKind,
               roundsLeft,
               roundNumber: roundsCount + 1,
@@ -678,17 +684,18 @@ export async function startPolling(slackClient) {
               if (regularFieldChanges.length) {
                 await sendTaskFieldUpdate({
                   slackClient,
-                  slackUserId: task.slackUserId,
                   taskName: task.taskName,
                   status: currentTask.status,
                   responsible: getCurrentResponsible(currentTask),
                   finalProjectUrl: currentTask.finalProjectUrl,
                   pageUrl,
-                  changes: regularFieldChanges,
                   slackChannelId: task.slackChannelId,
                   slackMessageTs: task.slackMessageTs,
-                  slackThreadTs: task.slackThreadTs || task.slackMessageTs,
                   taskKind: task.taskKind,
+                  pageId: task.pageId,
+                  roundsLeft,
+                  roundNumber: roundsCount + 1,
+                  designer: currentTask.designer,
                 })
               }
 
@@ -704,7 +711,6 @@ export async function startPolling(slackClient) {
                   pageId: task.pageId,
                   slackChannelId: task.slackChannelId,
                   slackMessageTs: task.slackMessageTs,
-                  slackThreadTs: task.slackThreadTs || task.slackMessageTs,
                   taskKind: task.taskKind,
                   roundsLeft,
                   roundNumber: roundsCount + 1,
@@ -762,8 +768,6 @@ export async function startPolling(slackClient) {
               commentAuthor: comment.author,
               commentText: comment.text,
               pageUrl,
-              slackChannelId: task.slackChannelId,
-              slackThreadTs: task.slackThreadTs || task.slackMessageTs,
             })
 
             await updateLastComment(task.pageId, comment)
