@@ -464,6 +464,7 @@ async function postThreadStatusMovement(slackClient, {
     await slackClient.chat.postMessage({
       channel: channelId,
       thread_ts: threadTs,
+      reply_broadcast: true,
       text,
       blocks: [
         {
@@ -498,6 +499,7 @@ async function postThreadReviewMovement(slackClient, {
     await slackClient.chat.postMessage({
       channel: channelId,
       thread_ts: threadTs,
+      reply_broadcast: true,
       text,
       blocks: [
         {
