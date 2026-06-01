@@ -62,6 +62,32 @@ function parseFeedbackActionValue(value) {
   }
 }
 
+function getActionMessageSource(body) {
+  return {
+    channelId: body.channel?.id || body.container?.channel_id || null,
+    messageTs: body.message?.ts || body.container?.message_ts || null,
+  }
+}
+
+async function notifyFeedbackModalOpenFailure(client, body) {
+  const channel = body.channel?.id || body.container?.channel_id
+  const user = body.user?.id
+  const threadTs = body.message?.thread_ts || body.message?.ts || body.container?.message_ts
+
+  if (!channel || !user) return
+
+  try {
+    await client.chat.postEphemeral({
+      channel,
+      user,
+      ...(threadTs ? { thread_ts: threadTs } : {}),
+      text: 'Не вдалося відкрити форму правок. Натисни кнопку ще раз або онови повідомлення задачі.',
+    })
+  } catch (error) {
+    console.error('Failed to notify user about feedback modal open failure:', error)
+  }
+}
+
 if (!token || token.trim() === '' || token.trim() === 'placeholder') {
   console.log('⚠️  SLACK_BOT_TOKEN not set — waiting for approval. Server starting in stub mode.')
   const { createServer } = await import('http')
@@ -134,18 +160,20 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
       return
     }
 
-    await openFeedbackModal({
-      client,
-      triggerId: body.trigger_id,
-      pageId: payload.pageId,
-      taskName: payload.taskName,
-      roundNumber: payload.roundNumber,
-      maxRounds: payload.maxRounds,
-      sourceMessage: {
-        channelId: body.channel?.id,
-        messageTs: body.message?.ts,
-      },
-    })
+    try {
+      await openFeedbackModal({
+        client,
+        triggerId: body.trigger_id,
+        pageId: payload.pageId,
+        taskName: payload.taskName,
+        roundNumber: payload.roundNumber,
+        maxRounds: payload.maxRounds,
+        sourceMessage: getActionMessageSource(body),
+      })
+    } catch (error) {
+      console.error('Failed to open feedback modal:', error)
+      await notifyFeedbackModalOpenFailure(client, body)
+    }
   })
 
   app.view('feedback_submission', async ({ ack, body, view, client }) => {

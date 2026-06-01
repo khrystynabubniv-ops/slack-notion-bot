@@ -230,7 +230,7 @@ async function postFeedbackTaskCreatedMessage({
 export async function handleFeedbackSubmission({ body, view, client }) {
   const metadata = parsePrivateMetadata(view.private_metadata)
   const pageId = metadata.pageId
-  const taskName = metadata.taskName || 'Без назви'
+  const metadataTaskName = metadata.taskName || 'Без назви'
   const maxRounds = normalizeMaxRounds(metadata.maxRounds)
   const userId = body.user?.id
   const feedbackText = getFeedbackText(view)
@@ -250,6 +250,7 @@ export async function handleFeedbackSubmission({ body, view, client }) {
     const roundNumber = normalizeRoundNumber(metadata.roundNumber)
     const expectedRoundNumber = roundsCount + 1
     const parentTask = await getTask(pageId)
+    const taskName = parentTask?.taskName || metadataTaskName
 
     if (roundNumber !== expectedRoundNumber) {
       await updateReviewSourceAfterFeedback(client, metadata, {

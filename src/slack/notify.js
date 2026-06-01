@@ -773,7 +773,7 @@ function buildFeedbackActionValue({ pageId, taskName, roundsLeft, roundNumber })
 
   return JSON.stringify({
     pageId,
-    taskName: String(taskName || 'Без назви').slice(0, 1000),
+    taskName: clampActionValueText(taskName || 'Без назви', 200),
     roundNumber: normalizedRoundNumber,
     maxRounds,
   })
@@ -801,6 +801,12 @@ function normalizePositiveInteger(value, fallback) {
 function normalizeNonNegativeInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
+}
+
+function clampActionValueText(value, maxLength) {
+  const normalized = String(value || '').replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+  return normalized.length > maxLength ? normalized.slice(0, maxLength) : normalized
 }
 
 function formatUserMention(slackUserId) {
