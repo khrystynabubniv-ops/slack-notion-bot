@@ -614,6 +614,7 @@ export async function startPolling(slackClient) {
 
             await sendStatusUpdate({
               slackClient,
+              slackUserId: task.slackUserId,
               taskName: task.taskName,
               oldStatus: task.lastStatus,
               newStatus: currentTask.status,
@@ -703,6 +704,7 @@ export async function startPolling(slackClient) {
               if (shouldSendReviewRequest) {
                 await sendReviewRequest({
                   slackClient,
+                  slackUserId: task.slackUserId,
                   taskName: task.taskName,
                   status: currentTask.status,
                   assignee: currentTask.assignee,

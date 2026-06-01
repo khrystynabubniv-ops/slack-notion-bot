@@ -43,6 +43,7 @@ function isToDoStatus(status) {
 
 export async function sendStatusUpdate({
   slackClient,
+  slackUserId,
   taskName,
   oldStatus,
   newStatus,
@@ -83,6 +84,7 @@ export async function sendStatusUpdate({
     oldStatus,
     newStatus,
     taskKind,
+    slackUserId,
   })
 }
 
@@ -121,6 +123,7 @@ export async function sendTaskFieldUpdate({
 
 export async function sendReviewRequest({
   slackClient,
+  slackUserId,
   taskName,
   status,
   assignee,
@@ -156,6 +159,7 @@ export async function sendReviewRequest({
     channelId: slackChannelId,
     threadTs: slackThreadTs || slackMessageTs,
     taskKind,
+    slackUserId,
   })
 }
 
@@ -448,13 +452,15 @@ async function postThreadStatusMovement(slackClient, {
   oldStatus,
   newStatus,
   taskKind = 'task',
+  slackUserId = null,
 }) {
   if (!channelId || !threadTs) return
 
   const isFeedback = taskKind === 'feedback'
   const label = isFeedback ? 'Статус правки' : 'Статус'
+  const mention = formatUserMention(slackUserId)
   const text = [
-    isFeedback ? '*Є рух по правці* 🔄' : '*Є рух по задачі* 🔄',
+    `${mention ? `${mention} ` : ''}${isFeedback ? '*Є рух по правці* 🔄' : '*Є рух по задачі* 🔄'}`,
     oldStatus
       ? `*${label}:* ${escapeMrkdwn(oldStatus)} → ${escapeMrkdwn(newStatus)}`
       : `*${label}:* ${escapeMrkdwn(newStatus)}`,
@@ -464,7 +470,6 @@ async function postThreadStatusMovement(slackClient, {
     await slackClient.chat.postMessage({
       channel: channelId,
       thread_ts: threadTs,
-      reply_broadcast: true,
       text,
       blocks: [
         {
@@ -485,11 +490,13 @@ async function postThreadReviewMovement(slackClient, {
   channelId,
   threadTs,
   taskKind = 'task',
+  slackUserId = null,
 }) {
   if (!channelId || !threadTs) return
 
+  const mention = formatUserMention(slackUserId)
   const text = [
-    taskKind === 'feedback' ? '*Є рух по правці* 🔄' : '*Є рух по задачі* 🔄',
+    `${mention ? `${mention} ` : ''}${taskKind === 'feedback' ? '*Є рух по правці* 🔄' : '*Є рух по задачі* 🔄'}`,
     taskKind === 'feedback'
       ? 'Результат правки оновлено для ревʼю.'
       : 'Результат оновлено для ревʼю.',
@@ -499,7 +506,6 @@ async function postThreadReviewMovement(slackClient, {
     await slackClient.chat.postMessage({
       channel: channelId,
       thread_ts: threadTs,
-      reply_broadcast: true,
       text,
       blocks: [
         {
@@ -795,6 +801,11 @@ function normalizePositiveInteger(value, fallback) {
 function normalizeNonNegativeInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
+}
+
+function formatUserMention(slackUserId) {
+  const normalized = String(slackUserId || '').trim()
+  return /^[UW][A-Z0-9]+$/.test(normalized) ? `<@${normalized}>` : ''
 }
 
 function escapeMrkdwn(value) {
