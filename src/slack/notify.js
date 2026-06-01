@@ -44,6 +44,7 @@ function isToDoStatus(status) {
 export async function sendStatusUpdate({
   slackClient,
   taskName,
+  oldStatus,
   newStatus,
   assignee,
   finalProjectUrl,
@@ -51,6 +52,7 @@ export async function sendStatusUpdate({
   pageId,
   slackChannelId,
   slackMessageTs,
+  slackThreadTs,
   taskKind = 'task',
   roundsLeft = null,
   roundNumber = 1,
@@ -73,6 +75,14 @@ export async function sendStatusUpdate({
     roundsLeft,
     roundNumber,
     designer: designer || assignee,
+  })
+
+  await postThreadStatusMovement(slackClient, {
+    channelId: slackChannelId,
+    threadTs: slackThreadTs || slackMessageTs,
+    oldStatus,
+    newStatus,
+    taskKind,
   })
 }
 
@@ -119,6 +129,7 @@ export async function sendReviewRequest({
   pageId,
   slackChannelId,
   slackMessageTs,
+  slackThreadTs,
   taskKind = 'task',
   roundsLeft = null,
   roundNumber = 1,
@@ -141,6 +152,11 @@ export async function sendReviewRequest({
     designer: designer || assignee,
   })
 
+  await postThreadReviewMovement(slackClient, {
+    channelId: slackChannelId,
+    threadTs: slackThreadTs || slackMessageTs,
+    taskKind,
+  })
 }
 
 function getStatusEmoji(status) {
@@ -424,6 +440,78 @@ export async function sendCommentUpdate({
     channelId: slackChannelId,
     threadTs: slackThreadTs,
   })
+}
+
+async function postThreadStatusMovement(slackClient, {
+  channelId,
+  threadTs,
+  oldStatus,
+  newStatus,
+  taskKind = 'task',
+}) {
+  if (!channelId || !threadTs) return
+
+  const isFeedback = taskKind === 'feedback'
+  const label = isFeedback ? 'Статус правки' : 'Статус'
+  const text = [
+    isFeedback ? '*Є рух по правці* 🔄' : '*Є рух по задачі* 🔄',
+    oldStatus
+      ? `*${label}:* ${escapeMrkdwn(oldStatus)} → ${escapeMrkdwn(newStatus)}`
+      : `*${label}:* ${escapeMrkdwn(newStatus)}`,
+  ].join('\n')
+
+  try {
+    await slackClient.chat.postMessage({
+      channel: channelId,
+      thread_ts: threadTs,
+      text,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text,
+          },
+        },
+      ],
+    })
+  } catch (error) {
+    console.error(`Failed to post short status movement ${channelId}/${threadTs}:`, error)
+  }
+}
+
+async function postThreadReviewMovement(slackClient, {
+  channelId,
+  threadTs,
+  taskKind = 'task',
+}) {
+  if (!channelId || !threadTs) return
+
+  const text = [
+    taskKind === 'feedback' ? '*Є рух по правці* 🔄' : '*Є рух по задачі* 🔄',
+    taskKind === 'feedback'
+      ? 'Результат правки оновлено для ревʼю.'
+      : 'Результат оновлено для ревʼю.',
+  ].join('\n')
+
+  try {
+    await slackClient.chat.postMessage({
+      channel: channelId,
+      thread_ts: threadTs,
+      text,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text,
+          },
+        },
+      ],
+    })
+  } catch (error) {
+    console.error(`Failed to post short review movement ${channelId}/${threadTs}:`, error)
+  }
 }
 
 async function postNotification(slackClient, slackUserId, message, { channelId, threadTs } = {}) {

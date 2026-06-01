@@ -615,6 +615,7 @@ export async function startPolling(slackClient) {
             await sendStatusUpdate({
               slackClient,
               taskName: task.taskName,
+              oldStatus: task.lastStatus,
               newStatus: currentTask.status,
               assignee: currentTask.assignee,
               finalProjectUrl: currentTask.finalProjectUrl,
@@ -622,6 +623,7 @@ export async function startPolling(slackClient) {
               pageId: task.pageId,
               slackChannelId: task.slackChannelId,
               slackMessageTs: task.slackMessageTs,
+              slackThreadTs: task.slackThreadTs || task.slackMessageTs,
               taskKind: task.taskKind,
               roundsLeft,
               roundNumber: roundsCount + 1,
@@ -709,6 +711,7 @@ export async function startPolling(slackClient) {
                   pageId: task.pageId,
                   slackChannelId: task.slackChannelId,
                   slackMessageTs: task.slackMessageTs,
+                  slackThreadTs: task.slackThreadTs || task.slackMessageTs,
                   taskKind: task.taskKind,
                   roundsLeft,
                   roundNumber: roundsCount + 1,
