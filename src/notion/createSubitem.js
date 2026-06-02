@@ -19,6 +19,7 @@ const COPIED_PARENT_PROPERTIES = [
   'Task Type',
   'Designer',
   'Slack Person',
+  'Final project',
 ]
 let databasePropertiesPromise = null
 
@@ -115,6 +116,10 @@ function buildPropertyValue(property, expectedType) {
         ? { rich_text: buildRichText(text) }
         : null
     }
+    case 'url': {
+      const url = typeof property.url === 'string' ? property.url.trim() : ''
+      return url ? { url } : null
+    }
     default:
       return null
   }
@@ -146,10 +151,14 @@ function extractDesigner(parentProperties) {
     const names = property.people
       .map((person) => person.name)
       .filter(Boolean)
+    const emails = property.people
+      .map((person) => person.person?.email)
+      .filter(Boolean)
 
     return {
       name: names.join(', '),
       userId: property.people[0]?.id || null,
+      email: emails[0] || null,
     }
   }
 
@@ -256,6 +265,7 @@ export async function createFeedbackSubitem({ parentPageId, taskName, roundNumbe
     pageUrl: buildTaskPageUrl(response.id, response.url),
     taskName: feedbackTaskName,
     initialStatus: DEFAULT_STATUS,
+    finalProjectUrl: parentProperties['Final project']?.url || null,
     designer,
   }
 }

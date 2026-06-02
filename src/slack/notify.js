@@ -1,4 +1,4 @@
-import { formatDesignerForSlack } from './designerMentions.js'
+import { formatDesignerForSlackAsync } from './designerMentions.js'
 
 const STATUS_EMOJI = {
   'To do': '⚪',
@@ -67,7 +67,7 @@ export async function sendStatusUpdate({
     messageTs: slackMessageTs,
     taskName,
     status: newStatus,
-    responsible: designer || assignee,
+    responsible: assignee,
     pageUrl,
     resultUrl,
     taskKind,
@@ -75,7 +75,7 @@ export async function sendStatusUpdate({
     pageId,
     roundsLeft,
     roundNumber,
-    designer: designer || assignee,
+    designer,
   })
 
   await postThreadStatusMovement(slackClient, {
@@ -110,14 +110,14 @@ export async function sendTaskFieldUpdate({
     messageTs: slackMessageTs,
     taskName,
     status,
-    responsible: designer || responsible,
+    responsible,
     pageUrl,
     resultUrl,
     taskKind,
     pageId,
     roundsLeft,
     roundNumber,
-    designer: designer || responsible,
+    designer,
   })
 }
 
@@ -145,14 +145,14 @@ export async function sendReviewRequest({
     messageTs: slackMessageTs,
     taskName,
     status,
-    responsible: designer || assignee,
+    responsible: assignee,
     pageUrl,
     resultUrl,
     taskKind,
     pageId,
     roundsLeft,
     roundNumber,
-    designer: designer || assignee,
+    designer,
   })
 
   await postThreadReviewMovement(slackClient, {
@@ -195,11 +195,11 @@ export async function updateRootTaskMessage(slackClient, {
 }) {
   if (!channelId || !messageTs) return
 
-  const text = buildRootTaskText({
+  const text = await buildRootTaskText(slackClient, {
     taskName,
     status,
     statusEmoji: getStatusEmoji(status),
-    responsible,
+    designer,
     taskKind,
     completedRounds,
     statusNote,
@@ -215,7 +215,7 @@ export async function updateRootTaskMessage(slackClient, {
         taskName,
         roundsLeft,
         roundNumber,
-        designer: designer || responsible,
+        designer,
         taskKind,
       })
 
@@ -248,11 +248,11 @@ export async function updateRootTaskMessage(slackClient, {
   }
 }
 
-function buildRootTaskText({
+async function buildRootTaskText(slackClient, {
   taskName,
   status,
   statusEmoji,
-  responsible,
+  designer,
   taskKind,
   completedRounds = 0,
   statusNote = null,
@@ -263,13 +263,13 @@ function buildRootTaskText({
   const taskReady = !isFeedback && isReadyStatus(status)
   const ready = feedbackReady || taskReady
   const normalizedCompletedRounds = normalizeNonNegativeInteger(completedRounds, 0)
-  const responsibleText = formatDesignerForSlack(responsible)
+  const designerText = await formatDesignerForSlackAsync(slackClient, designer)
 
   return [
     isFeedback ? null : 'Ми отримали твій запит!',
     `*${taskName}*`,
     `${statusEmoji} *Статус${isFeedback ? ' правки' : ''}:* ${status}`,
-    ready ? null : `🎨 *Дизайнер:* ${responsibleText}`,
+    ready ? null : `🎨 *Дизайнер:* ${designerText}`,
     taskReady ? `✏️ *Раундів правок:* ${normalizedCompletedRounds}` : null,
     '',
     getRootTaskStatusText({
@@ -756,6 +756,7 @@ function buildAcceptActionValue({
     taskName: String(taskName || 'Без назви').slice(0, 1000),
     designerName: designer?.name || null,
     designerUserId: designer?.userId || null,
+    designerEmail: designer?.email || null,
     requestUrl: requestUrl || null,
     resultUrl: resultUrl || null,
     rootMessageTs: rootMessageTs || null,

@@ -140,9 +140,10 @@ async function updateAcceptedTaskRootMessage(client, body, payload, taskName, ac
     messageTs: rootTs,
     taskName,
     status: acceptedStatus,
-    responsible: {
+    designer: {
       name: payload.designerName,
       userId: payload.designerUserId,
+      email: payload.designerEmail,
     },
     pageUrl: payload.requestUrl,
     resultUrl: payload.resultUrl,

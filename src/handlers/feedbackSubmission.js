@@ -1,6 +1,6 @@
 import { createFeedbackSubitem } from '../notion/createSubitem.js'
 import { getRoundsCount, getTask, incrementRoundsCount, saveTask } from '../redis/store.js'
-import { formatDesignerForSlack } from '../slack/designerMentions.js'
+import { formatDesignerForSlackAsync } from '../slack/designerMentions.js'
 import { updateRootTaskMessage } from '../slack/notify.js'
 
 const DEFAULT_OPS_LEAD_SLACK_ID = 'U0APPD32H6D'
@@ -123,7 +123,7 @@ function isRootTaskSource(metadata, parentTask) {
   )
 }
 
-function getParentResponsible(parentTask) {
+function getParentDesigner(parentTask) {
   if (parentTask?.lastDesignerName || parentTask?.lastDesignerUserId) {
     return {
       name: parentTask.lastDesignerName || null,
@@ -131,7 +131,7 @@ function getParentResponsible(parentTask) {
     }
   }
 
-  return parentTask?.lastAssignee || null
+  return null
 }
 
 async function updateReviewSourceAfterFeedback(client, metadata, {
@@ -155,11 +155,12 @@ async function updateReviewSourceAfterFeedback(client, metadata, {
     messageTs: parentTask.slackMessageTs,
     taskName: parentTask.taskName || taskName,
     status: parentTask.lastStatus || 'Comments',
-    responsible: getParentResponsible(parentTask),
+    responsible: parentTask?.lastAssignee || null,
     pageUrl: parentTask.pageUrl,
     resultUrl: parentTask.lastFinalProjectUrl,
     taskKind: parentTask.taskKind || 'task',
     completedRounds: roundsCount ?? parentTask.roundsCount ?? 0,
+    designer: getParentDesigner(parentTask),
     statusNote: alreadySubmitted
       ? `Правки #${roundNumber} уже передано дизайнеру. Коли буде нове ревʼю, кнопки знову зʼявляться тут.`
       : `Правки #${roundNumber} передано дизайнеру. Коли буде нове ревʼю, кнопки знову зʼявляться тут.`,
@@ -170,18 +171,13 @@ async function updateReviewSourceAfterFeedback(client, metadata, {
 function buildFeedbackThreadText({
   taskName,
   status = 'To do',
-  designer = null,
-  responsible = null,
+  designerText,
   feedbackText = null,
 }) {
-  const responsibleText = responsible
-    ? formatDesignerForSlack(responsible)
-    : formatDesignerForSlack(designer)
-
   return [
     `*${taskName}*`,
     `⚪ *Статус правки:* ${status}`,
-    `🎨 *Дизайнер:* ${responsibleText}`,
+    `🎨 *Дизайнер:* ${designerText}`,
     `📝 *Правка:* ${formatFeedbackPreview(feedbackText)}`,
     '',
     'Правку передано дизайнеру.',
@@ -198,7 +194,8 @@ async function postFeedbackTaskCreatedMessage({
   designer,
   feedbackText,
 }) {
-  const text = buildFeedbackThreadText({ taskName, designer, feedbackText })
+  const designerText = await formatDesignerForSlackAsync(client, designer)
+  const text = buildFeedbackThreadText({ taskName, designerText, feedbackText })
 
   return await client.chat.postMessage({
     channel: channelId || userId,
@@ -326,6 +323,7 @@ export async function handleFeedbackSubmission({ body, view, client }) {
         parentPageId: pageId,
         pageUrl: feedbackTask.pageUrl,
         lastStatus: feedbackTask.initialStatus,
+        lastFinalProjectUrl: feedbackTask.finalProjectUrl || null,
         lastDesignerName: feedbackTask.designer?.name || null,
         lastDesignerUserId: feedbackTask.designer?.userId || null,
       })

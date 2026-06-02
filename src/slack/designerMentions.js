@@ -1,4 +1,4 @@
-export const PENDING_DESIGNER_TEXT = 'Асайн дизайнера is coooming!'
+export const PENDING_DESIGNER_TEXT = 'Designer assign is cooming!'
 
 const DESIGNER_MENTIONS = [
   {
@@ -45,6 +45,15 @@ function getDesignerName(designer) {
   return designer.name || ''
 }
 
+function getDirectSlackId(designer) {
+  if (!designer || typeof designer !== 'object') return null
+
+  const slackId = designer.slackId || designer.slackUserId || designer.userId
+  const normalizedSlackId = String(slackId || '').trim()
+
+  return /^[UW][A-Z0-9]+$/.test(normalizedSlackId) ? normalizedSlackId : null
+}
+
 function getDesignerNames(designer) {
   const name = getDesignerName(designer)
   if (!name) return []
@@ -73,6 +82,9 @@ export function getDesignerSlackId(designerName) {
 }
 
 export function formatDesignerForSlack(designer, { fallback = PENDING_DESIGNER_TEXT } = {}) {
+  const directSlackId = getDirectSlackId(designer)
+  if (directSlackId) return `<@${directSlackId}>`
+
   const names = getDesignerNames(designer)
   if (!names.length) return fallback
 
@@ -82,4 +94,37 @@ export function formatDesignerForSlack(designer, { fallback = PENDING_DESIGNER_T
       return slackId ? `<@${slackId}>` : escapeMrkdwn(name)
     })
     .join(', ')
+}
+
+const slackIdByEmailCache = new Map()
+
+async function lookupSlackIdByEmail(slackClient, email) {
+  const normalizedEmail = String(email || '').trim().toLowerCase()
+  if (!slackClient?.users?.lookupByEmail || !normalizedEmail) return null
+
+  if (slackIdByEmailCache.has(normalizedEmail)) {
+    return slackIdByEmailCache.get(normalizedEmail)
+  }
+
+  try {
+    const response = await slackClient.users.lookupByEmail({ email: normalizedEmail })
+    const slackId = response.user?.id || null
+    slackIdByEmailCache.set(normalizedEmail, slackId)
+    return slackId
+  } catch (error) {
+    console.warn(`Failed to resolve Slack user by email ${normalizedEmail}:`, error)
+    slackIdByEmailCache.set(normalizedEmail, null)
+    return null
+  }
+}
+
+export async function formatDesignerForSlackAsync(slackClient, designer, options = {}) {
+  const directSlackId = getDirectSlackId(designer)
+  if (directSlackId) return `<@${directSlackId}>`
+
+  const email = typeof designer === 'object' ? designer?.email : null
+  const slackId = await lookupSlackIdByEmail(slackClient, email)
+  if (slackId) return `<@${slackId}>`
+
+  return formatDesignerForSlack(designer, options)
 }

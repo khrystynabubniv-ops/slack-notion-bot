@@ -194,10 +194,14 @@ function extractDesigner(page) {
     const names = property.people
       .map((person) => person.name)
       .filter(Boolean)
+    const emails = property.people
+      .map((person) => person.person?.email)
+      .filter(Boolean)
 
     return {
       name: names.join(', '),
       userId: property.people[0]?.id || null,
+      email: emails[0] || null,
     }
   }
 
