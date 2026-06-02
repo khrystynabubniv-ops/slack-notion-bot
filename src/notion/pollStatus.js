@@ -25,6 +25,7 @@ import {
 } from '../slack/notify.js'
 import { buildTaskPageUrl } from './pageUrl.js'
 import { notionRequest } from './request.js'
+import { extractDesignerFromProperties } from './designer.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const DATABASE_ID = process.env.NOTION_DATABASE_ID
@@ -191,49 +192,6 @@ function extractAssignee(page) {
   return null
 }
 
-function extractDesigner(page) {
-  const property = page.properties['Дизайнер'] || page.properties.Designer
-  if (!property) return null
-
-  if (property.people?.length) {
-    const names = property.people
-      .map((person) => person.name)
-      .filter(Boolean)
-    const emails = property.people
-      .map((person) => person.person?.email)
-      .filter(Boolean)
-
-    return {
-      name: names.join(', '),
-      userId: property.people[0]?.id || null,
-      email: emails[0] || null,
-    }
-  }
-
-  if (property.title?.length) {
-    return {
-      name: property.title.map((item) => item.plain_text).join('').trim(),
-      userId: null,
-    }
-  }
-
-  if (property.rich_text?.length) {
-    return {
-      name: property.rich_text.map((item) => item.plain_text).join('').trim(),
-      userId: null,
-    }
-  }
-
-  if (property.select?.name) {
-    return {
-      name: property.select.name,
-      userId: null,
-    }
-  }
-
-  return null
-}
-
 function extractUrlProperty(page, propertyName) {
   const property = page.properties[propertyName]
   if (!property) return null
@@ -268,7 +226,7 @@ async function getCurrentTaskSnapshots() {
       tasks[page.id] = {
         status,
         assignee: extractAssignee(page),
-        designer: extractDesigner(page),
+        designer: await extractDesignerFromProperties(page.properties, notion),
         deadline: page.properties.Deadline?.date?.start || null,
         finalProjectUrl: extractUrlProperty(page, 'Final project'),
         parentPageIds: extractParentPageIds(page),

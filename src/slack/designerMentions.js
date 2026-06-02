@@ -7,7 +7,7 @@ const DESIGNER_MENTIONS = [
   },
   {
     slackId: 'U09HWU4E95Z',
-    aliases: ['олександра колосок', 'oleksandra kolosok', 'alexandra kolosok'],
+    aliases: ['олександра колосок', 'oleksandra kolosok', 'alexandra kolosok', 'alia kolosok'],
   },
 ]
 

@@ -2,6 +2,7 @@ import { Client } from '@notionhq/client'
 import { buildTaskPageUrl } from './pageUrl.js'
 import { notionRequest } from './request.js'
 import { DEFAULT_STATUS, resolveStatusPropertyName } from './taskConfig.js'
+import { extractDesignerFromProperties } from './designer.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const DATABASE_ID = process.env.NOTION_DATABASE_ID
@@ -143,49 +144,6 @@ function addDesignerOwner(properties, databaseProperties, parentProperties) {
   if (value) properties.Owner = value
 }
 
-function extractDesigner(parentProperties) {
-  const property = parentProperties.Designer || parentProperties['Дизайнер']
-  if (!property) return null
-
-  if (property.people?.length) {
-    const names = property.people
-      .map((person) => person.name)
-      .filter(Boolean)
-    const emails = property.people
-      .map((person) => person.person?.email)
-      .filter(Boolean)
-
-    return {
-      name: names.join(', '),
-      userId: property.people[0]?.id || null,
-      email: emails[0] || null,
-    }
-  }
-
-  if (property.title?.length) {
-    return {
-      name: property.title.map((item) => item.plain_text).join('').trim(),
-      userId: null,
-    }
-  }
-
-  if (property.rich_text?.length) {
-    return {
-      name: property.rich_text.map((item) => item.plain_text).join('').trim(),
-      userId: null,
-    }
-  }
-
-  if (property.select?.name) {
-    return {
-      name: property.select.name,
-      userId: null,
-    }
-  }
-
-  return null
-}
-
 export async function createFeedbackSubitem({ parentPageId, taskName, roundNumber, feedbackText }) {
   if (!parentPageId) {
     throw new Error('parentPageId is required')
@@ -200,7 +158,7 @@ export async function createFeedbackSubitem({ parentPageId, taskName, roundNumbe
   ])
   const parentProperties = parentPage.properties || {}
   const titlePropertyName = resolveTitlePropertyName(databaseProperties)
-  const designer = extractDesigner(parentProperties)
+  const designer = await extractDesignerFromProperties(parentProperties, notion)
 
   if (!titlePropertyName) {
     throw new Error('Notion database is missing a title property for feedback sub-items.')
