@@ -22,6 +22,17 @@ function getFeedbackText(view) {
   return view.state.values.feedback_text?.feedback_input?.value?.trim() || ''
 }
 
+function getFeedbackType(view) {
+  const selected = view.state.values.feedback_type?.feedback_type_input?.selected_option
+  if (!selected?.value) return null
+
+  return {
+    value: selected.value,
+    label: selected.text?.text || null,
+    description: selected.description?.text || null,
+  }
+}
+
 function formatFeedbackPreview(feedbackText) {
   const normalized = (feedbackText || '').replace(/\s+/g, ' ').trim()
   if (!normalized) return 'Без тексту'
@@ -161,15 +172,17 @@ function buildFeedbackThreadText({
   status = 'To do',
   designerText,
   feedbackText = null,
+  feedbackType = null,
 }) {
   return [
     `*${taskName}*`,
     `⚪ *Статус правки:* ${status}`,
     `🎨 *Дизайнер:* ${designerText}`,
+    feedbackType?.label ? `📌 *Тип правки:* ${feedbackType.label}` : null,
     `📝 *Правка:* ${formatFeedbackPreview(feedbackText)}`,
     '',
     'Правку передано дизайнеру.',
-  ].join('\n')
+  ].filter((line) => line !== null).join('\n')
 }
 
 async function postFeedbackTaskCreatedMessage({
@@ -181,9 +194,10 @@ async function postFeedbackTaskCreatedMessage({
   pageUrl,
   designer,
   feedbackText,
+  feedbackType,
 }) {
   const designerText = await formatDesignerForSlackAsync(client, designer)
-  const text = buildFeedbackThreadText({ taskName, designerText, feedbackText })
+  const text = buildFeedbackThreadText({ taskName, designerText, feedbackText, feedbackType })
 
   return await client.chat.postMessage({
     channel: channelId || userId,
@@ -218,6 +232,7 @@ export async function handleFeedbackSubmission({ body, view, client }) {
   const metadataTaskName = metadata.taskName || 'Без назви'
   const userId = body.user?.id
   const feedbackText = getFeedbackText(view)
+  const feedbackType = getFeedbackType(view)
 
   if (!pageId) {
     console.error('Feedback submission is missing pageId metadata.')
@@ -257,6 +272,7 @@ export async function handleFeedbackSubmission({ body, view, client }) {
       taskName,
       roundNumber,
       feedbackText,
+      feedbackType,
     })
     const updatedRoundsCount = await incrementRoundsCount(pageId)
     await updateReviewSourceAfterFeedback(client, metadata, {
@@ -280,6 +296,7 @@ export async function handleFeedbackSubmission({ body, view, client }) {
         pageUrl: feedbackTask.pageUrl,
         designer: feedbackTask.designer,
         feedbackText,
+        feedbackType,
       })
     } catch (notifyError) {
       console.error(`Failed to send feedback task notification to ${userId}:`, notifyError)

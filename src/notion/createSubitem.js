@@ -10,6 +10,7 @@ const PARENT_ITEM_PROPERTY = process.env.NOTION_PARENT_ITEM_PROPERTY?.trim() || 
 const SUB_TYPE_PROPERTY = process.env.NOTION_SUB_TYPE_PROPERTY?.trim() || 'Sub-type'
 const FEEDBACK_SUB_TYPE = process.env.NOTION_FEEDBACK_SUB_TYPE?.trim() || 'правка'
 const DESCRIPTION_PROPERTY = process.env.NOTION_DESCRIPTION_PROPERTY?.trim() || 'Description'
+const FEEDBACK_TYPE_PROPERTY = process.env.NOTION_FEEDBACK_TYPE_PROPERTY?.trim() || 'Тип правки'
 const RICH_TEXT_CONTENT_LIMIT = 2000
 const RICH_TEXT_OBJECT_LIMIT = 100
 const RICH_TEXT_TRUNCATED_NOTICE = '\n\n[Обрізано: Notion має ліміт на довжину rich text поля.]'
@@ -144,7 +145,48 @@ function addDesignerOwner(properties, databaseProperties, parentProperties) {
   if (value) properties.Owner = value
 }
 
-export async function createFeedbackSubitem({ parentPageId, taskName, roundNumber, feedbackText }) {
+function normalizeFeedbackType(feedbackType) {
+  if (!feedbackType?.value && !feedbackType?.label) return null
+
+  return {
+    value: feedbackType.value || null,
+    label: feedbackType.label || feedbackType.value || null,
+    description: feedbackType.description || null,
+  }
+}
+
+function buildFeedbackDescription(feedbackText, feedbackType) {
+  const lines = []
+
+  if (feedbackType?.label) {
+    lines.push(`Тип правки: ${feedbackType.label}`)
+    if (feedbackType.description) lines.push(`Пояснення: ${feedbackType.description}`)
+    lines.push('')
+  }
+
+  lines.push(feedbackText || '')
+
+  return lines.join('\n')
+}
+
+function addFeedbackTypeProperty(properties, databaseProperties, feedbackType) {
+  if (!feedbackType?.label) return
+
+  const propertyType = databaseProperties[FEEDBACK_TYPE_PROPERTY]?.type
+  if (!propertyType) return
+
+  if (propertyType === 'select') {
+    properties[FEEDBACK_TYPE_PROPERTY] = { select: { name: feedbackType.label } }
+  } else if (propertyType === 'status') {
+    properties[FEEDBACK_TYPE_PROPERTY] = { status: { name: feedbackType.label } }
+  } else if (propertyType === 'multi_select') {
+    properties[FEEDBACK_TYPE_PROPERTY] = { multi_select: [{ name: feedbackType.label }] }
+  } else if (propertyType === 'rich_text') {
+    properties[FEEDBACK_TYPE_PROPERTY] = { rich_text: buildRichText(feedbackType.label) }
+  }
+}
+
+export async function createFeedbackSubitem({ parentPageId, taskName, roundNumber, feedbackText, feedbackType }) {
   if (!parentPageId) {
     throw new Error('parentPageId is required')
   }
@@ -178,6 +220,7 @@ export async function createFeedbackSubitem({ parentPageId, taskName, roundNumbe
     : 1
   const feedbackTaskName = `Правка ${safeRoundNumber} — ${safeTaskName}`
   const statusPropertyName = resolveStatusPropertyName(databaseProperties)
+  const normalizedFeedbackType = normalizeFeedbackType(feedbackType)
   const properties = {
     [titlePropertyName]: {
       title: [{ text: { content: feedbackTaskName } }],
@@ -195,10 +238,11 @@ export async function createFeedbackSubitem({ parentPageId, taskName, roundNumbe
   }
 
   addDesignerOwner(properties, databaseProperties, parentProperties)
+  addFeedbackTypeProperty(properties, databaseProperties, normalizedFeedbackType)
 
   if (hasPropertyType(databaseProperties, DESCRIPTION_PROPERTY, ['rich_text'])) {
     properties[DESCRIPTION_PROPERTY] = {
-      rich_text: buildRichText(feedbackText),
+      rich_text: buildRichText(buildFeedbackDescription(feedbackText, normalizedFeedbackType)),
     }
   }
 
