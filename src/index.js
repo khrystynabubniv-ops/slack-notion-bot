@@ -12,6 +12,7 @@ import {
 import { registerSubmissionHandlers } from './handlers/submission.js'
 import { registerNotionLaunchWebhook } from './notion/launchWebhook.js'
 import { registerHomeTab } from './slack/home.js'
+import { registerThreadCommentSync } from './slack/threadComments.js'
 import { startPolling } from './notion/pollStatus.js'
 
 const token = process.env.SLACK_BOT_TOKEN
@@ -150,6 +151,7 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
   registerHomeTab(app)
   registerNewTaskCommand(app)
   registerSubmissionHandlers(app)
+  registerThreadCommentSync(app)
 
   app.action('open_feedback_modal', async ({ ack, body, client }) => {
     await ack()

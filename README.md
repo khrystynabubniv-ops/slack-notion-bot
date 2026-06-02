@@ -9,6 +9,7 @@ Slack-бот, який дозволяє дизайн-команді швидко
 3. Заповнює короткий бриф у модалці — поля залежать від типу задачі.
 4. Бот створює сторінку в заданій Notion-базі та повертає посилання.
 5. Фоновий поллер раз на 3 хвилини опитує Notion і надсилає у Slack апдейти при зміні статусу або появі нового відкритого коментаря.
+6. Відповіді користувача у Slack-треді задачі автоматично додаються як коментарі до відповідної Notion-сторінки.
 
 ## Стек
 
@@ -86,9 +87,16 @@ npm start
 
 ## Налаштування Slack App
 
-Потрібні OAuth-скоупи (як мінімум): `commands`, `chat:write`, `im:write`, `users:read`, `app_mentions:read`.
-Events: `app_home_opened`.
+Потрібні OAuth-скоупи (як мінімум): `commands`, `chat:write`, `im:write`, `im:history`, `users:read`, `app_mentions:read`.
+Events: `app_home_opened`, `message.im`.
 Slash command: `/new-task`.
+
+Щоб користувачі могли писати в треді повідомлення від бота в App Home / DM:
+
+1. Відкрий Slack App settings → **App Home**.
+2. Увімкни **Messages Tab**.
+3. Вимкни read-only режим для Messages Tab: користувачі мають мати змогу надсилати повідомлення до app.
+4. Після зміни scopes або App Home settings зроби **Reinstall to Workspace**.
 
 ## Налаштування Notion
 
@@ -97,7 +105,8 @@ Slash command: `/new-task`.
 - Скопіюй `NOTION_DATABASE_ID` з URL бази.
 - У базі має бути властивість `Design Status` типу *Status*. Якщо поле називається інакше, задай `NOTION_STATUS_PROPERTY`.
 - Щоб не впиратися в rate limit Notion, бот тротлить усі Notion API запити через `NOTION_REQUEST_MIN_INTERVAL_MS` і повторює `429 rate_limited` через `NOTION_REQUEST_MAX_RETRIES`.
-- Для сповіщень про коментарі в Notion integration треба увімкнути capability `Read comments`, інакше бот автоматично залишить тільки статусні нотифікації.
+- Для сповіщень про коментарі з Notion треба увімкнути capability `Read comments`, інакше бот автоматично залишить тільки статусні нотифікації.
+- Для перенесення відповідей зі Slack-треду в Notion інтеграція має мати право створювати коментарі.
 - Якщо хочеш, щоб нові задачі створювалися з готового Notion template, задай `NOTION_TEMPLATE_ID`.
 - Template застосовується асинхронно одразу після створення page. Це зручно для кейсу, де в template вже є нативна кнопка `Add subtask`.
 - Опитування якості роботи надсилається тільки коли статус задачі стає `Ready`. Інші завершальні статуси з `NOTION_POLL_COMPLETED_STATUSES` можуть зупиняти поллінг, але не запускають оцінку.

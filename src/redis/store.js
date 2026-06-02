@@ -10,6 +10,8 @@ const DEFAULT_FAILED_SUBMISSION_TTL_SECONDS = 60 * 60 * 24 * 30
 const TASK_SUBMISSION_QUEUE_KEY = 'task-submission-queue'
 const TASK_SUBMISSION_QUEUE_ITEM_PREFIX = 'task-submission-queue-item:'
 const FEEDBACK_KEY_PREFIX = 'feedback:'
+const SLACK_THREAD_COMMENT_SYNC_PREFIX = 'slack-thread-comment-sync:'
+const SLACK_THREAD_COMMENT_SYNC_TTL_SECONDS = 60 * 60 * 24 * 7
 const FAILED_SUBMISSION_TTL_SECONDS = Number.parseInt(
   process.env.FAILED_SUBMISSION_TTL_SECONDS || `${DEFAULT_FAILED_SUBMISSION_TTL_SECONDS}`,
   10
@@ -73,6 +75,8 @@ export async function saveTask({
   lastFinalProjectUrl = null,
   snapshotInitialized = false,
 }) {
+  const trackedAt = new Date().toISOString()
+
   await saveWithRetry(`notion:${pageId}`, JSON.stringify({
     slackUserId,
     slackChannelId,
@@ -90,8 +94,9 @@ export async function saveTask({
     lastDeadline,
     lastFinalProjectUrl,
     snapshotInitialized,
+    trackedAt,
     lastCommentId: null,
-    lastCommentCreatedTime: null,
+    lastCommentCreatedTime: trackedAt,
     roundsCount: 0,
   }))
 }
@@ -365,6 +370,61 @@ export async function updateLastComment(pageId, { id, createdTime, commentId }) 
     lastCommentId: commentId || id || null,
     lastCommentCreatedTime: createdTime || null,
   }))
+}
+
+function normalizeThreadValue(value) {
+  return String(value || '').trim()
+}
+
+function isSameThread(task, { channelId, threadTs, slackUserId }) {
+  const normalizedThreadTs = normalizeThreadValue(threadTs)
+  if (!normalizedThreadTs) return false
+
+  const taskThreadTs = normalizeThreadValue(task.slackThreadTs || task.slackMessageTs)
+  if (taskThreadTs !== normalizedThreadTs) return false
+
+  const taskChannelId = normalizeThreadValue(task.slackChannelId)
+  const normalizedChannelId = normalizeThreadValue(channelId)
+  const normalizedSlackUserId = normalizeThreadValue(slackUserId)
+
+  return Boolean(
+    taskChannelId &&
+      (taskChannelId === normalizedChannelId || taskChannelId === normalizedSlackUserId)
+  )
+}
+
+export async function getTaskBySlackThread({ channelId, threadTs, slackUserId }) {
+  const tasks = await getAllTasks()
+  const matches = tasks.filter((task) => isSameThread(task, { channelId, threadTs, slackUserId }))
+  if (!matches.length) return null
+
+  const normalizedThreadTs = normalizeThreadValue(threadTs)
+  const rootTask = matches.find((task) => normalizeThreadValue(task.slackMessageTs) === normalizedThreadTs)
+
+  return rootTask || matches[0]
+}
+
+export async function claimSlackThreadCommentSync(syncId) {
+  const normalizedSyncId = normalizeThreadValue(syncId)
+  if (!normalizedSyncId) return false
+
+  const result = await redis.set(
+    `${SLACK_THREAD_COMMENT_SYNC_PREFIX}${normalizedSyncId}`,
+    new Date().toISOString(),
+    {
+      nx: true,
+      ex: SLACK_THREAD_COMMENT_SYNC_TTL_SECONDS,
+    }
+  )
+
+  return Boolean(result)
+}
+
+export async function releaseSlackThreadCommentSync(syncId) {
+  const normalizedSyncId = normalizeThreadValue(syncId)
+  if (!normalizedSyncId) return
+
+  await redis.del(`${SLACK_THREAD_COMMENT_SYNC_PREFIX}${normalizedSyncId}`)
 }
 
 export async function incrementRoundsCount(pageId) {
