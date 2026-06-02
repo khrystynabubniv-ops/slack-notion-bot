@@ -398,7 +398,7 @@ export async function sendCommentUpdate({
   const preview = formatCommentPreview(commentText)
 
   await postNotification(slackClient, slackUserId, {
-    text: `💬 У задачі «${taskName}» з'явився новий коментар.`,
+    text: `💬 Новий коментар у задачі ${taskName}.`,
     blocks: [
       {
         type: 'context',
@@ -421,10 +421,10 @@ export async function sendCommentUpdate({
         text: {
           type: 'mrkdwn',
           text: [
-            '💬 *Новий коментар у задачі*',
-            `🏷️ Задача: ${taskName}`,
-            `👤 Автор: ${commentAuthor || 'невідомий автор'}`,
-            `📝 Коментар: ${preview}`,
+            `💬 *Новий коментар у задачі ${taskName}*`,
+            `💬 *Відповідь від ${commentAuthor || 'невідомий автор'}:*`,
+            preview,
+            'Можеш відповісти тут або перейти в Notion.',
           ].join('\n\n'),
         },
       },
