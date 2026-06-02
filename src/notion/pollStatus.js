@@ -14,6 +14,7 @@ import {
   extractParentPageIds,
   isCommentsStatus,
   extractStatus,
+  normalizePageId,
 } from './taskAcceptanceReadiness.js'
 import {
   sendCommentUpdate,
@@ -238,6 +239,18 @@ async function getCurrentTaskSnapshots() {
   }
 
   return tasks
+}
+
+function getCurrentTaskSnapshot(currentTasks, pageId) {
+  const directMatch = currentTasks[pageId]
+  if (directMatch) return directMatch
+
+  const normalizedPageId = normalizePageId(pageId)
+  if (!normalizedPageId) return null
+
+  return Object.entries(currentTasks)
+    .find(([currentPageId]) => normalizePageId(currentPageId) === normalizedPageId)
+    ?.[1] || null
 }
 
 async function getOpenComments(pageId) {
@@ -531,7 +544,7 @@ export async function startPolling(slackClient) {
       const currentTasks = await getCurrentTaskSnapshots()
 
       for (const task of activeTrackedTasks) {
-        const currentTask = currentTasks[task.pageId]
+        const currentTask = getCurrentTaskSnapshot(currentTasks, task.pageId)
         if (!currentTask?.status) continue
         const pageUrl = task.pageUrl || buildTaskPageUrl(task.pageId)
         const completed = isCompletedStatus(currentTask.status)
