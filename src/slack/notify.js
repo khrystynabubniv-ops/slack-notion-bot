@@ -681,6 +681,7 @@ function getStatusActionElements({
         type: 'button',
         text: { type: 'plain_text', text: '✏️ Дати правки' },
         action_id: 'open_feedback_modal',
+        style: 'primary',
         value: buildFeedbackActionValue({ pageId, taskName, roundNumber }),
       })
     }
