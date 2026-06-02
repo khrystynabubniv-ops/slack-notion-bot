@@ -3,8 +3,6 @@ import { getRoundsCount, getTask, incrementRoundsCount, saveTask } from '../redi
 import { formatDesignerForSlackAsync } from '../slack/designerMentions.js'
 import { updateRootTaskMessage } from '../slack/notify.js'
 
-const DEFAULT_OPS_LEAD_SLACK_ID = 'U0APPD32H6D'
-
 function parsePrivateMetadata(privateMetadata) {
   if (!privateMetadata) return {}
 
@@ -18,20 +16,6 @@ function parsePrivateMetadata(privateMetadata) {
 function normalizeRoundNumber(roundNumber) {
   const parsed = Number.parseInt(roundNumber, 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1
-}
-
-function normalizeMaxRounds(maxRounds) {
-  if (maxRounds === null || maxRounds === undefined) return null
-
-  const parsed = Number.parseInt(maxRounds, 10)
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
-}
-
-function getOpsLeadMention() {
-  const slackId = process.env.OPS_LEAD_SLACK_ID?.trim() || DEFAULT_OPS_LEAD_SLACK_ID
-  if (/^[UW][A-Z0-9]+$/.test(slackId || '')) return `<@${slackId}>`
-
-  return 'ops-lead'
 }
 
 function getFeedbackText(view) {
@@ -150,6 +134,8 @@ async function updateReviewSourceAfterFeedback(client, metadata, {
     return
   }
 
+  const completedRounds = roundsCount ?? parentTask.roundsCount ?? 0
+
   await updateRootTaskMessage(client, {
     channelId: parentTask.slackChannelId,
     messageTs: parentTask.slackMessageTs,
@@ -159,12 +145,13 @@ async function updateReviewSourceAfterFeedback(client, metadata, {
     pageUrl: parentTask.pageUrl,
     resultUrl: parentTask.lastFinalProjectUrl,
     taskKind: parentTask.taskKind || 'task',
-    completedRounds: roundsCount ?? parentTask.roundsCount ?? 0,
+    completedRounds,
+    roundNumber: completedRounds + 1,
     designer: getParentDesigner(parentTask),
     statusNote: alreadySubmitted
-      ? `Правки #${roundNumber} уже передано дизайнеру. Коли буде нове ревʼю, кнопки знову зʼявляться тут.`
-      : `Правки #${roundNumber} передано дизайнеру. Коли буде нове ревʼю, кнопки знову зʼявляться тут.`,
-    suppressStatusActions: true,
+      ? `Правки #${roundNumber} уже передано дизайнеру. Якщо потрібно, додай наступну правку з актуальної кнопки нижче.`
+      : `Правки #${roundNumber} передано дизайнеру. Якщо потрібно, можеш одразу додати ще одну правку з кнопки нижче.`,
+    canAcceptResult: false,
   })
 }
 
@@ -228,7 +215,6 @@ export async function handleFeedbackSubmission({ body, view, client }) {
   const metadata = parsePrivateMetadata(view.private_metadata)
   const pageId = metadata.pageId
   const metadataTaskName = metadata.taskName || 'Без назви'
-  const maxRounds = normalizeMaxRounds(metadata.maxRounds)
   const userId = body.user?.id
   const feedbackText = getFeedbackText(view)
 
@@ -261,15 +247,6 @@ export async function handleFeedbackSubmission({ body, view, client }) {
         client,
         userId,
         "⚠️ Це рев'ю вже неактуальне. Дочекайся оновлення головного повідомлення, коли статус знову стане «Comments»."
-      )
-      return
-    }
-
-    if (maxRounds !== null && roundNumber > maxRounds) {
-      await notifyUser(
-        client,
-        userId,
-        `⛔ Ліміт раундів правок вичерпано. Напишіть ${getOpsLeadMention()} для вирішення.`
       )
       return
     }

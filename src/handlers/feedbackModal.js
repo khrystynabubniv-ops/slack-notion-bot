@@ -10,20 +10,12 @@ function normalizeRoundNumber(roundNumber) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1
 }
 
-function normalizeMaxRounds(maxRounds) {
-  if (maxRounds === null || maxRounds === undefined) return null
-
-  const parsed = Number.parseInt(maxRounds, 10)
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
-}
-
 export async function openFeedbackModal({
   client,
   triggerId,
   pageId,
   taskName,
   roundNumber,
-  maxRounds,
   sourceMessage,
 }) {
   const normalizedRoundNumber = normalizeRoundNumber(roundNumber)
@@ -38,7 +30,6 @@ export async function openFeedbackModal({
         pageId,
         taskName: normalizedTaskName,
         roundNumber: normalizedRoundNumber,
-        maxRounds: normalizeMaxRounds(maxRounds),
         sourceChannelId: sourceMessage?.channelId || null,
         sourceMessageTs: sourceMessage?.messageTs || null,
       }),

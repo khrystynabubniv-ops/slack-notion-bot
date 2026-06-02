@@ -10,6 +10,12 @@ import {
   updateTaskSnapshot,
 } from '../redis/store.js'
 import {
+  canAcceptTaskResult,
+  extractParentPageIds,
+  isCommentsStatus,
+  extractStatus,
+} from './taskAcceptanceReadiness.js'
+import {
   sendCommentUpdate,
   sendQualitySurvey,
   sendReviewRequest,
@@ -19,7 +25,6 @@ import {
 } from '../slack/notify.js'
 import { buildTaskPageUrl } from './pageUrl.js'
 import { notionRequest } from './request.js'
-import { getStatusPropertyNames } from './taskConfig.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const DATABASE_ID = process.env.NOTION_DATABASE_ID
@@ -241,15 +246,6 @@ function extractUrlProperty(page, propertyName) {
   return null
 }
 
-function extractStatus(page) {
-  for (const propertyName of getStatusPropertyNames()) {
-    const status = page.properties[propertyName]?.status?.name
-    if (status) return status
-  }
-
-  return null
-}
-
 async function getCurrentTaskSnapshots() {
   const tasks = {}
 
@@ -275,7 +271,7 @@ async function getCurrentTaskSnapshots() {
         designer: extractDesigner(page),
         deadline: page.properties.Deadline?.date?.start || null,
         finalProjectUrl: extractUrlProperty(page, 'Final project'),
-        maxRounds: page.properties['Макс. раундів правок']?.rollup?.number ?? null,
+        parentPageIds: extractParentPageIds(page),
       }
     }
 
@@ -400,13 +396,6 @@ function isOwnComment(latestComment, task) {
   return normalizePersonName(task.requesterName) === normalizePersonName(latestComment.author)
 }
 
-function isCommentsStatus(status) {
-  const normalizedStatus = normalizeStatusName(status)
-  return normalizedStatus === 'comments' ||
-    normalizedStatus.includes('comment') ||
-    normalizedStatus.includes('комент')
-}
-
 function normalizeTrackedValue(value) {
   return String(value || '').trim()
 }
@@ -516,11 +505,9 @@ async function checkpointTaskSnapshot(pageId, currentTask) {
   await updateTaskSnapshot(pageId, getTaskSnapshotPatch(currentTask))
 }
 
-async function refreshRootTaskMessage(slackClient, task, currentTask, pageUrl) {
+async function refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, currentTasks) {
   const roundsCount = await getRoundsCount(task.pageId)
-  const roundsLeft = currentTask.maxRounds !== null
-    ? Math.max(currentTask.maxRounds - roundsCount, 0)
-    : null
+  const canAcceptResult = canAcceptTaskResult(currentTasks, task.pageId)
 
   await updateRootTaskMessage(slackClient, {
     channelId: task.slackChannelId,
@@ -532,9 +519,9 @@ async function refreshRootTaskMessage(slackClient, task, currentTask, pageUrl) {
     resultUrl: currentTask.finalProjectUrl,
     taskKind: task.taskKind,
     pageId: task.pageId,
-    roundsLeft,
     roundNumber: roundsCount + 1,
     designer: currentTask.designer,
+    canAcceptResult,
   })
 }
 
@@ -590,6 +577,7 @@ export async function startPolling(slackClient) {
         if (!currentTask?.status) continue
         const pageUrl = task.pageUrl || buildTaskPageUrl(task.pageId)
         const completed = isCompletedStatus(currentTask.status)
+        let rootMessageRefreshed = false
 
         if (!task.lastStatus) {
           if (completed) {
@@ -600,17 +588,15 @@ export async function startPolling(slackClient) {
             })
             continue
           } else {
-            await refreshRootTaskMessage(slackClient, task, currentTask, pageUrl)
+            await refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, currentTasks)
+            rootMessageRefreshed = true
             await checkpointTaskSnapshot(task.pageId, currentTask)
             console.log(`ℹ️ Task snapshot initialized: ${task.taskName} → ${currentTask.status}`)
           }
         } else if (currentTask.status !== task.lastStatus) {
           try {
             const roundsCount = await getRoundsCount(task.pageId)
-            const maxRounds = currentTask.maxRounds
-            const roundsLeft = maxRounds !== null
-              ? Math.max(maxRounds - roundsCount, 0)
-              : null
+            const canAcceptResult = canAcceptTaskResult(currentTasks, task.pageId)
 
             console.log(
               `📣 Sending status update for page ${task.pageId}: ${task.lastStatus} -> ${currentTask.status} (user ${task.slackUserId})`
@@ -630,11 +616,12 @@ export async function startPolling(slackClient) {
               slackMessageTs: task.slackMessageTs,
               slackThreadTs: task.slackThreadTs || task.slackMessageTs,
               taskKind: task.taskKind,
-              roundsLeft,
               roundNumber: roundsCount + 1,
               completedRounds: roundsCount,
               designer: currentTask.designer,
+              canAcceptResult,
             })
+            rootMessageRefreshed = true
 
             if (completed) {
               await stopPollingCompletedTask(slackClient, task, {
@@ -663,7 +650,8 @@ export async function startPolling(slackClient) {
             }
           }
         } else if (!hasStoredSnapshot(task)) {
-          await refreshRootTaskMessage(slackClient, task, currentTask, pageUrl)
+          await refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, currentTasks)
+          rootMessageRefreshed = true
           await checkpointTaskSnapshot(task.pageId, currentTask)
           console.log(`ℹ️ Task field snapshot initialized: ${task.taskName}`)
         } else {
@@ -672,10 +660,7 @@ export async function startPolling(slackClient) {
           if (fieldChanges.length) {
             try {
               const roundsCount = await getRoundsCount(task.pageId)
-              const maxRounds = currentTask.maxRounds
-              const roundsLeft = maxRounds !== null
-                ? Math.max(maxRounds - roundsCount, 0)
-                : null
+              const canAcceptResult = canAcceptTaskResult(currentTasks, task.pageId)
               const finalProjectChanged = fieldChanges.some((change) => change.type === 'finalProject')
               const canRequestReviewFromResultChange = roundsCount === 0
               const shouldSendReviewRequest =
@@ -699,10 +684,11 @@ export async function startPolling(slackClient) {
                   slackMessageTs: task.slackMessageTs,
                   taskKind: task.taskKind,
                   pageId: task.pageId,
-                  roundsLeft,
                   roundNumber: roundsCount + 1,
                   designer: currentTask.designer,
+                  canAcceptResult,
                 })
+                rootMessageRefreshed = true
               }
 
               if (shouldSendReviewRequest) {
@@ -719,10 +705,11 @@ export async function startPolling(slackClient) {
                   slackMessageTs: task.slackMessageTs,
                   slackThreadTs: task.slackThreadTs || task.slackMessageTs,
                   taskKind: task.taskKind,
-                  roundsLeft,
                   roundNumber: roundsCount + 1,
                   designer: currentTask.designer,
+                  canAcceptResult,
                 })
+                rootMessageRefreshed = true
               }
 
               await checkpointTaskSnapshot(task.pageId, currentTask)
@@ -734,6 +721,15 @@ export async function startPolling(slackClient) {
               )
             }
           }
+        }
+
+        if (
+          !completed &&
+          task.taskKind !== 'feedback' &&
+          isCommentsStatus(currentTask.status) &&
+          !rootMessageRefreshed
+        ) {
+          await refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, currentTasks)
         }
 
         if (completed) {

@@ -55,10 +55,10 @@ export async function sendStatusUpdate({
   slackMessageTs,
   slackThreadTs,
   taskKind = 'task',
-  roundsLeft = null,
   roundNumber = 1,
   completedRounds = null,
   designer,
+  canAcceptResult = true,
 }) {
   const resultUrl = normalizeUrl(finalProjectUrl)
 
@@ -73,9 +73,9 @@ export async function sendStatusUpdate({
     taskKind,
     completedRounds: completedRounds ?? Math.max(normalizePositiveInteger(roundNumber, 1) - 1, 0),
     pageId,
-    roundsLeft,
     roundNumber,
     designer,
+    canAcceptResult,
   })
 
   await postThreadStatusMovement(slackClient, {
@@ -99,9 +99,9 @@ export async function sendTaskFieldUpdate({
   slackMessageTs,
   taskKind = 'task',
   pageId = null,
-  roundsLeft = null,
   roundNumber = 1,
   designer = null,
+  canAcceptResult = true,
 }) {
   const resultUrl = normalizeUrl(finalProjectUrl)
 
@@ -115,9 +115,9 @@ export async function sendTaskFieldUpdate({
     resultUrl,
     taskKind,
     pageId,
-    roundsLeft,
     roundNumber,
     designer,
+    canAcceptResult,
   })
 }
 
@@ -134,9 +134,9 @@ export async function sendReviewRequest({
   slackMessageTs,
   slackThreadTs,
   taskKind = 'task',
-  roundsLeft = null,
   roundNumber = 1,
   designer,
+  canAcceptResult = true,
 }) {
   const resultUrl = normalizeUrl(finalProjectUrl)
 
@@ -150,9 +150,9 @@ export async function sendReviewRequest({
     resultUrl,
     taskKind,
     pageId,
-    roundsLeft,
     roundNumber,
     designer,
+    canAcceptResult,
   })
 
   await postThreadReviewMovement(slackClient, {
@@ -187,11 +187,11 @@ export async function updateRootTaskMessage(slackClient, {
   taskKind = 'task',
   completedRounds = 0,
   pageId = null,
-  roundsLeft = null,
   roundNumber = 1,
   designer = null,
   statusNote = null,
   suppressStatusActions = false,
+  canAcceptResult = true,
 }) {
   if (!channelId || !messageTs) return
 
@@ -213,10 +213,10 @@ export async function updateRootTaskMessage(slackClient, {
         pageId,
         rootMessageTs: messageTs,
         taskName,
-        roundsLeft,
         roundNumber,
         designer,
         taskKind,
+        canAcceptResult,
       })
 
   const blocks = [
@@ -610,15 +610,15 @@ function getStatusActionElements({
   pageId,
   rootMessageTs,
   taskName,
-  roundsLeft,
   roundNumber,
   designer,
   taskKind,
+  canAcceptResult,
 }) {
   if (isCommentsStatus(newStatus) && taskKind === 'feedback') {
     const elements = []
 
-    if (pageId) {
+    if (pageId && canAcceptResult) {
       elements.push({
         type: 'button',
         text: { type: 'plain_text', text: '✅ Прийняти правку' },
@@ -652,7 +652,7 @@ function getStatusActionElements({
     const elements = []
     const completedRounds = Math.max(normalizePositiveInteger(roundNumber, 1) - 1, 0)
 
-    if (pageId) {
+    if (pageId && canAcceptResult) {
       elements.push({
         type: 'button',
         text: {
@@ -676,12 +676,12 @@ function getStatusActionElements({
       })
     }
 
-    if (pageId && !isRoundsLimitReached(roundsLeft)) {
+    if (pageId) {
       elements.push({
         type: 'button',
         text: { type: 'plain_text', text: '✏️ Дати правки' },
         action_id: 'open_feedback_modal',
-        value: buildFeedbackActionValue({ pageId, taskName, roundsLeft, roundNumber }),
+        value: buildFeedbackActionValue({ pageId, taskName, roundNumber }),
       })
     }
 
@@ -765,33 +765,14 @@ function buildAcceptActionValue({
   })
 }
 
-function buildFeedbackActionValue({ pageId, taskName, roundsLeft, roundNumber }) {
+function buildFeedbackActionValue({ pageId, taskName, roundNumber }) {
   const normalizedRoundNumber = normalizePositiveInteger(roundNumber, 1)
-  const normalizedRoundsLeft = normalizeRoundsLeft(roundsLeft)
-  const maxRounds = normalizedRoundsLeft === null
-    ? null
-    : normalizedRoundNumber + normalizedRoundsLeft - 1
 
   return JSON.stringify({
     pageId,
     taskName: clampActionValueText(taskName || 'Без назви', 200),
     roundNumber: normalizedRoundNumber,
-    maxRounds,
   })
-}
-
-function isRoundsLimitReached(roundsLeft) {
-  const normalizedRoundsLeft = normalizeRoundsLeft(roundsLeft)
-  return normalizedRoundsLeft !== null && normalizedRoundsLeft <= 0
-}
-
-function normalizeRoundsLeft(roundsLeft) {
-  if (roundsLeft === null || roundsLeft === undefined) return null
-
-  const parsed = Number.parseInt(roundsLeft, 10)
-  if (!Number.isFinite(parsed)) return null
-
-  return Math.max(parsed, 0)
 }
 
 function normalizePositiveInteger(value, fallback) {

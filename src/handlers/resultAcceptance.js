@@ -1,5 +1,6 @@
 import { acceptTaskResult } from '../notion/acceptTask.js'
 import { syncQualityFeedbackToNotion } from '../notion/feedbackDatabase.js'
+import { getTaskAcceptanceReadiness } from '../notion/taskAcceptanceReadiness.js'
 import {
   deleteTask,
   getQualityFeedback,
@@ -49,6 +50,16 @@ function getAcceptanceText(taskName, roundsCount, taskKind, acceptedStatus) {
     : 'прийнято без правок'
 
   return `✅ *${taskName}* ${acceptedCopy}. Статус у Notion оновлено на «${acceptedStatus}».`
+}
+
+function getBlockedAcceptanceText(readiness) {
+  if (readiness.hasBlockingSubtasks) {
+    return '⚠️ Поки не можна прийняти результат: спершу всі сабтаски мають бути у статусі «Ready» або «Правка Done».'
+  }
+
+  const statusText = readiness.status ? ` Зараз статус задачі: «${readiness.status}».` : ''
+
+  return `⚠️ Кнопка прийняття вже неактуальна. Прийняти результат можна тільки коли основна задача у статусі «Comments».${statusText}`
 }
 
 function normalizeNonNegativeInteger(value, fallback = 0) {
@@ -251,6 +262,15 @@ export async function handleTaskAcceptance({ body, client }) {
   }
 
   try {
+    if (!isFeedbackTask(taskKind)) {
+      const readiness = await getTaskAcceptanceReadiness(pageId)
+
+      if (!readiness.canAccept) {
+        await postUserMessage(client, userId, getBlockedAcceptanceText(readiness))
+        return
+      }
+    }
+
     const result = await acceptTaskResult({
       pageId,
       designerName: payload.designerName,

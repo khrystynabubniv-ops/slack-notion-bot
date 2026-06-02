@@ -169,7 +169,6 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
         pageId: payload.pageId,
         taskName: payload.taskName,
         roundNumber: payload.roundNumber,
-        maxRounds: payload.maxRounds,
         sourceMessage: getActionMessageSource(body),
       })
     } catch (error) {
