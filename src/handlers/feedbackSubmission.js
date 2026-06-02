@@ -146,6 +146,7 @@ async function updateReviewSourceAfterFeedback(client, metadata, {
     resultUrl: parentTask.lastFinalProjectUrl,
     taskKind: parentTask.taskKind || 'task',
     completedRounds,
+    pageId: metadata.pageId,
     roundNumber: completedRounds + 1,
     designer: getParentDesigner(parentTask),
     statusNote: alreadySubmitted
