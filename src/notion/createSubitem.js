@@ -151,22 +151,7 @@ function normalizeFeedbackType(feedbackType) {
   return {
     value: feedbackType.value || null,
     label: feedbackType.label || feedbackType.value || null,
-    description: feedbackType.description || null,
   }
-}
-
-function buildFeedbackDescription(feedbackText, feedbackType) {
-  const lines = []
-
-  if (feedbackType?.label) {
-    lines.push(`Тип правки: ${feedbackType.label}`)
-    if (feedbackType.description) lines.push(`Пояснення: ${feedbackType.description}`)
-    lines.push('')
-  }
-
-  lines.push(feedbackText || '')
-
-  return lines.join('\n')
 }
 
 function addFeedbackTypeProperty(properties, databaseProperties, feedbackType) {
@@ -242,7 +227,7 @@ export async function createFeedbackSubitem({ parentPageId, taskName, roundNumbe
 
   if (hasPropertyType(databaseProperties, DESCRIPTION_PROPERTY, ['rich_text'])) {
     properties[DESCRIPTION_PROPERTY] = {
-      rich_text: buildRichText(buildFeedbackDescription(feedbackText, normalizedFeedbackType)),
+      rich_text: buildRichText(feedbackText),
     }
   }
 

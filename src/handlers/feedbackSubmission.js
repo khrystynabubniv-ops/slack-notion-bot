@@ -29,7 +29,6 @@ function getFeedbackType(view) {
   return {
     value: selected.value,
     label: selected.text?.text || null,
-    description: selected.description?.text || null,
   }
 }
 
