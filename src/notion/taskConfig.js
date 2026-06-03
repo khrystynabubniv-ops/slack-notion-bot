@@ -64,11 +64,16 @@ export function resolvePlatform(platform) {
 }
 
 export function getStatusPropertyNames() {
-  return [
-    configuredStatusProperty,
+  const preferredStatusPropertyNames = [
+    configuredStatusProperty && configuredStatusProperty !== LEGACY_STATUS_PROPERTY
+      ? configuredStatusProperty
+      : null,
     DEFAULT_STATUS_PROPERTY,
     LEGACY_STATUS_PROPERTY,
-  ].filter((propertyName, index, propertyNames) => {
+    configuredStatusProperty,
+  ]
+
+  return preferredStatusPropertyNames.filter((propertyName, index, propertyNames) => {
     return propertyName && propertyNames.indexOf(propertyName) === index
   })
 }

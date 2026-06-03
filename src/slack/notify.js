@@ -90,6 +90,7 @@ export async function sendStatusUpdate({
 
 export async function sendTaskFieldUpdate({
   slackClient,
+  slackUserId,
   taskName,
   status,
   responsible,
@@ -97,6 +98,7 @@ export async function sendTaskFieldUpdate({
   pageUrl,
   slackChannelId,
   slackMessageTs,
+  slackThreadTs,
   taskKind = 'task',
   pageId = null,
   roundNumber = 1,
@@ -119,6 +121,19 @@ export async function sendTaskFieldUpdate({
     designer,
     canAcceptResult,
   })
+
+  if (!slackChannelId || !slackMessageTs) {
+    await postTaskFieldMovement(slackClient, {
+      channelId: slackChannelId,
+      threadTs: slackThreadTs || slackMessageTs,
+      taskName,
+      status,
+      pageUrl,
+      resultUrl,
+      taskKind,
+      slackUserId,
+    })
+  }
 }
 
 export async function sendReviewRequest({
@@ -393,7 +408,7 @@ export async function sendCommentUpdate({
   slackChannelId,
   slackThreadTs,
 }) {
-  if (!slackChannelId || !slackThreadTs) return
+  if (!slackChannelId && !slackUserId) return
 
   const preview = formatCommentPreview(commentText)
 
@@ -454,7 +469,7 @@ async function postThreadStatusMovement(slackClient, {
   taskKind = 'task',
   slackUserId = null,
 }) {
-  if (!channelId || !threadTs) return
+  if (!channelId && !slackUserId) return
 
   const isFeedback = taskKind === 'feedback'
   const label = isFeedback ? 'Статус правки' : 'Статус'
@@ -467,9 +482,7 @@ async function postThreadStatusMovement(slackClient, {
   ].join('\n')
 
   try {
-    await slackClient.chat.postMessage({
-      channel: channelId,
-      thread_ts: threadTs,
+    await postNotification(slackClient, slackUserId, {
       text,
       blocks: [
         {
@@ -480,9 +493,13 @@ async function postThreadStatusMovement(slackClient, {
           },
         },
       ],
+    }, {
+      channelId,
+      threadTs,
     })
   } catch (error) {
-    console.error(`Failed to post short status movement ${channelId}/${threadTs}:`, error)
+    console.error(`Failed to post short status movement ${channelId || slackUserId}/${threadTs || 'dm'}:`, error)
+    throw error
   }
 }
 
@@ -492,7 +509,7 @@ async function postThreadReviewMovement(slackClient, {
   taskKind = 'task',
   slackUserId = null,
 }) {
-  if (!channelId || !threadTs) return
+  if (!channelId && !slackUserId) return
 
   const mention = formatUserMention(slackUserId)
   const text = [
@@ -503,9 +520,7 @@ async function postThreadReviewMovement(slackClient, {
   ].join('\n')
 
   try {
-    await slackClient.chat.postMessage({
-      channel: channelId,
-      thread_ts: threadTs,
+    await postNotification(slackClient, slackUserId, {
       text,
       blocks: [
         {
@@ -516,9 +531,58 @@ async function postThreadReviewMovement(slackClient, {
           },
         },
       ],
+    }, {
+      channelId,
+      threadTs,
     })
   } catch (error) {
-    console.error(`Failed to post short review movement ${channelId}/${threadTs}:`, error)
+    console.error(`Failed to post short review movement ${channelId || slackUserId}/${threadTs || 'dm'}:`, error)
+    throw error
+  }
+}
+
+async function postTaskFieldMovement(slackClient, {
+  channelId,
+  threadTs,
+  taskName,
+  status,
+  pageUrl,
+  resultUrl,
+  taskKind = 'task',
+  slackUserId = null,
+}) {
+  if (!channelId && !slackUserId) return
+
+  const mention = formatUserMention(slackUserId)
+  const isFeedback = taskKind === 'feedback'
+  const lines = [
+    `${mention ? `${mention} ` : ''}${isFeedback ? '*Є оновлення по правці* 🔄' : '*Є оновлення по задачі* 🔄'}`,
+    taskName ? `*${escapeMrkdwn(taskName)}*` : null,
+    status ? `*Статус:* ${escapeMrkdwn(status)}` : null,
+    resultUrl ? `*Результат:* <${resultUrl}|відкрити>` : null,
+    pageUrl ? `*Notion:* <${pageUrl}|відкрити>` : null,
+  ].filter(Boolean)
+  const text = lines.join('\n')
+
+  try {
+    await postNotification(slackClient, slackUserId, {
+      text,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text,
+          },
+        },
+      ],
+    }, {
+      channelId,
+      threadTs,
+    })
+  } catch (error) {
+    console.error(`Failed to post task field movement ${channelId || slackUserId}/${threadTs || 'dm'}:`, error)
+    throw error
   }
 }
 

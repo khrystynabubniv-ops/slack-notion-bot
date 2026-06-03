@@ -418,6 +418,34 @@ function hasStoredSnapshot(task) {
   return task.snapshotInitialized === true
 }
 
+function hasSlackThread(task) {
+  return Boolean(task.slackChannelId && (task.slackThreadTs || task.slackMessageTs))
+}
+
+function isInitialStatus(status) {
+  const normalizedStatus = normalizeStatusName(status)
+  return normalizedStatus === 'to do' ||
+    normalizedStatus === 'todo' ||
+    normalizedStatus.includes('ту ду')
+}
+
+function getFallbackStatusNotificationKey(status) {
+  return normalizeStatusName(status)
+}
+
+function shouldSendMissingThreadStatusRecovery(task, currentTask) {
+  const notificationKey = getFallbackStatusNotificationKey(currentTask.status)
+
+  return Boolean(
+    task.slackUserId &&
+      !hasSlackThread(task) &&
+      notificationKey &&
+      !isInitialStatus(currentTask.status) &&
+      !isCompletedStatus(currentTask.status) &&
+      task.fallbackStatusNotifiedFor !== notificationKey
+  )
+}
+
 function getTaskSnapshotPatch(currentTask) {
   return {
     lastStatus: currentTask.status,
@@ -476,6 +504,13 @@ async function checkpointTaskSnapshot(pageId, currentTask) {
   await updateTaskSnapshot(pageId, getTaskSnapshotPatch(currentTask))
 }
 
+async function checkpointMissingThreadStatusNotification(pageId, status) {
+  await updateTaskSnapshot(pageId, {
+    fallbackStatusNotifiedFor: getFallbackStatusNotificationKey(status),
+    fallbackStatusNotifiedAt: new Date().toISOString(),
+  })
+}
+
 async function refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, currentTasks) {
   const roundsCount = await getRoundsCount(task.pageId)
   const canAcceptResult = canAcceptTaskResult(currentTasks, task.pageId)
@@ -494,6 +529,37 @@ async function refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, c
     designer: currentTask.designer,
     canAcceptResult,
   })
+}
+
+async function sendMissingThreadStatusRecovery(slackClient, task, currentTask, pageUrl, currentTasks) {
+  const roundsCount = await getRoundsCount(task.pageId)
+  const canAcceptResult = canAcceptTaskResult(currentTasks, task.pageId)
+
+  console.log(
+    `📣 Sending fallback status recovery for page ${task.pageId}: ${currentTask.status} (user ${task.slackUserId})`
+  )
+
+  await sendStatusUpdate({
+    slackClient,
+    slackUserId: task.slackUserId,
+    taskName: task.taskName,
+    oldStatus: null,
+    newStatus: currentTask.status,
+    assignee: currentTask.assignee,
+    finalProjectUrl: currentTask.finalProjectUrl,
+    pageUrl,
+    pageId: task.pageId,
+    slackChannelId: task.slackChannelId,
+    slackMessageTs: task.slackMessageTs,
+    slackThreadTs: task.slackThreadTs || task.slackMessageTs,
+    taskKind: task.taskKind,
+    roundNumber: roundsCount + 1,
+    completedRounds: roundsCount,
+    designer: currentTask.designer,
+    canAcceptResult,
+  })
+
+  await checkpointMissingThreadStatusNotification(task.pageId, currentTask.status)
 }
 
 export async function startPolling(slackClient) {
@@ -593,6 +659,9 @@ export async function startPolling(slackClient) {
               canAcceptResult,
             })
             rootMessageRefreshed = true
+            if (!hasSlackThread(task)) {
+              await checkpointMissingThreadStatusNotification(task.pageId, currentTask.status)
+            }
 
             if (completed) {
               await stopPollingCompletedTask(slackClient, task, {
@@ -646,6 +715,7 @@ export async function startPolling(slackClient) {
               if (regularFieldChanges.length) {
                 await sendTaskFieldUpdate({
                   slackClient,
+                  slackUserId: task.slackUserId,
                   taskName: task.taskName,
                   status: currentTask.status,
                   responsible: getCurrentResponsible(currentTask),
@@ -653,6 +723,7 @@ export async function startPolling(slackClient) {
                   pageUrl,
                   slackChannelId: task.slackChannelId,
                   slackMessageTs: task.slackMessageTs,
+                  slackThreadTs: task.slackThreadTs || task.slackMessageTs,
                   taskKind: task.taskKind,
                   pageId: task.pageId,
                   roundNumber: roundsCount + 1,
@@ -691,6 +762,18 @@ export async function startPolling(slackClient) {
                 error
               )
             }
+          }
+        }
+
+        if (shouldSendMissingThreadStatusRecovery(task, currentTask)) {
+          try {
+            await sendMissingThreadStatusRecovery(slackClient, task, currentTask, pageUrl, currentTasks)
+            rootMessageRefreshed = true
+          } catch (error) {
+            console.error(
+              `❌ Failed to send fallback status recovery for page ${task.pageId} (${task.taskName}) and user ${task.slackUserId}:`,
+              error
+            )
           }
         }
 
