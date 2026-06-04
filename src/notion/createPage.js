@@ -147,7 +147,7 @@ function buildPropertyForDatabaseType(propertyType, value) {
   const firstValue = values[0]
   if (!firstValue) return null
 
-    switch (propertyType) {
+  switch (propertyType) {
     case 'rich_text':
       return { rich_text: buildRichText(values.join(', ')) }
     case 'url': {
