@@ -371,6 +371,13 @@ function normalizeTrackedValue(value) {
   return String(value || '').trim()
 }
 
+function normalizeSearchText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function normalizeTrackedUrl(value) {
   const trimmed = normalizeTrackedValue(value)
   if (!trimmed) return ''
@@ -433,8 +440,13 @@ function getFallbackStatusNotificationKey(status) {
   return normalizeStatusName(status)
 }
 
+function getMissingThreadRestoreKey(status) {
+  return normalizeStatusName(status)
+}
+
 function shouldSendMissingThreadStatusRecovery(task, currentTask) {
   const notificationKey = getFallbackStatusNotificationKey(currentTask.status)
+  const restoreKey = getMissingThreadRestoreKey(currentTask.status)
 
   return Boolean(
     task.slackUserId &&
@@ -442,8 +454,105 @@ function shouldSendMissingThreadStatusRecovery(task, currentTask) {
       notificationKey &&
       !isInitialStatus(currentTask.status) &&
       !isCompletedStatus(currentTask.status) &&
-      task.fallbackStatusNotifiedFor !== notificationKey
+      (task.fallbackStatusNotifiedFor !== notificationKey ||
+        task.missingThreadRestoreAttemptedFor !== restoreKey)
   )
+}
+
+function isFallbackStatusRecoveryMessage(message) {
+  const text = normalizeSearchText(message?.text)
+
+  return Boolean(
+    message?.bot_id &&
+      !message.thread_ts &&
+      text.includes('є рух по задачі') &&
+      text.includes('статус')
+  )
+}
+
+function isRootTaskMessageCandidate(message, taskName) {
+  const text = normalizeSearchText(message?.text)
+  const normalizedTaskName = normalizeSearchText(taskName)
+
+  if (!message?.bot_id || !text || !normalizedTaskName) return false
+  if (!text.includes(normalizedTaskName)) return false
+  if (isFallbackStatusRecoveryMessage(message)) return false
+
+  return text.includes('задача створена') || text.includes('ми отримали твій запит')
+}
+
+async function getSlackDmHistory(slackClient, slackUserId) {
+  if (!slackClient?.conversations?.open || !slackClient?.conversations?.history) return null
+
+  const opened = await slackClient.conversations.open({ users: slackUserId })
+  const channelId = opened.channel?.id
+  if (!channelId) return null
+
+  const messages = []
+  let cursor
+
+  for (let page = 0; page < 10; page += 1) {
+    const response = await slackClient.conversations.history({
+      channel: channelId,
+      limit: 200,
+      ...(cursor ? { cursor } : {}),
+    })
+
+    messages.push(...(response.messages || []))
+    cursor = response.response_metadata?.next_cursor
+    if (!cursor) break
+  }
+
+  return { channelId, messages }
+}
+
+async function tryRestoreMissingSlackThread(slackClient, task, currentTask) {
+  const restoreKey = getMissingThreadRestoreKey(currentTask.status)
+  const restoreAttemptPatch = {
+    missingThreadRestoreAttemptedFor: restoreKey,
+    missingThreadRestoreAttemptedAt: new Date().toISOString(),
+  }
+
+  try {
+    const dmHistory = await getSlackDmHistory(slackClient, task.slackUserId)
+    const rootMessage = dmHistory?.messages
+      ?.find((message) => isRootTaskMessageCandidate(message, task.taskName))
+
+    if (!dmHistory?.channelId || !rootMessage?.ts) {
+      await updateTaskSnapshot(task.pageId, restoreAttemptPatch)
+      return null
+    }
+
+    const restoredAt = new Date().toISOString()
+    const restoredTask = {
+      ...task,
+      slackChannelId: dmHistory.channelId,
+      slackMessageTs: rootMessage.ts,
+      slackThreadTs: rootMessage.ts,
+      threadRestoredAt: restoredAt,
+      missingThreadRestoreAttemptedFor: restoreKey,
+      missingThreadRestoreAttemptedAt: restoredAt,
+    }
+
+    await updateTaskSnapshot(task.pageId, {
+      slackChannelId: restoredTask.slackChannelId,
+      slackMessageTs: restoredTask.slackMessageTs,
+      slackThreadTs: restoredTask.slackThreadTs,
+      threadRestoredAt: restoredAt,
+      missingThreadRestoreAttemptedFor: restoreKey,
+      missingThreadRestoreAttemptedAt: restoredAt,
+    })
+
+    console.log(
+      `🧵 Restored Slack task thread for page ${task.pageId}: ${dmHistory.channelId}/${rootMessage.ts}`
+    )
+
+    return restoredTask
+  } catch (error) {
+    await updateTaskSnapshot(task.pageId, restoreAttemptPatch)
+    console.error(`❌ Failed to restore Slack task thread for page ${task.pageId}:`, error)
+    return null
+  }
 }
 
 function getTaskSnapshotPatch(currentTask) {
@@ -534,25 +643,34 @@ async function refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, c
 async function sendMissingThreadStatusRecovery(slackClient, task, currentTask, pageUrl, currentTasks) {
   const roundsCount = await getRoundsCount(task.pageId)
   const canAcceptResult = canAcceptTaskResult(currentTasks, task.pageId)
+  const restoredTask = await tryRestoreMissingSlackThread(slackClient, task, currentTask)
+  const notificationTask = restoredTask || task
+  const notificationKey = getFallbackStatusNotificationKey(currentTask.status)
+
+  if (!restoredTask && task.fallbackStatusNotifiedFor === notificationKey) {
+    return
+  }
 
   console.log(
-    `📣 Sending fallback status recovery for page ${task.pageId}: ${currentTask.status} (user ${task.slackUserId})`
+    restoredTask
+      ? `📣 Sending restored-thread status recovery for page ${task.pageId}: ${currentTask.status} (user ${task.slackUserId})`
+      : `📣 Sending fallback status recovery for page ${task.pageId}: ${currentTask.status} (user ${task.slackUserId})`
   )
 
   await sendStatusUpdate({
     slackClient,
-    slackUserId: task.slackUserId,
-    taskName: task.taskName,
+    slackUserId: notificationTask.slackUserId,
+    taskName: notificationTask.taskName,
     oldStatus: null,
     newStatus: currentTask.status,
     assignee: currentTask.assignee,
     finalProjectUrl: currentTask.finalProjectUrl,
     pageUrl,
-    pageId: task.pageId,
-    slackChannelId: task.slackChannelId,
-    slackMessageTs: task.slackMessageTs,
-    slackThreadTs: task.slackThreadTs || task.slackMessageTs,
-    taskKind: task.taskKind,
+    pageId: notificationTask.pageId,
+    slackChannelId: notificationTask.slackChannelId,
+    slackMessageTs: notificationTask.slackMessageTs,
+    slackThreadTs: notificationTask.slackThreadTs || notificationTask.slackMessageTs,
+    taskKind: notificationTask.taskKind,
     roundNumber: roundsCount + 1,
     completedRounds: roundsCount,
     designer: currentTask.designer,
