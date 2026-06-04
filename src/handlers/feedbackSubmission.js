@@ -1,7 +1,7 @@
 import { createFeedbackSubitem } from '../notion/createSubitem.js'
 import { getRoundsCount, getTask, incrementRoundsCount, saveTask } from '../redis/store.js'
 import { formatDesignerForSlackAsync } from '../slack/designerMentions.js'
-import { updateRootTaskMessage } from '../slack/notify.js'
+import { postNotification, updateRootTaskMessage } from '../slack/notify.js'
 
 function parsePrivateMetadata(privateMetadata) {
   if (!privateMetadata) return {}
@@ -198,9 +198,7 @@ async function postFeedbackTaskCreatedMessage({
   const designerText = await formatDesignerForSlackAsync(client, designer)
   const text = buildFeedbackThreadText({ taskName, designerText, feedbackText, feedbackType })
 
-  return await client.chat.postMessage({
-    channel: channelId || userId,
-    ...(threadTs ? { thread_ts: threadTs } : {}),
+  return await postNotification(client, userId, {
     text,
     blocks: [
       {
@@ -222,6 +220,9 @@ async function postFeedbackTaskCreatedMessage({
         ],
       },
     ],
+  }, {
+    channelId,
+    threadTs,
   })
 }
 

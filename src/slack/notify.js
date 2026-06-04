@@ -251,15 +251,31 @@ export async function updateRootTaskMessage(slackClient, {
     })
   }
 
-  try {
-    await slackClient.chat.update({
-      channel: channelId,
-      ts: messageTs,
-      text,
-      blocks,
-    })
-  } catch (error) {
-    console.error(`Failed to update root Slack task message ${channelId}/${messageTs}:`, error)
+  const channels = await resolveMessageChannels(slackClient, channelId)
+  let lastError
+
+  for (const channel of channels) {
+    try {
+      await slackClient.chat.update({
+        channel,
+        ts: messageTs,
+        text,
+        blocks,
+      })
+      return
+    } catch (error) {
+      lastError = error
+
+      if (!shouldTryNextChannel(error)) {
+        break
+      }
+
+      console.warn(`Failed to update root Slack task message ${channel}/${messageTs}, trying next channel:`, error)
+    }
+  }
+
+  if (lastError) {
+    console.error(`Failed to update root Slack task message ${channelId}/${messageTs}:`, lastError)
   }
 }
 
@@ -586,24 +602,8 @@ async function postTaskFieldMovement(slackClient, {
   }
 }
 
-async function postNotification(slackClient, slackUserId, message, { channelId, threadTs } = {}) {
-  if (channelId) {
-    try {
-      return await slackClient.chat.postMessage({
-        ...message,
-        channel: channelId,
-        ...(threadTs ? { thread_ts: threadTs } : {}),
-      })
-    } catch (error) {
-      if (!shouldTryNextChannel(error)) {
-        throw error
-      }
-
-      console.warn(`Failed to post threaded notification to ${channelId}, trying fallback DM:`, error)
-    }
-  }
-
-  const channels = await resolveNotificationChannels(slackClient, slackUserId)
+export async function postNotification(slackClient, slackUserId, message, { channelId, threadTs } = {}) {
+  const channels = await resolveNotificationChannels(slackClient, slackUserId, { channelId, threadTs })
   let lastError
 
   for (const channel of channels) {
@@ -611,6 +611,7 @@ async function postNotification(slackClient, slackUserId, message, { channelId, 
       return await slackClient.chat.postMessage({
         ...message,
         channel,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
       })
     } catch (error) {
       lastError = error
@@ -619,30 +620,88 @@ async function postNotification(slackClient, slackUserId, message, { channelId, 
         throw error
       }
 
-      console.warn(`Failed to post notification to ${channel}, trying fallback channel:`, error)
+      console.warn(`Failed to post notification to ${channel}${threadTs ? ` in thread ${threadTs}` : ''}, trying next channel:`, error)
     }
   }
 
-  throw lastError
+  if (lastError) throw lastError
+
+  throw new Error(
+    threadTs
+      ? `No Slack channel available for threaded notification ${threadTs}.`
+      : 'No Slack channel available for notification.'
+  )
 }
 
-async function resolveNotificationChannels(slackClient, slackUserId) {
+async function resolveMessageChannels(slackClient, channelId) {
+  const normalizedChannelId = normalizeSlackId(channelId)
+  if (!normalizedChannelId) return []
+
   const channels = []
+
+  if (isSlackUserId(normalizedChannelId)) {
+    const dmChannelId = await openDmChannel(slackClient, normalizedChannelId)
+    if (dmChannelId) channels.push(dmChannelId)
+  }
+
+  channels.push(normalizedChannelId)
+
+  return uniqueChannels(channels)
+}
+
+async function resolveNotificationChannels(slackClient, slackUserId, { channelId, threadTs } = {}) {
+  const normalizedChannelId = normalizeSlackId(channelId)
+  const normalizedSlackUserId = normalizeSlackId(slackUserId)
+  const channelIsUserId = isSlackUserId(normalizedChannelId)
+  const userIdForDm = normalizedSlackUserId || (channelIsUserId ? normalizedChannelId : null)
+  const channels = []
+
+  if (normalizedChannelId && !channelIsUserId) {
+    channels.push(normalizedChannelId)
+  }
+
+  if (userIdForDm && (channelIsUserId || !normalizedChannelId || !threadTs)) {
+    const dmChannelId = await openDmChannel(slackClient, userIdForDm)
+    if (dmChannelId) channels.push(dmChannelId)
+  }
+
+  if (!threadTs && normalizedChannelId && channelIsUserId) {
+    channels.push(normalizedChannelId)
+  }
+
+  if (!threadTs && normalizedSlackUserId) {
+    channels.push(normalizedSlackUserId)
+  }
+
+  return uniqueChannels(channels)
+}
+
+async function openDmChannel(slackClient, slackUserId) {
+  const normalizedSlackUserId = normalizeSlackId(slackUserId)
+  if (!normalizedSlackUserId) return null
 
   try {
     const response = await slackClient.conversations.open({
-      users: slackUserId,
+      users: normalizedSlackUserId,
     })
-
     const channelId = response.channel?.id
-    if (channelId) channels.push(channelId)
+    return channelId || null
   } catch (error) {
-    console.warn(`Failed to open DM channel for ${slackUserId}, fallback to user ID delivery:`, error)
+    console.warn(`Failed to open DM channel for ${normalizedSlackUserId}:`, error)
+    return null
   }
+}
 
-  channels.push(slackUserId)
+function normalizeSlackId(value) {
+  return String(value || '').trim()
+}
 
-  return [...new Set(channels.filter(Boolean))]
+function isSlackUserId(value) {
+  return /^[UW][A-Z0-9]+$/.test(normalizeSlackId(value))
+}
+
+function uniqueChannels(channels) {
+  return [...new Set(channels.map(normalizeSlackId).filter(Boolean))]
 }
 
 function shouldTryNextChannel(error) {
