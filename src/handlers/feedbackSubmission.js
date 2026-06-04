@@ -249,6 +249,7 @@ export async function handleFeedbackSubmission({ body, view, client }) {
     const roundNumber = normalizeRoundNumber(metadata.roundNumber)
     const expectedRoundNumber = roundsCount + 1
     const parentTask = await getTask(pageId)
+    const departmentKey = parentTask?.departmentKey || 'design'
     const taskName = parentTask?.taskName || metadataTaskName
 
     if (roundNumber !== expectedRoundNumber) {
@@ -268,6 +269,7 @@ export async function handleFeedbackSubmission({ body, view, client }) {
     }
 
     const feedbackTask = await createFeedbackSubitem({
+      departmentKey,
       parentPageId: pageId,
       taskName,
       roundNumber,
@@ -308,6 +310,7 @@ export async function handleFeedbackSubmission({ body, view, client }) {
 
       await saveTask({
         pageId: feedbackTask.pageId,
+        departmentKey,
         slackUserId: userId,
         slackChannelId: feedbackChannelId,
         slackMessageTs: feedbackMessage?.ts || null,
@@ -317,6 +320,9 @@ export async function handleFeedbackSubmission({ body, view, client }) {
         taskKind: 'feedback',
         parentPageId: pageId,
         pageUrl: feedbackTask.pageUrl,
+        team: parentTask?.team || null,
+        hub: parentTask?.hub || null,
+        requestType: parentTask?.requestType || null,
         lastStatus: feedbackTask.initialStatus,
         lastFinalProjectUrl: feedbackTask.finalProjectUrl || null,
         lastDesignerName: feedbackTask.designer?.name || null,

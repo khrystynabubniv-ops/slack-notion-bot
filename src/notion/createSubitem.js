@@ -3,9 +3,9 @@ import { buildTaskPageUrl } from './pageUrl.js'
 import { notionRequest } from './request.js'
 import { DEFAULT_STATUS, resolveStatusPropertyName } from './taskConfig.js'
 import { extractDesignerFromProperties } from './designer.js'
+import { getDepartment } from '../config/departments.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
-const DATABASE_ID = process.env.NOTION_DATABASE_ID
 const PARENT_ITEM_PROPERTY = process.env.NOTION_PARENT_ITEM_PROPERTY?.trim() || 'Parent item'
 const SUB_TYPE_PROPERTY = process.env.NOTION_SUB_TYPE_PROPERTY?.trim() || 'Sub-type'
 const FEEDBACK_SUB_TYPE = process.env.NOTION_FEEDBACK_SUB_TYPE?.trim() || 'правка'
@@ -23,7 +23,7 @@ const COPIED_PARENT_PROPERTIES = [
   'Slack Person',
   'Final project',
 ]
-let databasePropertiesPromise = null
+const databasePropertiesPromises = new Map()
 
 function clampText(value, limit = RICH_TEXT_CONTENT_LIMIT) {
   return value?.slice(0, limit) || ''
@@ -49,24 +49,27 @@ function buildRichText(value) {
   return chunks.length ? chunks : [{ type: 'text', text: { content: ' ' } }]
 }
 
-async function getDatabaseProperties() {
-  if (!DATABASE_ID) {
-    throw new Error('NOTION_DATABASE_ID is required to create feedback sub-items.')
+async function getDatabaseProperties(department) {
+  const databaseId = department.notionDataSourceId
+  if (!databaseId) {
+    throw new Error(`Notion database id is required to create feedback sub-items for ${department.key}.`)
   }
 
-  if (!databasePropertiesPromise) {
-    databasePropertiesPromise = notionRequest(
-      () => notion.databases.retrieve({ database_id: DATABASE_ID }),
-      'database schema retrieve for feedback subitem'
+  if (!databasePropertiesPromises.has(databaseId)) {
+    const schemaPromise = notionRequest(
+      () => notion.databases.retrieve({ database_id: databaseId }),
+      `database schema retrieve for feedback subitem (${department.key})`
     )
       .then((database) => database.properties || {})
       .catch((error) => {
-        databasePropertiesPromise = null
+        databasePropertiesPromises.delete(databaseId)
         throw error
       })
+
+    databasePropertiesPromises.set(databaseId, schemaPromise)
   }
 
-  return databasePropertiesPromise
+  return databasePropertiesPromises.get(databaseId)
 }
 
 function hasPropertyType(databaseProperties, propertyName, expectedTypes) {
@@ -171,13 +174,21 @@ function addFeedbackTypeProperty(properties, databaseProperties, feedbackType) {
   }
 }
 
-export async function createFeedbackSubitem({ parentPageId, taskName, roundNumber, feedbackText, feedbackType }) {
+export async function createFeedbackSubitem({
+  departmentKey = 'design',
+  parentPageId,
+  taskName,
+  roundNumber,
+  feedbackText,
+  feedbackType,
+}) {
   if (!parentPageId) {
     throw new Error('parentPageId is required')
   }
 
+  const department = getDepartment(departmentKey)
   const [databaseProperties, parentPage] = await Promise.all([
-    getDatabaseProperties(),
+    getDatabaseProperties(department),
     notionRequest(
       () => notion.pages.retrieve({ page_id: parentPageId }),
       'parent task retrieve for feedback subitem'
@@ -204,7 +215,7 @@ export async function createFeedbackSubitem({ parentPageId, taskName, roundNumbe
     ? Number(roundNumber)
     : 1
   const feedbackTaskName = `Правка ${safeRoundNumber} — ${safeTaskName}`
-  const statusPropertyName = resolveStatusPropertyName(databaseProperties)
+  const statusPropertyName = resolveStatusPropertyName(databaseProperties, department.key)
   const normalizedFeedbackType = normalizeFeedbackType(feedbackType)
   const properties = {
     [titlePropertyName]: {
@@ -239,12 +250,12 @@ export async function createFeedbackSubitem({ parentPageId, taskName, roundNumbe
 
   const response = await notionRequest(
     () => notion.pages.create({
-      parent: { database_id: DATABASE_ID },
+      parent: { database_id: department.notionDataSourceId },
       properties: {
         ...properties,
       },
     }),
-    'feedback subitem create'
+    `feedback subitem create (${department.key})`
   )
 
   return {

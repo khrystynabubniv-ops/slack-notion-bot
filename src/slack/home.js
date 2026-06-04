@@ -1,3 +1,5 @@
+import { DEFAULT_DEPARTMENT_KEY, getTaskTypeGroups as getConfiguredTaskTypeGroups } from '../config/departments.js'
+
 export function registerHomeTab(app) {
   app.event('app_home_opened', async ({ event, client }) => {
     await client.views.publish({
@@ -112,7 +114,7 @@ export function registerHomeTab(app) {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*💡 Поради для швидкого брифу*\n• Додай посилання на референси — це прискорює роботу дизайнера\n• Вкажи дедлайн із запасом\n• Якщо маєш файли — поділись ними зі мною в DM після створення задачі',
+              text: '*💡 Поради для швидкого брифу*\n• Додай посилання на референси — це прискорює роботу дизайнера\n• Вкажи дедлайн із запасом\n• Якщо маєш файли — додай посилання в брифі або відкрий задачу в Notion після створення',
             },
           },
           { type: 'divider' },
@@ -164,16 +166,18 @@ export function registerHomeTab(app) {
 }
 
 // Reusable task type select (same options as newTask.js)
-export function getTaskTypeSelect() {
+export function getTaskTypeSelect(departmentKey = DEFAULT_DEPARTMENT_KEY) {
   return {
     type: 'static_select',
     action_id: 'task_type',
     placeholder: { type: 'plain_text', text: 'Вибери тип...' },
-    option_groups: getTaskTypeGroups(),
+    option_groups: getTaskTypeGroups(departmentKey),
   }
 }
 
-export function getTaskTypeGroups() {
+export function getTaskTypeGroups(departmentKey = DEFAULT_DEPARTMENT_KEY) {
+  return getConfiguredTaskTypeGroups(departmentKey)
+
   return [
     {
       label: { type: 'plain_text', text: '🖼 SMM / Банери' },

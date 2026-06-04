@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis'
+import { DEFAULT_DEPARTMENT_KEY, resolveDepartmentKey } from '../config/departments.js'
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL,
@@ -7,10 +8,11 @@ const redis = new Redis({
 
 const SAVE_TASK_RETRY_DELAYS_MS = [300, 1000]
 const DEFAULT_FAILED_SUBMISSION_TTL_SECONDS = 60 * 60 * 24 * 30
-const TASK_SUBMISSION_QUEUE_KEY = 'task-submission-queue'
-const TASK_SUBMISSION_QUEUE_ITEM_PREFIX = 'task-submission-queue-item:'
-const FEEDBACK_KEY_PREFIX = 'feedback:'
-const SLACK_THREAD_COMMENT_SYNC_PREFIX = 'slack-thread-comment-sync:'
+const REDIS_KEY_PREFIX = process.env.REDIS_KEY_PREFIX?.trim() || ''
+const TASK_SUBMISSION_QUEUE_KEY = redisKey('task-submission-queue')
+const TASK_SUBMISSION_QUEUE_ITEM_PREFIX = redisKey('task-submission-queue-item:')
+const FEEDBACK_KEY_PREFIX = redisKey('feedback:')
+const SLACK_THREAD_COMMENT_SYNC_PREFIX = redisKey('slack-thread-comment-sync:')
 const SLACK_THREAD_COMMENT_SYNC_TTL_SECONDS = 60 * 60 * 24 * 7
 const FAILED_SUBMISSION_TTL_SECONDS = Number.parseInt(
   process.env.FAILED_SUBMISSION_TTL_SECONDS || `${DEFAULT_FAILED_SUBMISSION_TTL_SECONDS}`,
@@ -19,6 +21,23 @@ const FAILED_SUBMISSION_TTL_SECONDS = Number.parseInt(
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function redisKey(key) {
+  return `${REDIS_KEY_PREFIX}${key}`
+}
+
+function stripRedisKeyPrefix(key) {
+  if (!REDIS_KEY_PREFIX) return key
+  return key.startsWith(REDIS_KEY_PREFIX) ? key.slice(REDIS_KEY_PREFIX.length) : key
+}
+
+function taskKey(pageId) {
+  return redisKey(`notion:${pageId}`)
+}
+
+function launchKey(parentTaskId) {
+  return redisKey(`notion-launch:${parentTaskId}`)
 }
 
 async function saveWithRetry(key, value, options) {
@@ -58,6 +77,7 @@ function parseStoredTask(data) {
 
 export async function saveTask({
   pageId,
+  departmentKey = DEFAULT_DEPARTMENT_KEY,
   slackUserId,
   slackChannelId,
   slackMessageTs,
@@ -67,6 +87,9 @@ export async function saveTask({
   taskKind = 'task',
   parentPageId = null,
   pageUrl = null,
+  team = null,
+  hub = null,
+  requestType = null,
   lastStatus = 'To do',
   lastAssignee = null,
   lastDesignerName = null,
@@ -77,7 +100,8 @@ export async function saveTask({
 }) {
   const trackedAt = new Date().toISOString()
 
-  await saveWithRetry(`notion:${pageId}`, JSON.stringify({
+  await saveWithRetry(taskKey(pageId), JSON.stringify({
+    departmentKey: resolveDepartmentKey(departmentKey),
     slackUserId,
     slackChannelId,
     slackMessageTs: slackMessageTs || null,
@@ -87,6 +111,9 @@ export async function saveTask({
     taskKind,
     parentPageId,
     pageUrl,
+    team,
+    hub,
+    requestType,
     lastStatus,
     lastAssignee,
     lastDesignerName,
@@ -104,7 +131,7 @@ export async function saveTask({
 export async function saveFailedSubmission(payload) {
   const createdAt = new Date().toISOString()
   const draftId = `failed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  const key = `failed-submission:${draftId}`
+  const key = redisKey(`failed-submission:${draftId}`)
 
   await saveWithRetry(
     key,
@@ -226,36 +253,38 @@ export async function completeTaskSubmission(queueId) {
 }
 
 export async function getTask(pageId) {
-  const data = await redis.get(`notion:${pageId}`)
-  return parseStoredTask(data)
+  const task = parseStoredTask(await redis.get(taskKey(pageId)))
+  return task ? { ...task, departmentKey: resolveDepartmentKey(task.departmentKey) } : null
 }
 
 export async function updateStatus(pageId, newStatus) {
-  const data = await redis.get(`notion:${pageId}`)
+  const data = await redis.get(taskKey(pageId))
   if (!data) return
   const parsed = parseStoredTask(data)
   if (!parsed) return
 
-  await redis.set(`notion:${pageId}`, JSON.stringify({
+  await redis.set(taskKey(pageId), JSON.stringify({
     ...parsed,
+    departmentKey: resolveDepartmentKey(parsed.departmentKey),
     lastStatus: newStatus,
   }))
 }
 
 export async function updateTaskSnapshot(pageId, snapshot) {
-  const data = await redis.get(`notion:${pageId}`)
+  const data = await redis.get(taskKey(pageId))
   if (!data) return
   const parsed = parseStoredTask(data)
   if (!parsed) return
 
-  await redis.set(`notion:${pageId}`, JSON.stringify({
+  await redis.set(taskKey(pageId), JSON.stringify({
     ...parsed,
+    departmentKey: resolveDepartmentKey(parsed.departmentKey),
     ...snapshot,
   }))
 }
 
 export async function deleteTask(pageId) {
-  await redis.del(`notion:${pageId}`)
+  await redis.del(taskKey(pageId))
 }
 
 export async function markFeedbackSurveySent({
@@ -293,11 +322,12 @@ export async function markFeedbackSurveySent({
 
   await redis.set(key, JSON.stringify(record))
 
-  const taskData = await redis.get(`notion:${pageId}`)
+  const taskData = await redis.get(taskKey(pageId))
   const task = parseStoredTask(taskData)
   if (task) {
-    await redis.set(`notion:${pageId}`, JSON.stringify({
+    await redis.set(taskKey(pageId), JSON.stringify({
       ...task,
+      departmentKey: resolveDepartmentKey(task.departmentKey),
       feedbackSurveySentAt,
     }))
   }
@@ -346,11 +376,12 @@ export async function saveQualityFeedback({
 
   await redis.set(key, JSON.stringify(record))
 
-  const taskData = await redis.get(`notion:${pageId}`)
+  const taskData = await redis.get(taskKey(pageId))
   const task = parseStoredTask(taskData)
   if (task) {
-    await redis.set(`notion:${pageId}`, JSON.stringify({
+    await redis.set(taskKey(pageId), JSON.stringify({
       ...task,
+      departmentKey: resolveDepartmentKey(task.departmentKey),
       feedbackRating: rating,
       feedbackSubmittedAt: submittedAt,
     }))
@@ -360,13 +391,14 @@ export async function saveQualityFeedback({
 }
 
 export async function updateLastComment(pageId, { id, createdTime, commentId }) {
-  const data = await redis.get(`notion:${pageId}`)
+  const data = await redis.get(taskKey(pageId))
   if (!data) return
   const parsed = parseStoredTask(data)
   if (!parsed) return
 
-  await redis.set(`notion:${pageId}`, JSON.stringify({
+  await redis.set(taskKey(pageId), JSON.stringify({
     ...parsed,
+    departmentKey: resolveDepartmentKey(parsed.departmentKey),
     lastCommentId: commentId || id || null,
     lastCommentCreatedTime: createdTime || null,
   }))
@@ -428,35 +460,36 @@ export async function releaseSlackThreadCommentSync(syncId) {
 }
 
 export async function incrementRoundsCount(pageId) {
-  const data = await redis.get(`notion:${pageId}`)
+  const data = await redis.get(taskKey(pageId))
   if (!data) return 0
   const parsed = parseStoredTask(data)
   if (!parsed) return 0
 
   const newCount = (parsed.roundsCount || 0) + 1
-  await redis.set(`notion:${pageId}`, JSON.stringify({
+  await redis.set(taskKey(pageId), JSON.stringify({
     ...parsed,
+    departmentKey: resolveDepartmentKey(parsed.departmentKey),
     roundsCount: newCount,
   }))
   return newCount
 }
 
 export async function getRoundsCount(pageId) {
-  const data = await redis.get(`notion:${pageId}`)
+  const data = await redis.get(taskKey(pageId))
   if (!data) return 0
   const parsed = parseStoredTask(data)
   return parsed?.roundsCount || 0
 }
 
 export async function getAllTasks() {
-  const keys = await redis.keys('notion:*')
+  const keys = await redis.keys(redisKey('notion:*'))
   if (!keys.length) return []
   const tasks = await Promise.all(
     keys.map(async (key) => {
       const data = await redis.get(key)
-      const pageId = key.replace('notion:', '')
+      const pageId = stripRedisKeyPrefix(key).replace('notion:', '')
       const parsed = parseStoredTask(data)
-      return parsed ? { pageId, ...parsed } : null
+      return parsed ? { pageId, ...parsed, departmentKey: resolveDepartmentKey(parsed.departmentKey) } : null
     })
   )
 
@@ -469,7 +502,7 @@ export async function saveLaunchContext({ parentTaskId, parentPageName, payload 
   }
 
   await redis.set(
-    `notion-launch:${parentTaskId}`,
+    launchKey(parentTaskId),
     JSON.stringify({
       parentTaskId,
       parentPageName: parentPageName || null,
@@ -480,6 +513,6 @@ export async function saveLaunchContext({ parentTaskId, parentPageName, payload 
 }
 
 export async function getLaunchContext(parentTaskId) {
-  const data = await redis.get(`notion-launch:${parentTaskId}`)
+  const data = await redis.get(launchKey(parentTaskId))
   return parseStoredTask(data)
 }
