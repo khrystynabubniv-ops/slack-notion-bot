@@ -232,6 +232,7 @@ export async function updateRootTaskMessage(slackClient, {
     ? getPassiveActionElements({ pageUrl, resultUrl, status })
     : getStatusActionElements({
         newStatus: status,
+        departmentKey,
         pageUrl,
         resultUrl,
         pageId,
@@ -306,6 +307,7 @@ async function buildRootTaskText(slackClient, {
   const ready = feedbackReady || taskReady
   const normalizedCompletedRounds = normalizeNonNegativeInteger(completedRounds, 0)
   const isDesignDepartment = departmentKey === 'design'
+  const supportsFeedbackRounds = isDesignDepartment
   const responsiblePerson = isDesignDepartment ? designer : (designer || responsible)
   const responsibleText = await formatDesignerForSlackAsync(slackClient, responsiblePerson, {
     fallback: isDesignDepartment ? undefined : 'не призначено',
@@ -317,7 +319,7 @@ async function buildRootTaskText(slackClient, {
     `*${taskName}*`,
     `${statusEmoji} *Статус${isFeedback ? ' правки' : ''}:* ${status}`,
     ready ? null : `🎨 *${responsibleLabel}:* ${responsibleText}`,
-    taskReady ? `✏️ *Раундів правок:* ${normalizedCompletedRounds}` : null,
+    taskReady && supportsFeedbackRounds ? `✏️ *Раундів правок:* ${normalizedCompletedRounds}` : null,
     '',
     getRootTaskStatusText({
       status,
@@ -353,6 +355,10 @@ function getRootTaskStatusText({
   }
 
   if (taskReady) {
+    if (departmentKey !== 'design') {
+      return 'Задача готова до наступного кроку. Слідкуй за цим тредом: статус оновиться після публікації або скасування.'
+    }
+
     return completedRounds > 0
       ? 'Готово, результат прийнято після правок :white_check_mark:'
       : 'Готово, результат прийнято без правок :white_check_mark:'
@@ -384,6 +390,7 @@ function getRootTaskStatusText({
 export async function sendQualitySurvey({
   slackClient,
   slackUserId,
+  departmentKey = 'design',
   taskName,
   pageId,
   requesterName,
@@ -399,6 +406,7 @@ export async function sendQualitySurvey({
   const baseValue = {
     pageId,
     taskName: String(taskName || 'Без назви').slice(0, 1000),
+    departmentKey,
     requesterName: requesterName || null,
     requestUrl: requestUrl || null,
     team: team || null,
@@ -750,6 +758,7 @@ function normalizeUrl(value) {
 
 function getStatusActionElements({
   newStatus,
+  departmentKey = 'design',
   pageUrl,
   resultUrl,
   pageId,
@@ -794,6 +803,10 @@ function getStatusActionElements({
   }
 
   if (isCommentsStatus(newStatus)) {
+    if (departmentKey !== 'design') {
+      return getPassiveActionElements({ pageUrl, resultUrl, status: newStatus })
+    }
+
     const elements = []
     const completedRounds = Math.max(normalizePositiveInteger(roundNumber, 1) - 1, 0)
 
@@ -811,6 +824,7 @@ function getStatusActionElements({
         value: buildAcceptActionValue({
           pageId,
           taskName,
+          departmentKey,
           designer,
           requestUrl: pageUrl,
           resultUrl,
@@ -890,6 +904,7 @@ function getPassiveActionElements({ pageUrl, resultUrl, status }) {
 function buildAcceptActionValue({
   pageId,
   taskName,
+  departmentKey = 'design',
   designer,
   requestUrl,
   resultUrl,
@@ -900,6 +915,7 @@ function buildAcceptActionValue({
   return JSON.stringify({
     pageId,
     taskName: String(taskName || 'Без назви').slice(0, 1000),
+    departmentKey,
     designerName: designer?.name || null,
     designerUserId: designer?.userId || null,
     designerEmail: designer?.email || null,

@@ -290,6 +290,7 @@ export async function deleteTask(pageId) {
 export async function markFeedbackSurveySent({
   pageId,
   slackUserId,
+  departmentKey,
   taskName,
   requesterName,
   requestUrl,
@@ -309,6 +310,7 @@ export async function markFeedbackSurveySent({
   const record = {
     ...existing,
     pageId,
+    departmentKey: resolveDepartmentKey(departmentKey || existing.departmentKey),
     slackUserId: slackUserId || existing.slackUserId || null,
     taskName: taskName || existing.taskName || null,
     requesterName: requesterName || existing.requesterName || null,
@@ -346,6 +348,7 @@ export async function saveQualityFeedback({
   comment,
   categories,
   slackUserId,
+  departmentKey,
   taskName,
   requesterName,
   requestUrl,
@@ -360,6 +363,7 @@ export async function saveQualityFeedback({
   const record = {
     ...existing,
     pageId,
+    departmentKey: resolveDepartmentKey(departmentKey || existing.departmentKey),
     slackUserId: slackUserId || existing.slackUserId || null,
     taskName: taskName || existing.taskName || null,
     requesterName: requesterName || existing.requesterName || null,

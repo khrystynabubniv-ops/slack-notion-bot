@@ -207,6 +207,7 @@ function buildTitle(name) {
 }
 
 function buildDescription({
+  department,
   fullName,
   context,
   style,
@@ -217,6 +218,10 @@ function buildDescription({
   fieldAnswers,
   artifacts,
 }) {
+  if (department?.useBodyBrief) {
+    return 'Опис нижче в тілі задачі.'
+  }
+
   const lines = []
 
   if (fullName) lines.push(`📌 Повна назва: ${fullName}`)
@@ -248,6 +253,104 @@ function buildDescription({
   return lines.join('\n')
 }
 
+function buildBlockRichText(value) {
+  const text = String(value || '').slice(0, RICH_TEXT_CONTENT_LIMIT)
+  if (!text) return []
+
+  return [
+    {
+      type: 'text',
+      text: { content: text },
+    },
+  ]
+}
+
+function buildHeadingBlock(text, level = 2) {
+  const type = level === 3 ? 'heading_3' : 'heading_2'
+
+  return {
+    object: 'block',
+    type,
+    [type]: {
+      rich_text: buildBlockRichText(text),
+    },
+  }
+}
+
+function buildParagraphBlock(text) {
+  return {
+    object: 'block',
+    type: 'paragraph',
+    paragraph: {
+      rich_text: buildBlockRichText(text),
+    },
+  }
+}
+
+function buildBulletedListItem(text) {
+  return {
+    object: 'block',
+    type: 'bulleted_list_item',
+    bulleted_list_item: {
+      rich_text: buildBlockRichText(text),
+    },
+  }
+}
+
+function getFieldSection(field) {
+  return field.section === 'base' ? 'base' : 'specific'
+}
+
+function buildFieldSummaryBlock(field) {
+  return buildBulletedListItem(`${field.label}: ${field.formattedValue}`)
+}
+
+function buildBriefBodyBlocks({ department, taskConfig, fieldAnswers = [], artifacts = {} }) {
+  if (!department?.useBodyBrief) return []
+
+  const baseFields = fieldAnswers.filter((field) => getFieldSection(field) === 'base')
+  const specificFields = fieldAnswers.filter((field) => getFieldSection(field) === 'specific')
+  const artifactEntries = Object.entries(artifacts || {}).filter(([, value]) => value)
+  const blocks = [
+    buildHeadingBlock(`Бриф ${department.label}`),
+    buildParagraphBlock(`Тип задачі: ${taskConfig.label || taskConfig.key || 'не вказано'}`),
+  ]
+
+  if (baseFields.length) {
+    blocks.push(buildHeadingBlock('Базові поля', 3))
+    blocks.push(...baseFields.map(buildFieldSummaryBlock))
+  }
+
+  if (specificFields.length) {
+    blocks.push(buildHeadingBlock('Специфічні поля', 3))
+    blocks.push(...specificFields.map(buildFieldSummaryBlock))
+  }
+
+  if (artifactEntries.length) {
+    blocks.push(buildHeadingBlock('Матеріали', 3))
+    blocks.push(...artifactEntries.map(([label, value]) => buildBulletedListItem(`${label}: ${value}`)))
+  }
+
+  return blocks
+}
+
+async function appendBriefBodyBlocks(pageId, blocks) {
+  if (!blocks.length) return false
+
+  for (let index = 0; index < blocks.length; index += 100) {
+    const children = blocks.slice(index, index + 100)
+    await notionRequest(
+      () => notion.blocks.children.append({
+        block_id: pageId,
+        children,
+      }),
+      'brief body append'
+    )
+  }
+
+  return true
+}
+
 export async function createNotionPage({
   departmentKey = 'design',
   name,
@@ -270,7 +373,9 @@ export async function createNotionPage({
 }) {
   const department = getDepartment(departmentKey)
   const truncatedTitle = clampText(name)
+  const taskConfig = department.taskTypes[taskType] || {}
   const description = buildDescription({
+    department,
     fullName: truncatedTitle !== name ? name : null,
     context,
     style,
@@ -281,12 +386,17 @@ export async function createNotionPage({
     fieldAnswers,
     artifacts,
   })
+  const briefBodyBlocks = buildBriefBodyBlocks({
+    department,
+    taskConfig,
+    fieldAnswers,
+    artifacts,
+  })
   const taskTypeRelationId = getTaskTypeRelationId(taskType, department.key)
   const notionPlatform = resolvePlatform(platform)
   const databaseProperties = await getDatabaseProperties(department)
   const titlePropertyName = resolveTitlePropertyName(databaseProperties)
   const statusPropertyName = resolveStatusPropertyName(databaseProperties, department.key)
-  const taskConfig = department.taskTypes[taskType] || {}
 
   if (!titlePropertyName) {
     throw new Error('Notion database is missing a title property for task name.')
@@ -402,9 +512,15 @@ export async function createNotionPage({
     console.error('Notion template apply failed:', error)
   }
 
+  try {
+    await appendBriefBodyBlocks(response.id, briefBodyBlocks)
+  } catch (error) {
+    console.error('Notion brief body append failed:', error)
+  }
+
   return {
     pageId: response.id,
-    pageUrl: buildTaskPageUrl(response.id, response.url),
+    pageUrl: buildTaskPageUrl(response.id, response.url, department.key),
     templateApplied,
   }
 }

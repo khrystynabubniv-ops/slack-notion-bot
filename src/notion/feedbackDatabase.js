@@ -1,27 +1,35 @@
 import { Client } from '@notionhq/client'
 import { notionRequest } from './request.js'
+import { getDepartment } from '../config/departments.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const DEFAULT_FEEDBACK_DATABASE_ID = '164e70dbe0774b8ca7fa761ab2f0e6a5'
-const FEEDBACK_DATABASE_ID = process.env.NOTION_FEEDBACK_DATABASE_ID?.trim() || DEFAULT_FEEDBACK_DATABASE_ID
-let feedbackDatabasePropertiesPromise = null
+const fallbackFeedbackDatabaseId = process.env.NOTION_FEEDBACK_DATABASE_ID?.trim() || DEFAULT_FEEDBACK_DATABASE_ID
+const feedbackDatabasePropertiesPromises = new Map()
 
-async function getFeedbackDatabaseProperties() {
-  if (!FEEDBACK_DATABASE_ID) return null
+function getFeedbackDatabaseId(departmentKey) {
+  const department = getDepartment(departmentKey)
+  return department.feedbackDatabaseId || fallbackFeedbackDatabaseId
+}
 
-  if (!feedbackDatabasePropertiesPromise) {
-    feedbackDatabasePropertiesPromise = notionRequest(
-      () => notion.databases.retrieve({ database_id: FEEDBACK_DATABASE_ID }),
-      'feedback database schema retrieve'
+async function getFeedbackDatabaseProperties(databaseId) {
+  if (!databaseId) return null
+
+  if (!feedbackDatabasePropertiesPromises.has(databaseId)) {
+    const schemaPromise = notionRequest(
+      () => notion.databases.retrieve({ database_id: databaseId }),
+      `feedback database schema retrieve (${databaseId})`
     )
       .then((database) => database.properties || {})
       .catch((error) => {
-        feedbackDatabasePropertiesPromise = null
+        feedbackDatabasePropertiesPromises.delete(databaseId)
         throw error
       })
+
+    feedbackDatabasePropertiesPromises.set(databaseId, schemaPromise)
   }
 
-  return feedbackDatabasePropertiesPromise
+  return feedbackDatabasePropertiesPromises.get(databaseId)
 }
 
 function resolveTitlePropertyName(databaseProperties = {}) {
@@ -135,12 +143,14 @@ function addMultiSelectOrTextProperty(properties, databaseProperties, names, val
 }
 
 export async function syncQualityFeedbackToNotion(record) {
-  if (!FEEDBACK_DATABASE_ID) {
+  const feedbackDatabaseId = getFeedbackDatabaseId(record.departmentKey)
+
+  if (!feedbackDatabaseId) {
     console.warn('NOTION_FEEDBACK_DATABASE_ID is not set; quality feedback saved only in Redis.')
     return { skipped: true }
   }
 
-  const databaseProperties = await getFeedbackDatabaseProperties()
+  const databaseProperties = await getFeedbackDatabaseProperties(feedbackDatabaseId)
   const titlePropertyName = resolveTitlePropertyName(databaseProperties)
 
   if (!titlePropertyName) {
@@ -168,7 +178,7 @@ export async function syncQualityFeedbackToNotion(record) {
 
   const response = await notionRequest(
     () => notion.pages.create({
-      parent: { database_id: FEEDBACK_DATABASE_ID },
+      parent: { database_id: feedbackDatabaseId },
       properties,
     }),
     'quality feedback create'

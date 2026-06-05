@@ -61,7 +61,12 @@ Phase 2 додає SMM-змінні поверх Design aliases і тестов�
 - `NOTION_DESIGN_DATABASE_ID`, `NOTION_DESIGN_TEMPLATE_ID`, `NOTION_DESIGN_STATUS_PROPERTY`
 - `NOTION_DESIGN_COMPLETED_STATUSES`, `NOTION_DESIGN_POLL_INTERVAL_SEC`
 - `NOTION_ACTIVITIES_DATABASE_ID` або `NOTION_SMM_DATABASE_ID`
-- `NOTION_SMM_STATUS_PROPERTY=SMM статус`, `NOTION_SMM_INITIAL_STATUS=to do`
+- `NOTION_SMM_STATUS_PROPERTY=SMM статус`, `NOTION_SMM_INITIAL_STATUS=To do`
+- `NOTION_SMM_HUB_URL`, default `https://www.notion.so/SMM-Hub-375ce9899cb781aaab1ddb4c30833e23?source=copy_link`
+- `NOTION_SMM_TASK_TEMPLATE_ID` або `NOTION_SMM_TEMPLATE_ID` для SMM template
+- `NOTION_SMM_COMPLETED_STATUSES=Published,Canceled,Cancelled`
+- `NOTION_SMM_QUALITY_SURVEY_STATUSES=Published`
+- `NOTION_SMM_FEEDBACK_DATABASE_ID=025dce2c634e4a079ee7600ea8c63253`
 - `NOTION_SMM_OWNER_ID`, `NOTION_SMM_OWNER_LABEL`, `NOTION_SMM_TEAM=SMM`
 - `SMM_*_MIN_LEAD_DAYS` для дедлайнів SMM-типів
 - `REDIS_KEY_PREFIX` для тестового Redis namespace
@@ -107,11 +112,15 @@ Webhook приймає payload із Notion, шукає ID батьківсько
 
 - `notionDataSourceId`: `NOTION_SMM_DATABASE_ID`, або `NOTION_ACTIVITIES_DATABASE_ID`, або legacy `NOTION_DATABASE_ID`
 - `statusProperty`: `NOTION_SMM_STATUS_PROPERTY`, default `SMM статус`
-- `initialStatus`: `NOTION_SMM_INITIAL_STATUS`, default `to do`
-- `completedStatuses`: `NOTION_SMM_COMPLETED_STATUSES`, default `ready,опубліковано`
+- `initialStatus`: `NOTION_SMM_INITIAL_STATUS`, default `To do`
+- `completedStatuses`: `NOTION_SMM_COMPLETED_STATUSES`, default `Published,Canceled,Cancelled`
+- `qualitySurveyStatuses`: `NOTION_SMM_QUALITY_SURVEY_STATUSES`, default `Published`
+- `hubUrl`: `NOTION_SMM_HUB_URL`, default SMM Hub page, so task links open inside SMM Hub
+- `feedbackDatabaseId`: `NOTION_SMM_FEEDBACK_DATABASE_ID`, default SMM feedback database
 - `pollIntervalSec`: `NOTION_SMM_POLL_INTERVAL_SEC`, default `180`
 - `ownerId`: Anna Gayuk by default, можна перевизначити через `NOTION_SMM_OWNER_ID`
 - `team`: `SMM`
+- `Description`: для SMM пишеться коротке `Опис нижче в тілі задачі.`, а сам бриф додається у body сторінки з секціями `Базові поля` і `Специфічні поля`
 - `Late`: ставиться тільки коли користувач підтвердив запізний дедлайн у модалці
 
 Redis tracking records now include `departmentKey`. Old records without this field are treated as `design`, so in-flight Design tasks do not need migration.
@@ -176,10 +185,10 @@ User whitelist / data boundary:
 - Щоб не впиратися в rate limit Notion, бот тротлить усі Notion API запити через `NOTION_REQUEST_MIN_INTERVAL_MS` і повторює `429 rate_limited` через `NOTION_REQUEST_MAX_RETRIES`.
 - Для сповіщень про коментарі з Notion треба увімкнути capability `Read comments`, інакше бот автоматично залишить тільки статусні нотифікації.
 - Для перенесення відповідей зі Slack-треду в Notion інтеграція має мати право створювати коментарі.
-- Якщо хочеш, щоб нові задачі створювалися з готового Notion template, задай `NOTION_TEMPLATE_ID`.
+- Якщо хочеш, щоб нові задачі створювалися з готового Notion template, задай `NOTION_TEMPLATE_ID` для Design або `NOTION_SMM_TASK_TEMPLATE_ID` / `NOTION_SMM_TEMPLATE_ID` для SMM.
 - Template застосовується асинхронно одразу після створення page. Це зручно для кейсу, де в template вже є нативна кнопка `Add subtask`.
 - Для SMM у Activities потрібні властивості `Team` (select з опцією `SMM`), `SMM статус` (select), `Owner` (people), `Late` (checkbox), `Deadline` (date), `Publication date` (date), `Platform` або `Platforms`, `Description` (rich text).
-- Опитування якості роботи надсилається тільки коли статус задачі стає `Ready`. Інші завершальні статуси з `NOTION_POLL_COMPLETED_STATUSES` / `NOTION_DESIGN_COMPLETED_STATUSES` можуть зупиняти поллінг, але не запускають оцінку.
+- Для Design опитування якості роботи надсилається на `Ready`. Для SMM `Ready` не завершує поллінг і не показує дизайн-кнопки правок; опитування надсилається на `Published`, а поллінг зупиняється на `Published` або `Canceled`.
 - Для задач-правок у базі мають бути властивості `Parent item` (relation), `Sub-type` (select), `Description` (rich text) і, за потреби, `Тип правки`. Їхні назви можна змінити через `NOTION_PARENT_ITEM_PROPERTY`, `NOTION_SUB_TYPE_PROPERTY`, `NOTION_DESCRIPTION_PROPERTY` і `NOTION_FEEDBACK_TYPE_PROPERTY`.
 - `NOTION_FEEDBACK_DATABASE_ID` використовується для запису quality feedback. Якщо не заданий, бот використовує дефолтну базу з коду; якщо інтеграція не має доступу до неї, фідбек залишиться тільки в Redis.
 

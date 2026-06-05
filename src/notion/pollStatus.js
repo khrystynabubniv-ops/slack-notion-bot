@@ -86,31 +86,44 @@ function getCompletedStatusNames(department) {
     .filter(Boolean)
 }
 
+function getQualitySurveyStatusNames(department) {
+  return (department.qualitySurveyStatuses || [])
+    .map(normalizeStatusName)
+    .filter(Boolean)
+}
+
 function isCompletedStatus(status, department) {
   const normalizedStatus = normalizeStatusName(status)
   const completedStatusNames = getCompletedStatusNames(department)
 
   return Boolean(
     normalizedStatus &&
-      (isQualitySurveyStatus(status) ||
-        completedStatusNames.includes(normalizedStatus) ||
+      (completedStatusNames.includes(normalizedStatus) ||
         normalizedStatus.includes('done'))
   )
 }
 
-function isQualitySurveyStatus(status) {
+function isQualitySurveyStatus(status, department) {
   const normalizedStatus = normalizeStatusName(status)
-  return normalizedStatus === 'ready' ||
-    normalizedStatus.includes('ready') ||
-    normalizedStatus.includes('реді')
+  const surveyStatusNames = getQualitySurveyStatusNames(department)
+
+  return Boolean(
+    normalizedStatus &&
+      (surveyStatusNames.includes(normalizedStatus) ||
+        (!surveyStatusNames.length && (
+          normalizedStatus === 'ready' ||
+          normalizedStatus.includes('ready') ||
+          normalizedStatus.includes('реді')
+        )))
+  )
 }
 
-function shouldSendQualitySurvey(task, status) {
-  return isQualitySurveyStatus(status) && task.taskKind !== 'feedback'
+function shouldSendQualitySurvey(task, status, department) {
+  return isQualitySurveyStatus(status, department) && task.taskKind !== 'feedback'
 }
 
-async function sendQualitySurveyOnce(slackClient, task, { pageUrl, completedAt, status }) {
-  if (!shouldSendQualitySurvey(task, status)) return false
+async function sendQualitySurveyOnce(slackClient, task, { pageUrl, completedAt, status, department }) {
+  if (!shouldSendQualitySurvey(task, status, department)) return false
 
   const existingFeedback = await getQualityFeedback(task.pageId)
   if (existingFeedback?.feedbackSurveySentAt) return false
@@ -118,6 +131,7 @@ async function sendQualitySurveyOnce(slackClient, task, { pageUrl, completedAt, 
   await sendQualitySurvey({
     slackClient,
     slackUserId: task.slackUserId,
+    departmentKey: task.departmentKey,
     taskName: task.taskName,
     pageId: task.pageId,
     requesterName: task.requesterName,
@@ -133,6 +147,7 @@ async function sendQualitySurveyOnce(slackClient, task, { pageUrl, completedAt, 
   await markFeedbackSurveySent({
     pageId: task.pageId,
     slackUserId: task.slackUserId,
+    departmentKey: task.departmentKey,
     taskName: task.taskName,
     requesterName: task.requesterName,
     requestUrl: pageUrl,
@@ -148,7 +163,7 @@ async function sendQualitySurveyOnce(slackClient, task, { pageUrl, completedAt, 
 async function stopPollingCompletedTask(
   slackClient,
   task,
-  { pageUrl, completedAt = new Date().toISOString(), status }
+  { pageUrl, completedAt = new Date().toISOString(), status, department }
 ) {
   try {
     await updateStatus(task.pageId, status)
@@ -164,13 +179,14 @@ async function stopPollingCompletedTask(
       pageUrl,
       completedAt,
       status,
+      department,
     })
   } catch (error) {
     console.error(
       `❌ Failed to send Ready quality survey for completed task ${task.pageId} (${task.taskName}); keeping task for retry:`,
       error
     )
-    if (shouldSendQualitySurvey(task, status)) {
+    if (shouldSendQualitySurvey(task, status, department)) {
       return
     }
   }
@@ -699,73 +715,79 @@ async function sendMissingThreadStatusRecovery(slackClient, task, currentTask, p
 }
 
 async function runPollingCycle(slackClient, department) {
-    if (pollingInProgressByDepartment.has(department.key)) {
-      console.warn(`Notion polling skipped for ${department.key} because the previous cycle is still running.`)
-      return
-    }
+  if (pollingInProgressByDepartment.has(department.key)) {
+    console.warn(`Notion polling skipped for ${department.key} because the previous cycle is still running.`)
+    return
+  }
 
-    if (Date.now() < pollingPausedUntil) {
-      console.log(`Notion polling paused until ${new Date(pollingPausedUntil).toISOString()}`)
-      return
-    }
+  if (Date.now() < pollingPausedUntil) {
+    console.log(`Notion polling paused until ${new Date(pollingPausedUntil).toISOString()}`)
+    return
+  }
 
-    pollingInProgressByDepartment.add(department.key)
+  pollingInProgressByDepartment.add(department.key)
 
-    try {
-      const trackedTasks = (await getAllTasks()).filter((task) => {
-        return resolveDepartmentKey(task.departmentKey) === department.key
-      })
-      if (!trackedTasks.length) return
+  try {
+    const trackedTasks = (await getAllTasks()).filter((task) => {
+      return resolveDepartmentKey(task.departmentKey) === department.key
+    })
+    if (!trackedTasks.length) return
 
-      const activeTrackedTasks = []
-      for (const task of trackedTasks) {
-        const pageUrl = task.pageUrl || buildTaskPageUrl(task.pageId)
+    const activeTrackedTasks = []
+    for (const task of trackedTasks) {
+      const pageUrl = task.pageUrl || buildTaskPageUrl(task.pageId, null, task.departmentKey)
 
-        if (isCompletedStatus(task.lastStatus, department)) {
-          try {
-            await stopPollingCompletedTask(slackClient, task, {
-              pageUrl,
-              completedAt: new Date().toISOString(),
-              status: task.lastStatus,
-            })
-          } catch (error) {
-            activeTrackedTasks.push(task)
-            console.error(
-              `❌ Failed to remove completed task ${task.pageId} (${task.taskName}) from polling; keeping it for retry:`,
-              error
-            )
-          }
-        } else {
+      if (isCompletedStatus(task.lastStatus, department)) {
+        try {
+          await stopPollingCompletedTask(slackClient, task, {
+            pageUrl,
+            completedAt: new Date().toISOString(),
+            status: task.lastStatus,
+            department,
+          })
+        } catch (error) {
           activeTrackedTasks.push(task)
+          console.error(
+            `❌ Failed to remove completed task ${task.pageId} (${task.taskName}) from polling; keeping it for retry:`,
+            error
+          )
         }
+      } else {
+        activeTrackedTasks.push(task)
       }
+    }
 
-      if (!activeTrackedTasks.length) return
+    if (!activeTrackedTasks.length) return
 
-      const currentTasks = await getCurrentTaskSnapshots(department)
+    const currentTasks = await getCurrentTaskSnapshots(department)
 
-      for (const task of activeTrackedTasks) {
-        const currentTask = getCurrentTaskSnapshot(currentTasks, task.pageId)
-        if (!currentTask?.status) continue
-        const pageUrl = task.pageUrl || buildTaskPageUrl(task.pageId)
-        const completed = isCompletedStatus(currentTask.status, department)
-        let rootMessageRefreshed = false
+    for (const task of activeTrackedTasks) {
+      const currentTask = getCurrentTaskSnapshot(currentTasks, task.pageId)
+      if (!currentTask?.status) continue
+      const pageUrl = task.pageUrl || buildTaskPageUrl(task.pageId, null, task.departmentKey)
+      const completed = isCompletedStatus(currentTask.status, department)
+      let rootMessageRefreshed = false
 
-        if (!task.lastStatus) {
-          if (completed) {
-            await stopPollingCompletedTask(slackClient, task, {
-              pageUrl,
-              completedAt: new Date().toISOString(),
-              status: currentTask.status,
-            })
-            continue
-          } else {
-            await refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, currentTasks)
-            rootMessageRefreshed = true
-            await checkpointTaskSnapshot(task.pageId, currentTask)
-            console.log(`ℹ️ Task snapshot initialized: ${task.taskName} → ${currentTask.status}`)
-          }
-        } else if (currentTask.status !== task.lastStatus) {
+      if (!task.lastStatus) {
+        if (completed) {
+          await stopPollingCompletedTask(slackClient, task, {
+            pageUrl,
+            completedAt: new Date().toISOString(),
+            status: currentTask.status,
+            department,
+          })
+          continue
+        } else {
+          await refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, currentTasks)
+          rootMessageRefreshed = true
+          await checkpointTaskSnapshot(task.pageId, currentTask)
+          console.log(`ℹ️ Task snapshot initialized: ${task.taskName} → ${currentTask.status}`)
+        }
+      } else if (currentTask.status !== task.lastStatus) {
+        if (normalizeStatusName(currentTask.status) === normalizeStatusName(task.lastStatus)) {
+          await checkpointTaskSnapshot(task.pageId, currentTask)
+          console.log(`ℹ️ Status casing normalized without notification: ${task.taskName} → ${currentTask.status}`)
+        } else {
           try {
             const roundsCount = await getRoundsCount(task.pageId)
             const canAcceptResult = canAcceptTaskResult(currentTasks, task.pageId)
@@ -804,6 +826,7 @@ async function runPollingCycle(slackClient, department) {
                 pageUrl,
                 completedAt: new Date().toISOString(),
                 status: currentTask.status,
+                department,
               })
               continue
             } else {
@@ -821,176 +844,179 @@ async function runPollingCycle(slackClient, department) {
                 pageUrl,
                 completedAt: new Date().toISOString(),
                 status: currentTask.status,
+                department,
               })
               continue
             }
           }
-        } else if (!hasStoredSnapshot(task)) {
-          await refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, currentTasks)
-          rootMessageRefreshed = true
-          await checkpointTaskSnapshot(task.pageId, currentTask)
-          console.log(`ℹ️ Task field snapshot initialized: ${task.taskName}`)
-        } else {
-          const fieldChanges = getTrackedFieldChanges(task, currentTask)
-
-          if (fieldChanges.length) {
-            try {
-              const roundsCount = await getRoundsCount(task.pageId)
-              const canAcceptResult = canAcceptTaskResult(currentTasks, task.pageId)
-              const finalProjectChanged = fieldChanges.some((change) => change.type === 'finalProject')
-              const canRequestReviewFromResultChange = roundsCount === 0
-              const shouldSendReviewRequest =
-                finalProjectChanged &&
-                isCommentsStatus(currentTask.status) &&
-                Boolean(normalizeTrackedUrl(currentTask.finalProjectUrl)) &&
-                canRequestReviewFromResultChange
-              const regularFieldChanges = shouldSendReviewRequest
-                ? fieldChanges.filter((change) => change.type !== 'finalProject')
-                : fieldChanges
-
-              if (regularFieldChanges.length) {
-                await sendTaskFieldUpdate({
-                  slackClient,
-                  slackUserId: task.slackUserId,
-                  taskName: task.taskName,
-                  departmentKey: task.departmentKey,
-                  status: currentTask.status,
-                  responsible: getCurrentResponsible(currentTask),
-                  finalProjectUrl: currentTask.finalProjectUrl,
-                  pageUrl,
-                  slackChannelId: task.slackChannelId,
-                  slackMessageTs: task.slackMessageTs,
-                  slackThreadTs: task.slackThreadTs || task.slackMessageTs,
-                  taskKind: task.taskKind,
-                  pageId: task.pageId,
-                  roundNumber: roundsCount + 1,
-                  designer: currentTask.designer,
-                  canAcceptResult,
-                })
-                rootMessageRefreshed = true
-              }
-
-              if (shouldSendReviewRequest) {
-                await sendReviewRequest({
-                  slackClient,
-                  slackUserId: task.slackUserId,
-                  taskName: task.taskName,
-                  departmentKey: task.departmentKey,
-                  status: currentTask.status,
-                  assignee: currentTask.assignee,
-                  finalProjectUrl: currentTask.finalProjectUrl,
-                  pageUrl,
-                  pageId: task.pageId,
-                  slackChannelId: task.slackChannelId,
-                  slackMessageTs: task.slackMessageTs,
-                  slackThreadTs: task.slackThreadTs || task.slackMessageTs,
-                  taskKind: task.taskKind,
-                  roundNumber: roundsCount + 1,
-                  designer: currentTask.designer,
-                  canAcceptResult,
-                })
-                rootMessageRefreshed = true
-              }
-
-              await checkpointTaskSnapshot(task.pageId, currentTask)
-              console.log(`✅ Field snapshot updated: ${task.taskName}`)
-            } catch (error) {
-              console.error(
-                `❌ Failed to notify about field change for page ${task.pageId} (${task.taskName}) and user ${task.slackUserId}:`,
-                error
-              )
-            }
-          }
         }
+      } else if (!hasStoredSnapshot(task)) {
+        await refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, currentTasks)
+        rootMessageRefreshed = true
+        await checkpointTaskSnapshot(task.pageId, currentTask)
+        console.log(`ℹ️ Task field snapshot initialized: ${task.taskName}`)
+      } else {
+        const fieldChanges = getTrackedFieldChanges(task, currentTask)
 
-        if (shouldSendMissingThreadStatusRecovery(task, currentTask)) {
+        if (fieldChanges.length) {
           try {
-            await sendMissingThreadStatusRecovery(slackClient, task, currentTask, pageUrl, currentTasks)
-            rootMessageRefreshed = true
+            const roundsCount = await getRoundsCount(task.pageId)
+            const canAcceptResult = canAcceptTaskResult(currentTasks, task.pageId)
+            const finalProjectChanged = fieldChanges.some((change) => change.type === 'finalProject')
+            const canRequestReviewFromResultChange = roundsCount === 0
+            const shouldSendReviewRequest =
+              finalProjectChanged &&
+              isCommentsStatus(currentTask.status) &&
+              Boolean(normalizeTrackedUrl(currentTask.finalProjectUrl)) &&
+              canRequestReviewFromResultChange
+            const regularFieldChanges = shouldSendReviewRequest
+              ? fieldChanges.filter((change) => change.type !== 'finalProject')
+              : fieldChanges
+
+            if (regularFieldChanges.length) {
+              await sendTaskFieldUpdate({
+                slackClient,
+                slackUserId: task.slackUserId,
+                taskName: task.taskName,
+                departmentKey: task.departmentKey,
+                status: currentTask.status,
+                responsible: getCurrentResponsible(currentTask),
+                finalProjectUrl: currentTask.finalProjectUrl,
+                pageUrl,
+                slackChannelId: task.slackChannelId,
+                slackMessageTs: task.slackMessageTs,
+                slackThreadTs: task.slackThreadTs || task.slackMessageTs,
+                taskKind: task.taskKind,
+                pageId: task.pageId,
+                roundNumber: roundsCount + 1,
+                designer: currentTask.designer,
+                canAcceptResult,
+              })
+              rootMessageRefreshed = true
+            }
+
+            if (shouldSendReviewRequest) {
+              await sendReviewRequest({
+                slackClient,
+                slackUserId: task.slackUserId,
+                taskName: task.taskName,
+                departmentKey: task.departmentKey,
+                status: currentTask.status,
+                assignee: currentTask.assignee,
+                finalProjectUrl: currentTask.finalProjectUrl,
+                pageUrl,
+                pageId: task.pageId,
+                slackChannelId: task.slackChannelId,
+                slackMessageTs: task.slackMessageTs,
+                slackThreadTs: task.slackThreadTs || task.slackMessageTs,
+                taskKind: task.taskKind,
+                roundNumber: roundsCount + 1,
+                designer: currentTask.designer,
+                canAcceptResult,
+              })
+              rootMessageRefreshed = true
+            }
+
+            await checkpointTaskSnapshot(task.pageId, currentTask)
+            console.log(`✅ Field snapshot updated: ${task.taskName}`)
           } catch (error) {
             console.error(
-              `❌ Failed to send fallback status recovery for page ${task.pageId} (${task.taskName}) and user ${task.slackUserId}:`,
+              `❌ Failed to notify about field change for page ${task.pageId} (${task.taskName}) and user ${task.slackUserId}:`,
               error
             )
           }
         }
+      }
 
-        if (
-          !completed &&
-          task.taskKind !== 'feedback' &&
-          isCommentsStatus(currentTask.status) &&
-          !rootMessageRefreshed
-        ) {
-          await refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, currentTasks)
-        }
-
-        if (completed) {
-          await stopPollingCompletedTask(slackClient, task, {
-            pageUrl,
-            completedAt: new Date().toISOString(),
-            status: currentTask.status,
-          })
-          continue
-        }
-
+      if (shouldSendMissingThreadStatusRecovery(task, currentTask)) {
         try {
-          const comments = await getOpenComments(task.pageId)
-          if (!comments.length) continue
-
-          if (!task.lastCommentId && !task.lastCommentCreatedTime) {
-            const latestComment = comments.at(-1)
-            await updateLastComment(task.pageId, latestComment)
-            continue
-          }
-
-          const newComments = getNewComments(comments, task)
-          if (!newComments.length) continue
-
-          for (const comment of newComments) {
-            if (isOwnComment(comment, task)) {
-              await updateLastComment(task.pageId, comment)
-              continue
-            }
-
-            console.log(
-              `💬 Sending comment update for page ${task.pageId}: ${comment.id} (user ${task.slackUserId})`
-            )
-
-            await sendCommentUpdate({
-              slackClient,
-              slackUserId: task.slackUserId,
-              taskName: task.taskName,
-              commentAuthor: comment.author,
-              commentText: comment.text,
-              pageUrl,
-              slackChannelId: task.slackChannelId,
-              slackThreadTs: task.slackThreadTs || task.slackMessageTs,
-            })
-
-            await updateLastComment(task.pageId, comment)
-            console.log(`✅ Comment checkpoint updated: ${task.taskName} → ${comment.id}`)
-          }
+          await sendMissingThreadStatusRecovery(slackClient, task, currentTask, pageUrl, currentTasks)
+          rootMessageRefreshed = true
         } catch (error) {
-          if (isRateLimited(error)) {
-            pausePollingAfterRateLimit(error, 'comments list')
-            break
-          }
-
           console.error(
-            `❌ Failed to notify about comments for page ${task.pageId} (${task.taskName}) and user ${task.slackUserId}:`,
+            `❌ Failed to send fallback status recovery for page ${task.pageId} (${task.taskName}) and user ${task.slackUserId}:`,
             error
           )
         }
       }
-    } catch (err) {
-      if (isRateLimited(err)) {
-        pausePollingAfterRateLimit(err, 'polling cycle')
+
+      if (
+        !completed &&
+        task.taskKind !== 'feedback' &&
+        isCommentsStatus(currentTask.status) &&
+        !rootMessageRefreshed
+      ) {
+        await refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, currentTasks)
       }
 
-      console.error('Polling error:', err)
-    } finally {
-      pollingInProgressByDepartment.delete(department.key)
+      if (completed) {
+        await stopPollingCompletedTask(slackClient, task, {
+          pageUrl,
+          completedAt: new Date().toISOString(),
+          status: currentTask.status,
+          department,
+        })
+        continue
+      }
+
+      try {
+        const comments = await getOpenComments(task.pageId)
+        if (!comments.length) continue
+
+        if (!task.lastCommentId && !task.lastCommentCreatedTime) {
+          const latestComment = comments.at(-1)
+          await updateLastComment(task.pageId, latestComment)
+          continue
+        }
+
+        const newComments = getNewComments(comments, task)
+        if (!newComments.length) continue
+
+        for (const comment of newComments) {
+          if (isOwnComment(comment, task)) {
+            await updateLastComment(task.pageId, comment)
+            continue
+          }
+
+          console.log(
+            `💬 Sending comment update for page ${task.pageId}: ${comment.id} (user ${task.slackUserId})`
+          )
+
+          await sendCommentUpdate({
+            slackClient,
+            slackUserId: task.slackUserId,
+            taskName: task.taskName,
+            commentAuthor: comment.author,
+            commentText: comment.text,
+            pageUrl,
+            slackChannelId: task.slackChannelId,
+            slackThreadTs: task.slackThreadTs || task.slackMessageTs,
+          })
+
+          await updateLastComment(task.pageId, comment)
+          console.log(`✅ Comment checkpoint updated: ${task.taskName} → ${comment.id}`)
+        }
+      } catch (error) {
+        if (isRateLimited(error)) {
+          pausePollingAfterRateLimit(error, 'comments list')
+          break
+        }
+
+        console.error(
+          `❌ Failed to notify about comments for page ${task.pageId} (${task.taskName}) and user ${task.slackUserId}:`,
+          error
+        )
+      }
     }
+  } catch (err) {
+    if (isRateLimited(err)) {
+      pausePollingAfterRateLimit(err, 'polling cycle')
+    }
+
+    console.error('Polling error:', err)
+  } finally {
+    pollingInProgressByDepartment.delete(department.key)
+  }
 }
 
 export async function startPolling(slackClient) {

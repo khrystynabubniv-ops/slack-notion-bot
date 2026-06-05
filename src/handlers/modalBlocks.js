@@ -20,6 +20,7 @@ function getBlockValue(values, blockId, actionId) {
   return element.value ||
     element.selected_option?.value ||
     element.selected_date ||
+    element.selected_time ||
     element.selected_user ||
     element.selected_options?.map((option) => option.value) ||
     null
@@ -55,6 +56,10 @@ function cloneElementWithState(block, values) {
 
   if (type === 'datepicker' && currentValue) {
     nextBlock.element.initial_date = currentValue
+  }
+
+  if (type === 'timepicker' && currentValue) {
+    nextBlock.element.initial_time = currentValue
   }
 
   if (type === 'static_select') {
@@ -126,6 +131,12 @@ function buildDynamicFieldBlock(field, values = {}) {
       type: 'datepicker',
       action_id: field.key,
       placeholder: { type: 'plain_text', text: 'Обери дату...' },
+    }
+  } else if (field.type === 'time') {
+    block.element = {
+      type: 'timepicker',
+      action_id: field.key,
+      placeholder: { type: 'plain_text', text: 'Обери час...' },
     }
   } else if (field.type === 'select') {
     block.element = {

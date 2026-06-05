@@ -204,6 +204,7 @@ function extractElementValue(element) {
   if (!element) return null
   if (element.value) return element.value
   if (element.selected_date) return element.selected_date
+  if (element.selected_time) return element.selected_time
   if (element.selected_user) return element.selected_user
   if (element.selected_option?.value) return element.selected_option.value
   if (Array.isArray(element.selected_options)) {
@@ -244,6 +245,7 @@ function extractDynamicSubmissionFields({ departmentKey, taskType, values }) {
       formattedValue,
       notionProperties: field.notionProperties || [],
       role: field.role || null,
+      section: field.section || 'specific',
     })
 
     specificFields[field.label.replace(/\s+\*$/, '')] = formattedValue
@@ -393,7 +395,9 @@ async function createTaskFromSubmissionPayload(client, payload) {
       pageUrl,
       departmentKey,
       team: department.team,
+      hub: department.label,
       requestType: taskTypeLabel,
+      lastStatus: department.initialStatus,
     })
   } catch (redisErr) {
     notificationTrackingEnabled = false

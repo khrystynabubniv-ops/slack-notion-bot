@@ -33,10 +33,18 @@
 - [ ] Set `REDIS_KEY_PREFIX=test:`.
 - [ ] Set `TEST_TASK_PREFIX=[ТЕСТ]`.
 - [ ] Configure `NOTION_ACTIVITIES_DATABASE_ID` or `NOTION_SMM_DATABASE_ID`.
+- [ ] Confirm `NOTION_SMM_STATUS_PROPERTY=SMM статус`, `NOTION_SMM_INITIAL_STATUS=To do`.
+- [ ] Confirm `NOTION_SMM_COMPLETED_STATUSES=Published,Canceled,Cancelled`.
+- [ ] Confirm `NOTION_SMM_QUALITY_SURVEY_STATUSES=Published`.
+- [ ] Confirm `NOTION_SMM_HUB_URL` opens the SMM Hub page.
+- [ ] Set `NOTION_SMM_TASK_TEMPLATE_ID` / `NOTION_SMM_TEMPLATE_ID` after the SMM task template id is known.
 - [ ] Confirm SMM writes to Activities with `Team=SMM`.
 - [ ] Keep `SMM_CHANNEL_ID` / `SLACK_SMM_NOTIFY_CHANNEL` empty unless a separate SMM channel notification is explicitly needed.
 - [ ] Verify department picker shows `Design / SMM`.
 - [ ] For every SMM subtype, submit one `[ТЕСТ]` task against the live Activities database.
+- [ ] For Reels, verify hero availability is captured with date + `from` time + `to` time.
+- [ ] Verify task links from Slack open the created task inside SMM Hub, not Brand Design Hub.
+- [ ] Verify the Notion `Description` property says only that the brief is below, and the readable brief appears in the page body under base/specific sections.
 - [ ] Verify multi-select platforms are preserved in the brief and written to `Platforms` if the schema has it; otherwise first selected platform goes to `Platform`.
 - [ ] Verify minLeadDays warning:
   - choose a too-close date
@@ -45,6 +53,10 @@
   - verify Notion checkbox `Late` is checked and no late note is added to `Description`
   - submit once after changing the date
 - [ ] Verify requester receives DM-thread confirmation and SMM status polling uses `SMM статус`.
+- [ ] Verify status casing changes like `To do` -> `to do` do not produce a Slack status notification.
+- [ ] Verify SMM `Ready` updates the thread but does not show Design revision/acceptance buttons and does not stop polling.
+- [ ] Verify SMM `Published` sends the quality survey and writes submitted feedback to database `025dce2c634e4a079ee7600ea8c63253`.
+- [ ] Verify SMM `Canceled` stops polling without sending a quality survey.
 - [ ] Filter Activities by `Name contains [ТЕСТ]` and `Team=SMM`; delete test tasks manually.
 - [ ] Deploy only after SMM path is green in the test workspace.
 

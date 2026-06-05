@@ -5,6 +5,8 @@ export const DEFAULT_DESIGN_OWNER_ID = 'f342c30b-c5c1-4a52-8cdf-c8b636928364'
 export const DEFAULT_ACTIVITIES_DATABASE_ID = 'b1ff9daa012c41c597e1d5ad5dd91917'
 export const DEFAULT_SMM_TEAM = 'SMM'
 export const DEFAULT_SMM_OWNER_ID = '77a3e7fe-a555-4c14-b794-d63a6e42a324'
+export const DEFAULT_SMM_HUB_URL = 'https://www.notion.so/SMM-Hub-375ce9899cb781aaab1ddb4c30833e23?source=copy_link'
+export const DEFAULT_SMM_FEEDBACK_DATABASE_ID = '025dce2c634e4a079ee7600ea8c63253'
 export const LEGACY_STATUS_PROPERTY = 'Status'
 
 function env(name, fallback = null) {
@@ -198,26 +200,34 @@ const smmPlatformOptions = selectOptions([
 const smmCommonFields = [
   field('publication_date', 'date', 'Дата публікації / потрібна дата *', {
     role: 'deadline',
+    section: 'base',
     notionProperties: ['Publication date', 'Deadline'],
   }),
   field('platforms', 'multi_select', 'Для якої платформи? (можна обрати кілька) *', {
     role: 'platforms',
+    section: 'base',
     options: smmPlatformOptions,
   }),
   field('context', 'textarea', 'Контекст / ідея — для чого, про що (1–3 речення) *', {
     role: 'context',
+    section: 'base',
   }),
   field('materials', 'text', 'Посилання на матеріали (лендинг, прес-реліз, відео, фото)', {
     optional: true,
+    section: 'base',
     placeholder: 'Якщо матеріалів ще немає, залиш поле порожнім',
   }),
-  field('approver', 'slack_user', 'Хто погоджує з вашої сторони? *'),
+  field('approver', 'slack_user', 'Хто погоджує з вашої сторони? *', {
+    section: 'base',
+  }),
 ]
 
 const smmTaskFields = {
   reels: [
     field('talent_consent', 'textarea', 'Хто знімається + чи є згода *'),
-    field('talent_availability', 'text', 'Коли герой доступний (дата/вікно) *'),
+    field('talent_available_date', 'date', 'Дата доступності героя *'),
+    field('talent_available_from', 'time', 'Герой доступний з *'),
+    field('talent_available_to', 'time', 'Герой доступний до *'),
     field('style_references', 'text', 'Референси стилю/монтажу', { optional: true }),
     field('subtitles', 'select', 'Субтитри *', { options: selectOptions(['Так', 'Ні']) }),
   ],
@@ -452,9 +462,13 @@ export const departments = {
     emoji: '🎨',
     notionDataSourceId: env('NOTION_DESIGN_DATABASE_ID', env('NOTION_DATABASE_ID')),
     notionTemplateId: env('NOTION_DESIGN_TEMPLATE_ID', env('NOTION_TEMPLATE_ID')),
+    hubUrl: env('NOTION_DESIGN_HUB_URL', env('NOTION_BRAND_DESIGN_HUB_URL', null)),
+    feedbackDatabaseId: env('NOTION_DESIGN_FEEDBACK_DATABASE_ID', env('NOTION_FEEDBACK_DATABASE_ID', null)),
     statusProperty: env('NOTION_DESIGN_STATUS_PROPERTY', env('NOTION_STATUS_PROPERTY', 'Design Status')),
     initialStatus: env('NOTION_DESIGN_INITIAL_STATUS', DEFAULT_STATUS),
     completedStatuses: csvEnv('NOTION_DESIGN_COMPLETED_STATUSES', env('NOTION_POLL_COMPLETED_STATUSES', 'Ready')),
+    qualitySurveyStatuses: csvEnv('NOTION_DESIGN_QUALITY_SURVEY_STATUSES', 'Ready'),
+    supportsFeedbackRounds: true,
     pollIntervalSec: intEnv('NOTION_DESIGN_POLL_INTERVAL_SEC', 180),
     notifyChannel: env('DESIGN_CHANNEL_ID'),
     ownerId: env('NOTION_DESIGN_OWNER_ID', DEFAULT_DESIGN_OWNER_ID),
@@ -476,10 +490,15 @@ export const departments = {
       'NOTION_SMM_DATABASE_ID',
       env('NOTION_ACTIVITIES_DATABASE_ID', env('NOTION_DATABASE_ID', DEFAULT_ACTIVITIES_DATABASE_ID))
     ),
-    notionTemplateId: env('NOTION_SMM_TEMPLATE_ID', null),
+    notionTemplateId: env('NOTION_SMM_TEMPLATE_ID', env('NOTION_SMM_TASK_TEMPLATE_ID', null)),
+    hubUrl: env('NOTION_SMM_HUB_URL', DEFAULT_SMM_HUB_URL),
+    feedbackDatabaseId: env('NOTION_SMM_FEEDBACK_DATABASE_ID', DEFAULT_SMM_FEEDBACK_DATABASE_ID),
     statusProperty: env('NOTION_SMM_STATUS_PROPERTY', 'SMM статус'),
-    initialStatus: env('NOTION_SMM_INITIAL_STATUS', 'to do'),
-    completedStatuses: csvEnv('NOTION_SMM_COMPLETED_STATUSES', 'ready,опубліковано'),
+    initialStatus: env('NOTION_SMM_INITIAL_STATUS', 'To do'),
+    completedStatuses: csvEnv('NOTION_SMM_COMPLETED_STATUSES', 'Published,Canceled,Cancelled'),
+    qualitySurveyStatuses: csvEnv('NOTION_SMM_QUALITY_SURVEY_STATUSES', 'Published'),
+    supportsFeedbackRounds: false,
+    useBodyBrief: true,
     pollIntervalSec: intEnv('NOTION_SMM_POLL_INTERVAL_SEC', 180),
     notifyChannel: env('SMM_CHANNEL_ID', env('SLACK_SMM_NOTIFY_CHANNEL', null)),
     ownerId: env('NOTION_SMM_OWNER_ID', DEFAULT_SMM_OWNER_ID),
