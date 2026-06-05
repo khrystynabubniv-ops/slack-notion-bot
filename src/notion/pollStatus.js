@@ -35,7 +35,7 @@ const POLLING_RATE_LIMIT_COOLDOWN_MS = Number.parseInt(
   10
 )
 let commentPollingEnabled = true
-let pollingInProgress = false
+const pollingInProgressByDepartment = new Set()
 let pollingPausedUntil = 0
 const notionUserNameCache = new Map()
 
@@ -644,6 +644,7 @@ async function refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, c
     channelId: task.slackChannelId,
     messageTs: task.slackMessageTs,
     taskName: task.taskName,
+    departmentKey: task.departmentKey,
     status: currentTask.status,
     responsible: getCurrentResponsible(currentTask),
     pageUrl,
@@ -677,6 +678,7 @@ async function sendMissingThreadStatusRecovery(slackClient, task, currentTask, p
     slackClient,
     slackUserId: notificationTask.slackUserId,
     taskName: notificationTask.taskName,
+    departmentKey: notificationTask.departmentKey,
     oldStatus: null,
     newStatus: currentTask.status,
     assignee: currentTask.assignee,
@@ -697,7 +699,7 @@ async function sendMissingThreadStatusRecovery(slackClient, task, currentTask, p
 }
 
 async function runPollingCycle(slackClient, department) {
-    if (pollingInProgress) {
+    if (pollingInProgressByDepartment.has(department.key)) {
       console.warn(`Notion polling skipped for ${department.key} because the previous cycle is still running.`)
       return
     }
@@ -707,7 +709,7 @@ async function runPollingCycle(slackClient, department) {
       return
     }
 
-    pollingInProgress = true
+    pollingInProgressByDepartment.add(department.key)
 
     try {
       const trackedTasks = (await getAllTasks()).filter((task) => {
@@ -776,6 +778,7 @@ async function runPollingCycle(slackClient, department) {
               slackClient,
               slackUserId: task.slackUserId,
               taskName: task.taskName,
+              departmentKey: task.departmentKey,
               oldStatus: task.lastStatus,
               newStatus: currentTask.status,
               assignee: currentTask.assignee,
@@ -850,6 +853,7 @@ async function runPollingCycle(slackClient, department) {
                   slackClient,
                   slackUserId: task.slackUserId,
                   taskName: task.taskName,
+                  departmentKey: task.departmentKey,
                   status: currentTask.status,
                   responsible: getCurrentResponsible(currentTask),
                   finalProjectUrl: currentTask.finalProjectUrl,
@@ -871,6 +875,7 @@ async function runPollingCycle(slackClient, department) {
                   slackClient,
                   slackUserId: task.slackUserId,
                   taskName: task.taskName,
+                  departmentKey: task.departmentKey,
                   status: currentTask.status,
                   assignee: currentTask.assignee,
                   finalProjectUrl: currentTask.finalProjectUrl,
@@ -984,7 +989,7 @@ async function runPollingCycle(slackClient, department) {
 
       console.error('Polling error:', err)
     } finally {
-      pollingInProgress = false
+      pollingInProgressByDepartment.delete(department.key)
     }
 }
 

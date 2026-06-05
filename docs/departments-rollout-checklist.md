@@ -32,19 +32,20 @@
 - [ ] Configure test Slack app/workspace tokens.
 - [ ] Set `REDIS_KEY_PREFIX=test:`.
 - [ ] Set `TEST_TASK_PREFIX=[ТЕСТ]`.
-- [ ] Configure `NOTION_SMM_DATABASE_ID`.
-- [ ] Configure `SMM_CHANNEL_ID` or `SLACK_SMM_NOTIFY_CHANNEL`.
-- [ ] Invite the test bot to the SMM notification channel.
-- [ ] Verify department picker shows `Design / Event / SMM`.
-- [ ] For every SMM subtype, submit one `[ТЕСТ]` task against the live SMM database.
-- [ ] Verify multi-select platforms are written to Notion where the schema supports it.
+- [ ] Configure `NOTION_ACTIVITIES_DATABASE_ID` or `NOTION_SMM_DATABASE_ID`.
+- [ ] Confirm SMM writes to Activities with `Team=SMM`.
+- [ ] Keep `SMM_CHANNEL_ID` / `SLACK_SMM_NOTIFY_CHANNEL` empty unless a separate SMM channel notification is explicitly needed.
+- [ ] Verify department picker shows `Design / SMM`.
+- [ ] For every SMM subtype, submit one `[ТЕСТ]` task against the live Activities database.
+- [ ] Verify multi-select platforms are preserved in the brief and written to `Platforms` if the schema has it; otherwise first selected platform goes to `Platform`.
 - [ ] Verify minLeadDays warning:
   - choose a too-close date
-  - confirm the modal asks for Urgent or date change
-  - submit once as Urgent
+  - confirm the modal mentions the deadline policy and offers `late` or date change
+  - submit once as late
+  - verify Notion checkbox `Late` is checked and no late note is added to `Description`
   - submit once after changing the date
-- [ ] Verify notification in the SMM channel.
-- [ ] Filter SMM DB by `Name contains [ТЕСТ]` and delete test tasks manually.
+- [ ] Verify requester receives DM-thread confirmation and SMM status polling uses `SMM статус`.
+- [ ] Filter Activities by `Name contains [ТЕСТ]` and `Team=SMM`; delete test tasks manually.
 - [ ] Deploy only after SMM path is green in the test workspace.
 
 ## Phase 3: Event cutover by "live out"

@@ -157,8 +157,14 @@ function buildDynamicFieldBlock(field, values = {}) {
   return cloneElementWithState(block, values)
 }
 
-function buildLeadTimeWarningBlocks(taskConfig) {
-  const minLeadDays = taskConfig?.minLeadDays || 0
+function buildLeadTimeWarningBlocks(taskConfig, leadTimeWarning = {}) {
+  const minLeadDays = leadTimeWarning.minLeadDays || taskConfig?.minLeadDays || 0
+  const providedLeadDays = Number.isFinite(leadTimeWarning.providedLeadDays)
+    ? leadTimeWarning.providedLeadDays
+    : null
+  const providedText = providedLeadDays === null
+    ? ''
+    : ` Ти вказуєш ${providedLeadDays} дн.`
 
   return [
     {
@@ -166,8 +172,9 @@ function buildLeadTimeWarningBlocks(taskConfig) {
       text: {
         type: 'mrkdwn',
         text:
-          `⚠️ Для *${taskConfig.label}* мінімальний термін — *${minLeadDays} днів*.\n` +
-          'Обери, як продовжимо: позначити задачу як Urgent або змінити дату.',
+          `⚠️ За політикою дедлайнів для *${taskConfig.label}* мінімальний термін — *${minLeadDays} днів*.` +
+          `${providedText}\n` +
+          'Можеш змінити дату або відправити задачу як late: SMM розгляне її окремо без гарантії виконання в цей термін.',
       },
     },
     {
@@ -179,7 +186,7 @@ function buildLeadTimeWarningBlocks(taskConfig) {
         action_id: 'lead_time_override',
         placeholder: { type: 'plain_text', text: 'Обери...' },
         options: [
-          { text: { type: 'plain_text', text: 'Позначити як Urgent' }, value: 'urgent' },
+          { text: { type: 'plain_text', text: 'Відправити як late' }, value: 'late' },
           { text: { type: 'plain_text', text: 'Змінити дату' }, value: 'change_date' },
         ],
       },
@@ -187,15 +194,32 @@ function buildLeadTimeWarningBlocks(taskConfig) {
   ]
 }
 
+function shouldShowDynamicField(field, values = {}) {
+  if (!field.showWhen) return true
+
+  const expectedValues = Array.isArray(field.showWhen.values)
+    ? field.showWhen.values
+    : [field.showWhen.value]
+  const currentValue = getBlockValue(
+    values,
+    `${field.showWhen.fieldKey}_block`,
+    field.showWhen.fieldKey
+  )
+  const currentValues = Array.isArray(currentValue) ? currentValue : [currentValue]
+
+  return currentValues.some((value) => expectedValues.includes(value))
+}
+
 function getDynamicDepartmentBlocks(departmentKey, taskType, values = {}, options = {}) {
   const department = getDepartment(departmentKey)
   const taskConfig = department.taskTypes[taskType]
   const fields = getDepartmentTaskFields(department.key, taskType)
+  const visibleFields = fields.filter((field) => shouldShowDynamicField(field, values))
 
   return [
     buildDynamicNameBlock(values),
-    ...(options.leadTimeWarning ? buildLeadTimeWarningBlocks(taskConfig) : []),
-    ...fields.map((field) => buildDynamicFieldBlock(field, values)),
+    ...(options.leadTimeWarning ? buildLeadTimeWarningBlocks(taskConfig, options.leadTimeWarning) : []),
+    ...visibleFields.map((field) => buildDynamicFieldBlock(field, values)),
   ]
 }
 

@@ -45,6 +45,7 @@ export async function sendStatusUpdate({
   slackClient,
   slackUserId,
   taskName,
+  departmentKey = 'design',
   oldStatus,
   newStatus,
   assignee,
@@ -66,6 +67,7 @@ export async function sendStatusUpdate({
     channelId: slackChannelId,
     messageTs: slackMessageTs,
     taskName,
+    departmentKey,
     status: newStatus,
     responsible: assignee,
     pageUrl,
@@ -92,6 +94,7 @@ export async function sendTaskFieldUpdate({
   slackClient,
   slackUserId,
   taskName,
+  departmentKey = 'design',
   status,
   responsible,
   finalProjectUrl,
@@ -111,6 +114,7 @@ export async function sendTaskFieldUpdate({
     channelId: slackChannelId,
     messageTs: slackMessageTs,
     taskName,
+    departmentKey,
     status,
     responsible,
     pageUrl,
@@ -140,6 +144,7 @@ export async function sendReviewRequest({
   slackClient,
   slackUserId,
   taskName,
+  departmentKey = 'design',
   status,
   assignee,
   finalProjectUrl,
@@ -159,6 +164,7 @@ export async function sendReviewRequest({
     channelId: slackChannelId,
     messageTs: slackMessageTs,
     taskName,
+    departmentKey,
     status,
     responsible: assignee,
     pageUrl,
@@ -195,6 +201,7 @@ export async function updateRootTaskMessage(slackClient, {
   channelId,
   messageTs,
   taskName,
+  departmentKey = 'design',
   status,
   responsible = null,
   pageUrl,
@@ -212,8 +219,10 @@ export async function updateRootTaskMessage(slackClient, {
 
   const text = await buildRootTaskText(slackClient, {
     taskName,
+    departmentKey,
     status,
     statusEmoji: getStatusEmoji(status),
+    responsible,
     designer,
     taskKind,
     completedRounds,
@@ -281,8 +290,10 @@ export async function updateRootTaskMessage(slackClient, {
 
 async function buildRootTaskText(slackClient, {
   taskName,
+  departmentKey = 'design',
   status,
   statusEmoji,
+  responsible = null,
   designer,
   taskKind,
   completedRounds = 0,
@@ -294,17 +305,23 @@ async function buildRootTaskText(slackClient, {
   const taskReady = !isFeedback && isReadyStatus(status)
   const ready = feedbackReady || taskReady
   const normalizedCompletedRounds = normalizeNonNegativeInteger(completedRounds, 0)
-  const designerText = await formatDesignerForSlackAsync(slackClient, designer)
+  const isDesignDepartment = departmentKey === 'design'
+  const responsiblePerson = isDesignDepartment ? designer : (designer || responsible)
+  const responsibleText = await formatDesignerForSlackAsync(slackClient, responsiblePerson, {
+    fallback: isDesignDepartment ? undefined : 'не призначено',
+  })
+  const responsibleLabel = isDesignDepartment ? 'Дизайнер' : 'Відповідальний'
 
   return [
     isFeedback ? null : 'Ми отримали твій запит!',
     `*${taskName}*`,
     `${statusEmoji} *Статус${isFeedback ? ' правки' : ''}:* ${status}`,
-    ready ? null : `🎨 *Дизайнер:* ${designerText}`,
+    ready ? null : `🎨 *${responsibleLabel}:* ${responsibleText}`,
     taskReady ? `✏️ *Раундів правок:* ${normalizedCompletedRounds}` : null,
     '',
     getRootTaskStatusText({
       status,
+      departmentKey,
       isFeedback,
       feedbackDone,
       feedbackReady,
@@ -317,6 +334,7 @@ async function buildRootTaskText(slackClient, {
 
 function getRootTaskStatusText({
   status,
+  departmentKey = 'design',
   isFeedback,
   feedbackDone,
   feedbackReady,
@@ -345,13 +363,17 @@ function getRootTaskStatusText({
   }
 
   if (isInProgressStatus(status)) {
-    return 'Твоя задача вже в роботі у дизайнера. Коли вона буде готова до ревʼю, статус і кнопки оновляться тут.'
+    return departmentKey === 'design'
+      ? 'Твоя задача вже в роботі у дизайнера. Коли вона буде готова до ревʼю, статус і кнопки оновляться тут.'
+      : 'Твоя задача вже в роботі. Коли буде апдейт, статус оновиться тут.'
   }
 
   if (isToDoStatus(status)) {
     return isFeedback
       ? 'Правку передано дизайнеру.'
-      : 'Задачу передано в дизайн-команду. Щойно дизайнер візьме її в роботу, ти побачиш оновлення в цьому треді.'
+      : departmentKey === 'design'
+        ? 'Задачу передано в дизайн-команду. Щойно дизайнер візьме її в роботу, ти побачиш оновлення в цьому треді.'
+        : 'Задачу передано в SMM. Щойно відповідальний візьме її в роботу, ти побачиш оновлення в цьому треді.'
   }
 
   return isFeedback
