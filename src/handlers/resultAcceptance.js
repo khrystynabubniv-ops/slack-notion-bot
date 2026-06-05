@@ -262,8 +262,11 @@ export async function handleTaskAcceptance({ body, client }) {
   }
 
   try {
+    const storedTask = await getTask(pageId)
+    const departmentKey = payload.departmentKey || storedTask?.departmentKey || 'design'
+
     if (!isFeedbackTask(taskKind)) {
-      const readiness = await getTaskAcceptanceReadiness(pageId)
+      const readiness = await getTaskAcceptanceReadiness(pageId, departmentKey)
 
       if (!readiness.canAccept) {
         await postUserMessage(client, userId, getBlockedAcceptanceText(readiness))
@@ -272,6 +275,7 @@ export async function handleTaskAcceptance({ body, client }) {
     }
 
     const result = await acceptTaskResult({
+      departmentKey,
       pageId,
       designerName: payload.designerName,
       designerUserId: payload.designerUserId,
@@ -283,7 +287,6 @@ export async function handleTaskAcceptance({ body, client }) {
     const storedRoundsCount = await getRoundsCount(pageId)
     const payloadRoundsCount = normalizeNonNegativeInteger(payload.completedRounds, 0)
     const roundsCount = Math.max(storedRoundsCount, payloadRoundsCount)
-    const storedTask = await getTask(pageId)
     const feedbackContext = {
       requesterName: payload.requesterName || storedTask?.requesterName || null,
       requestUrl: payload.requestUrl || storedTask?.pageUrl || null,

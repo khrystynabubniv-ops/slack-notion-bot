@@ -32,22 +32,18 @@ function buildRichText(value) {
   }))
 }
 
-export async function createSlackThreadComment({ pageId, authorName, text, files = [] }) {
+export async function createSlackThreadComment({ pageId, authorName, text }) {
   if (!pageId) {
     throw new Error('pageId is required')
   }
 
   const normalizedAuthorName = normalizeText(authorName) || 'невідомий автор'
   const normalizedText = normalizeText(text)
-  const fileLines = files
-    .map((file) => normalizeText(file))
-    .filter(Boolean)
 
   const body = [
     `Slack thread · ${normalizedAuthorName}`,
     '',
-    normalizedText || (fileLines.length ? 'Користувач додав файл(и) у Slack thread.' : 'Без тексту.'),
-    fileLines.length ? ['', 'Файли:', ...fileLines].join('\n') : null,
+    normalizedText || 'Без тексту.',
   ]
     .filter(Boolean)
     .join('\n')

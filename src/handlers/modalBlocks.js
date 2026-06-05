@@ -1,4 +1,6 @@
 // Базові поля — є у всіх типах задач
+import { DEFAULT_DEPARTMENT_KEY, getDepartment, getDepartmentTaskFields } from '../config/departments.js'
+
 const MATERIALS_HINT_TEXT = 'Будь ласка, перейдіть у таску в ноушин та додайте аттачменти у коментарі'
 const MATERIALS_HINT_BLOCK_IDS = new Set([
   'artifact_figma_block',
@@ -15,7 +17,12 @@ const MATERIALS_HINT_BLOCK_IDS = new Set([
 function getBlockValue(values, blockId, actionId) {
   const element = values?.[blockId]?.[actionId]
   if (!element) return null
-  return element.value || element.selected_option?.value || element.selected_date || null
+  return element.value ||
+    element.selected_option?.value ||
+    element.selected_date ||
+    element.selected_user ||
+    element.selected_options?.map((option) => option.value) ||
+    null
 }
 
 function ensurePlatformOptions(options = []) {
@@ -64,7 +71,132 @@ function cloneElementWithState(block, values) {
     }
   }
 
+  if (type === 'multi_static_select' && Array.isArray(currentValue) && nextBlock.element.options) {
+    nextBlock.element.initial_options = nextBlock.element.options.filter((option) => {
+      return currentValue.includes(option.value)
+    })
+  }
+
+  if (type === 'users_select' && typeof currentValue === 'string') {
+    nextBlock.element.initial_user = currentValue
+  }
+
   return nextBlock
+}
+
+function getPlainTextOption(option) {
+  return {
+    text: { type: 'plain_text', text: option.text },
+    value: option.value,
+  }
+}
+
+function buildDynamicNameBlock(values = {}) {
+  const block = {
+    type: 'input',
+    block_id: 'name_block',
+    label: { type: 'plain_text', text: 'Назва задачі (коротко, про що) *' },
+    element: {
+      type: 'plain_text_input',
+      action_id: 'name',
+      placeholder: { type: 'plain_text', text: 'Коротка назва запиту' },
+    },
+  }
+
+  return cloneElementWithState(block, values)
+}
+
+function buildDynamicFieldBlock(field, values = {}) {
+  const block = {
+    type: 'input',
+    block_id: `${field.key}_block`,
+    label: { type: 'plain_text', text: field.label },
+    optional: Boolean(field.optional),
+  }
+
+  if (field.type === 'textarea' || field.type === 'text') {
+    block.element = {
+      type: 'plain_text_input',
+      action_id: field.key,
+      multiline: field.type === 'textarea',
+      ...(field.placeholder ? { placeholder: { type: 'plain_text', text: field.placeholder } } : {}),
+    }
+  } else if (field.type === 'date') {
+    block.element = {
+      type: 'datepicker',
+      action_id: field.key,
+      placeholder: { type: 'plain_text', text: 'Обери дату...' },
+    }
+  } else if (field.type === 'select') {
+    block.element = {
+      type: 'static_select',
+      action_id: field.key,
+      placeholder: { type: 'plain_text', text: 'Обери...' },
+      options: field.options.map(getPlainTextOption),
+    }
+  } else if (field.type === 'multi_select') {
+    block.element = {
+      type: 'multi_static_select',
+      action_id: field.key,
+      placeholder: { type: 'plain_text', text: 'Обери один або кілька варіантів...' },
+      options: field.options.map(getPlainTextOption),
+    }
+  } else if (field.type === 'slack_user') {
+    block.element = {
+      type: 'users_select',
+      action_id: field.key,
+      placeholder: { type: 'plain_text', text: 'Обери людину...' },
+    }
+  } else {
+    block.element = {
+      type: 'plain_text_input',
+      action_id: field.key,
+    }
+  }
+
+  return cloneElementWithState(block, values)
+}
+
+function buildLeadTimeWarningBlocks(taskConfig) {
+  const minLeadDays = taskConfig?.minLeadDays || 0
+
+  return [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text:
+          `⚠️ Для *${taskConfig.label}* мінімальний термін — *${minLeadDays} днів*.\n` +
+          'Обери, як продовжимо: позначити задачу як Urgent або змінити дату.',
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'lead_time_override_block',
+      label: { type: 'plain_text', text: 'Як продовжимо?' },
+      element: {
+        type: 'static_select',
+        action_id: 'lead_time_override',
+        placeholder: { type: 'plain_text', text: 'Обери...' },
+        options: [
+          { text: { type: 'plain_text', text: 'Позначити як Urgent' }, value: 'urgent' },
+          { text: { type: 'plain_text', text: 'Змінити дату' }, value: 'change_date' },
+        ],
+      },
+    },
+  ]
+}
+
+function getDynamicDepartmentBlocks(departmentKey, taskType, values = {}, options = {}) {
+  const department = getDepartment(departmentKey)
+  const taskConfig = department.taskTypes[taskType]
+  const fields = getDepartmentTaskFields(department.key, taskType)
+
+  return [
+    buildDynamicNameBlock(values),
+    ...(options.leadTimeWarning ? buildLeadTimeWarningBlocks(taskConfig) : []),
+    ...fields.map((field) => buildDynamicFieldBlock(field, values)),
+  ]
 }
 
 function getPlatformOtherBlock(values = {}) {
@@ -1924,7 +2056,13 @@ const specificBlocks = {
   ],
 }
 
-export function getModalBlocks(taskType, values = {}) {
+export function getModalBlocks(taskType, values = {}, options = {}) {
+  const departmentKey = options.departmentKey || DEFAULT_DEPARTMENT_KEY
+
+  if (departmentKey !== DEFAULT_DEPARTMENT_KEY) {
+    return getDynamicDepartmentBlocks(departmentKey, taskType, values, options)
+  }
+
   const specific = enhanceSpecificBlocks(specificBlocks[taskType] || [], values)
   return [
     ...baseBlocks().map((block) => cloneElementWithState(block, values)),

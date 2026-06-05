@@ -47,15 +47,6 @@ function isHumanThreadReply(event) {
   return true
 }
 
-function formatSlackFile(file) {
-  if (!file) return null
-
-  const title = normalizeText(file.title || file.name || file.id || 'файл')
-  const url = normalizeText(file.permalink || file.url_private || '')
-
-  return url ? `- ${title}: ${url}` : `- ${title}`
-}
-
 async function resolveSlackAuthorName(client, userId) {
   if (!client || !userId) return userId || null
 
@@ -104,11 +95,7 @@ export async function handleSlackThreadCommentEvent({
   if (!isHumanThreadReply(event)) return false
 
   const text = formatSlackText(event.text)
-  const files = (event.files || [])
-    .map(formatSlackFile)
-    .filter(Boolean)
-
-  if (!text && !files.length) return false
+  if (!text) return false
 
   const task = await findTaskBySlackThread({
     channelId: event.channel,
@@ -128,7 +115,6 @@ export async function handleSlackThreadCommentEvent({
       pageId: task.pageId,
       authorName,
       text,
-      files,
     })
 
     await checkpointComment(task.pageId, {

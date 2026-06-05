@@ -106,6 +106,7 @@ function buildAcceptanceCommentRichText({
 }
 
 export async function acceptTaskResult({
+  departmentKey = 'design',
   pageId,
   designerName,
   designerUserId,
@@ -120,7 +121,7 @@ export async function acceptTaskResult({
     () => notion.pages.retrieve({ page_id: pageId }),
     'task retrieve before accept'
   )
-  const statusPropertyName = resolveStatusPropertyName(page.properties || {})
+  const statusPropertyName = resolveStatusPropertyName(page.properties || {}, departmentKey)
   const pageDesigner = extractDesigner(page)
   const resolvedDesigner = {
     name: designerName || pageDesigner?.name || null,

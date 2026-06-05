@@ -1,3 +1,5 @@
+import { DEFAULT_DEPARTMENT_KEY, getTaskTypeGroups as getConfiguredTaskTypeGroups } from '../config/departments.js'
+
 export function registerHomeTab(app) {
   app.event('app_home_opened', async ({ event, client }) => {
     await client.views.publish({
@@ -112,7 +114,7 @@ export function registerHomeTab(app) {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*💡 Поради для швидкого брифу*\n• Додай посилання на референси — це прискорює роботу дизайнера\n• Вкажи дедлайн із запасом\n• Якщо маєш файли — поділись ними зі мною в DM після створення задачі',
+              text: '*💡 Поради для швидкого брифу*\n• Додай посилання на референси — це прискорює роботу дизайнера\n• Вкажи дедлайн із запасом\n• Якщо маєш файли — додай посилання в брифі або відкрий задачу в Notion після створення',
             },
           },
           { type: 'divider' },
@@ -164,114 +166,15 @@ export function registerHomeTab(app) {
 }
 
 // Reusable task type select (same options as newTask.js)
-export function getTaskTypeSelect() {
+export function getTaskTypeSelect(departmentKey = DEFAULT_DEPARTMENT_KEY) {
   return {
     type: 'static_select',
     action_id: 'task_type',
     placeholder: { type: 'plain_text', text: 'Вибери тип...' },
-    option_groups: getTaskTypeGroups(),
+    option_groups: getTaskTypeGroups(departmentKey),
   }
 }
 
-export function getTaskTypeGroups() {
-  return [
-    {
-      label: { type: 'plain_text', text: '🖼 SMM / Банери' },
-      options: [
-        { text: { type: 'plain_text', text: 'Статична картинка проста' }, value: 'static_simple' },
-        { text: { type: 'plain_text', text: 'Статична картинка складна' }, value: 'static_complex' },
-        { text: { type: 'plain_text', text: 'SMM карусель' }, value: 'carousel' },
-        { text: { type: 'plain_text', text: 'SMM ресайзи' }, value: 'resize' },
-      ],
-    },
-    {
-      label: { type: 'plain_text', text: '📣 Promo Creatives' },
-      options: [
-        { text: { type: 'plain_text', text: 'Promo Creo Static (по шаблону)' }, value: 'promo_creo_static_template' },
-        { text: { type: 'plain_text', text: 'Promo Creo Static (нові ідеї)' }, value: 'promo_creo_static_ideas' },
-        { text: { type: 'plain_text', text: 'Promo Creo Mix (по шаблону)' }, value: 'promo_creo_mix_template' },
-        { text: { type: 'plain_text', text: 'Promo Creo Mix (нові ідеї)' }, value: 'promo_creo_mix_ideas' },
-        { text: { type: 'plain_text', text: 'Promo Creo Video (по шаблону)' }, value: 'promo_creo_video_template' },
-        { text: { type: 'plain_text', text: 'Promo Creo Video (нові ідеї)' }, value: 'promo_creo_video_ideas' },
-      ],
-    },
-    {
-      label: { type: 'plain_text', text: '🎬 Монтаж / Анімація' },
-      options: [
-        { text: { type: 'plain_text', text: 'Монтаж / Анімація простий' }, value: 'video_simple' },
-        { text: { type: 'plain_text', text: 'Монтаж / Анімація складний' }, value: 'video_complex' },
-      ],
-    },
-    {
-      label: { type: 'plain_text', text: '📊 Презентації' },
-      options: [
-        { text: { type: 'plain_text', text: 'Презентація (коригування існуючого)' }, value: 'pres_edit' },
-        { text: { type: 'plain_text', text: 'Презентація по шаблону' }, value: 'pres_template' },
-        { text: { type: 'plain_text', text: 'Wow презентація' }, value: 'pres_wow' },
-      ],
-    },
-    {
-      label: { type: 'plain_text', text: '🤖 ШІ-контент' },
-      options: [
-        { text: { type: 'plain_text', text: 'ШІ статика проста' }, value: 'ai_static_simple' },
-        { text: { type: 'plain_text', text: 'ШІ статика складна' }, value: 'ai_static_complex' },
-        { text: { type: 'plain_text', text: 'ШІ динаміка проста' }, value: 'ai_dynamic_simple' },
-        { text: { type: 'plain_text', text: 'ШІ динаміка складна' }, value: 'ai_dynamic_complex' },
-      ],
-    },
-    {
-      label: { type: 'plain_text', text: '🌐 Веб' },
-      options: [
-        { text: { type: 'plain_text', text: 'Лендинг по шаблону' }, value: 'landing_template' },
-        { text: { type: 'plain_text', text: 'Wow лендинг з нуля' }, value: 'landing_wow' },
-        { text: { type: 'plain_text', text: 'Верстка блогу' }, value: 'blog' },
-      ],
-    },
-    {
-      label: { type: 'plain_text', text: '📰 Email / Дайджест' },
-      options: [
-        { text: { type: 'plain_text', text: 'Дайджест базовий по шаблону' }, value: 'digest_simple' },
-        { text: { type: 'plain_text', text: 'Wow дайджест' }, value: 'digest_wow' },
-        { text: { type: 'plain_text', text: 'Email дайджест' }, value: 'email_digest' },
-      ],
-    },
-    {
-      label: { type: 'plain_text', text: '👕 Мерч / Поліграфія' },
-      options: [
-        { text: { type: 'plain_text', text: 'Мерч простий' }, value: 'merch_simple' },
-        { text: { type: 'plain_text', text: 'Мерч по референсах' }, value: 'merch_ref' },
-        { text: { type: 'plain_text', text: 'Мерч з власним рісьорчем' }, value: 'merch_research' },
-        { text: { type: 'plain_text', text: 'Друковані матеріали (постер, флаєр, брошура)' }, value: 'print_materials' },
-      ],
-    },
-    {
-      label: { type: 'plain_text', text: '🎯 Брендинг' },
-      options: [
-        { text: { type: 'plain_text', text: 'Айдентика' }, value: 'identity' },
-        { text: { type: 'plain_text', text: 'Логотип' }, value: 'logo' },
-      ],
-    },
-    {
-      label: { type: 'plain_text', text: '📷 Фото' },
-      options: [
-        { text: { type: 'plain_text', text: 'Редагування фото просте' }, value: 'photo_simple' },
-        { text: { type: 'plain_text', text: 'Редагування фото складне' }, value: 'photo_complex' },
-      ],
-    },
-    {
-      label: { type: 'plain_text', text: '📺 TV / Івент' },
-      options: [
-        { text: { type: 'plain_text', text: 'Анонси TV' }, value: 'tv_announce' },
-        { text: { type: 'plain_text', text: 'Статика UniTV' }, value: 'tv_static' },
-        { text: { type: 'plain_text', text: 'Івент простий' }, value: 'event_simple' },
-        { text: { type: 'plain_text', text: 'Івент складний' }, value: 'event_complex' },
-      ],
-    },
-    {
-      label: { type: 'plain_text', text: '💡 Інше' },
-      options: [
-        { text: { type: 'plain_text', text: 'Інша задача / нетиповий запит' }, value: 'other' },
-      ],
-    },
-  ]
+export function getTaskTypeGroups(departmentKey = DEFAULT_DEPARTMENT_KEY) {
+  return getConfiguredTaskTypeGroups(departmentKey)
 }

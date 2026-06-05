@@ -1,5 +1,13 @@
 import { createNotionPage } from '../notion/createPage.js'
 import {
+  DEFAULT_DEPARTMENT_KEY,
+  applyTestTaskPrefix,
+  getDepartment,
+  getDepartmentTaskFields,
+  getDepartmentTaskType,
+  resolveDepartmentKey,
+} from '../config/departments.js'
+import {
   completeTaskSubmission,
   enqueueTaskSubmission,
   getDueTaskSubmission,
@@ -11,7 +19,6 @@ import {
 import { formatDesignerForSlack } from '../slack/designerMentions.js'
 import { getModalBlocks } from './modalBlocks.js'
 
-const DESIGN_CHANNEL = process.env.DESIGN_CHANNEL_ID?.trim() || null
 const QUEUE_WORKER_INTERVAL_MS = Number.parseInt(
   process.env.TASK_SUBMISSION_QUEUE_INTERVAL_MS || '5000',
   10
@@ -55,6 +62,7 @@ function serializeTaskCreationError(error) {
 }
 
 function buildFailedSubmissionPayload({
+  departmentKey = DEFAULT_DEPARTMENT_KEY,
   userId,
   userName,
   slackPersonName,
@@ -71,6 +79,7 @@ function buildFailedSubmissionPayload({
   platform,
   platformOther,
   specificFields,
+  fieldAnswers,
   artifacts,
   values,
   error,
@@ -80,6 +89,7 @@ function buildFailedSubmissionPayload({
     slackUserName: userName || null,
     requesterName: slackPersonName || userName || null,
     task: {
+      departmentKey,
       name: name || taskTypeLabel,
       taskType,
       taskTypeLabel,
@@ -95,6 +105,7 @@ function buildFailedSubmissionPayload({
       antiref: antiref || null,
       canEditText: canEditText || null,
       specificFields,
+      fieldAnswers,
       artifacts,
     },
     rawSlackValues: values,
@@ -141,7 +152,7 @@ function formatQueueRetryTime(delayMs) {
   })
 }
 
-function buildTaskThreadText({ taskName, status = 'To do', responsible = null }) {
+function buildTaskThreadText({ taskName, department, status = 'To do', responsible = null }) {
   const responsibleText = formatDesignerForSlack(responsible)
 
   return [
@@ -150,7 +161,9 @@ function buildTaskThreadText({ taskName, status = 'To do', responsible = null })
     `⚪ *Статус:* ${status}`,
     `🎨 *Дизайнер:* ${responsibleText}`,
     '',
-    'Задачу передано в дизайн-команду. Щойно дизайнер візьме її в роботу, ти побачиш оновлення в цьому треді.',
+    department?.key === DEFAULT_DEPARTMENT_KEY
+      ? 'Задачу передано в дизайн-команду. Щойно дизайнер візьме її в роботу, ти побачиш оновлення в цьому треді.'
+      : `Задачу передано в ${department?.label || 'команду'}. Щойно відповідальний візьме її в роботу, ти побачиш оновлення в цьому треді.`,
   ].join('\n')
 }
 
@@ -172,8 +185,115 @@ async function resolveSlackPersonName(client, { userId, userName }) {
   }
 }
 
+function parsePrivateMetadata(privateMetadata) {
+  if (!privateMetadata) return {}
+
+  try {
+    return JSON.parse(privateMetadata)
+  } catch {
+    return {}
+  }
+}
+
+function extractElementValue(element) {
+  if (!element) return null
+  if (element.value) return element.value
+  if (element.selected_date) return element.selected_date
+  if (element.selected_user) return element.selected_user
+  if (element.selected_option?.value) return element.selected_option.value
+  if (Array.isArray(element.selected_options)) {
+    return element.selected_options.map((option) => option.value).filter(Boolean)
+  }
+
+  return null
+}
+
+function formatFieldValue(value, field) {
+  if (Array.isArray(value)) return value.join(', ')
+  if (field?.type === 'slack_user' && value) return `<@${value}>`
+  return value || null
+}
+
+function getFieldElement(values, fieldKey) {
+  return values?.[`${fieldKey}_block`]?.[fieldKey] || null
+}
+
+function extractDynamicSubmissionFields({ departmentKey, taskType, values }) {
+  const fields = getDepartmentTaskFields(departmentKey, taskType)
+  const fieldAnswers = []
+  const specificFields = {}
+  let deadline = null
+  let context = null
+  let platforms = []
+
+  for (const field of fields) {
+    const rawValue = extractElementValue(getFieldElement(values, field.key))
+    const formattedValue = formatFieldValue(rawValue, field)
+    if (!formattedValue) continue
+
+    fieldAnswers.push({
+      key: field.key,
+      label: field.label.replace(/\s+\*$/, ''),
+      type: field.type,
+      value: rawValue,
+      formattedValue,
+      notionProperties: field.notionProperties || [],
+      role: field.role || null,
+    })
+
+    specificFields[field.label.replace(/\s+\*$/, '')] = formattedValue
+
+    if (field.role === 'deadline') deadline = rawValue
+    if (field.role === 'context') context = formattedValue
+    if (field.role === 'platforms') platforms = Array.isArray(rawValue) ? rawValue : [rawValue].filter(Boolean)
+  }
+
+  return {
+    deadline,
+    context,
+    platforms,
+    platform: platforms[0] || null,
+    specificFields,
+    fieldAnswers,
+  }
+}
+
+function getLeadTimeOverride(values) {
+  return values.lead_time_override_block?.lead_time_override?.selected_option?.value || null
+}
+
+function getDaysUntil(dateString) {
+  if (!dateString) return null
+
+  const target = new Date(`${dateString}T00:00:00`)
+  if (Number.isNaN(target.getTime())) return null
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  return Math.ceil((target.getTime() - today.getTime()) / (24 * 60 * 60 * 1000))
+}
+
+function getLeadTimeViolation({ departmentKey, taskType, deadline, values }) {
+  const taskConfig = getDepartmentTaskType(departmentKey, taskType)
+  const minLeadDays = taskConfig?.minLeadDays || 0
+  if (!minLeadDays || !deadline) return null
+
+  const providedLeadDays = getDaysUntil(deadline)
+  if (providedLeadDays === null || providedLeadDays >= minLeadDays) return null
+  if (getLeadTimeOverride(values) === 'urgent') return null
+
+  return {
+    taskConfig,
+    minLeadDays,
+    providedLeadDays,
+    override: getLeadTimeOverride(values),
+  }
+}
+
 async function createTaskFromSubmissionPayload(client, payload) {
   const {
+    departmentKey: rawDepartmentKey = DEFAULT_DEPARTMENT_KEY,
     userId,
     userName,
     taskType,
@@ -187,19 +307,26 @@ async function createTaskFromSubmissionPayload(client, payload) {
     canEditText,
     videoFormat,
     platform,
+    platforms,
     platformOther,
     specificFields,
+    fieldAnswers,
     artifacts,
   } = payload
+  const departmentKey = resolveDepartmentKey(rawDepartmentKey)
+  const department = getDepartment(departmentKey)
   const slackPersonName = await resolveSlackPersonName(client, { userId, userName })
   let notificationTrackingEnabled = true
+  const taskName = applyTestTaskPrefix(name || taskTypeLabel)
 
   const { pageId, pageUrl } = await createNotionPage({
-    name: name || taskTypeLabel,
+    departmentKey,
+    name: taskName,
     priority,
     deadline,
     videoFormat,
     platform,
+    platforms,
     platformOther,
     taskType,
     context,
@@ -207,12 +334,14 @@ async function createTaskFromSubmissionPayload(client, payload) {
     antiref,
     canEditText,
     specificFields,
+    fieldAnswers,
     artifacts,
     slackPersonName,
   })
 
   const requesterNotificationText = buildTaskThreadText({
-    taskName: name || taskTypeLabel,
+    taskName,
+    department,
   })
   let requesterMessage = null
 
@@ -252,9 +381,12 @@ async function createTaskFromSubmissionPayload(client, payload) {
       slackChannelId: requesterMessage?.channel || userId,
       slackMessageTs: requesterMessage?.ts || null,
       slackThreadTs: requesterMessage?.ts || null,
-      taskName: name || taskTypeLabel,
+      taskName,
       requesterName: slackPersonName,
       pageUrl,
+      departmentKey,
+      team: department.team,
+      requestType: taskTypeLabel,
     })
   } catch (redisErr) {
     notificationTrackingEnabled = false
@@ -265,32 +397,36 @@ async function createTaskFromSubmissionPayload(client, payload) {
     try {
       await client.chat.postMessage({
         channel: userId,
-        text: `⚠️ *${name || taskTypeLabel}* створено, але автоапдейти по статусу зараз не підключилися.`,
+        text: `⚠️ *${taskName}* створено, але автоапдейти по статусу зараз не підключилися.`,
       })
     } catch (error) {
       console.error(`Failed to notify ${userId} about disabled tracking for page ${pageId}:`, error)
     }
   }
 
-  if (!DESIGN_CHANNEL) {
-    console.warn('DESIGN_CHANNEL_ID is not set; skipping design-channel task notification.')
+  if (!department.notifyChannel) {
+    console.warn(`${department.key} notify channel is not set; skipping department task notification.`)
   } else {
     try {
       await client.chat.postMessage({
-        channel: DESIGN_CHANNEL,
-        text: `Нова задача від <@${userId}>: ${name || taskTypeLabel}`,
+        channel: department.notifyChannel,
+        text: department.key === DEFAULT_DEPARTMENT_KEY
+          ? `Нова задача від <@${userId}>: ${taskName}`
+          : `Нова задача ${department.label} від <@${userId}>: ${taskName}`,
         blocks: [
           {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `🆕 *Нова задача від <@${userId}>*`,
+              text: department.key === DEFAULT_DEPARTMENT_KEY
+                ? `🆕 *Нова задача від <@${userId}>*`
+                : `🆕 *Нова задача ${department.label} від <@${userId}>*`,
             },
           },
           {
             type: 'section',
             fields: [
-              { type: 'mrkdwn', text: `*Задача:*\n${name || taskTypeLabel}` },
+              { type: 'mrkdwn', text: `*Задача:*\n${taskName}` },
               { type: 'mrkdwn', text: `*Тип:*\n${taskTypeLabel}` },
               { type: 'mrkdwn', text: `*Пріоритет:*\n${priority || 'не вказано'}` },
               { type: 'mrkdwn', text: `*Дедлайн:*\n${deadline || 'не вказано'}` },
@@ -310,7 +446,7 @@ async function createTaskFromSubmissionPayload(client, payload) {
         ],
       })
     } catch (error) {
-      console.error(`Failed to send design-channel task notification for page ${pageId}:`, error)
+      console.error(`Failed to send ${department.key} task notification for page ${pageId}:`, error)
     }
   }
 
@@ -434,33 +570,46 @@ function startTaskSubmissionQueueWorker(client) {
 export function registerSubmissionHandlers(app) {
   startTaskSubmissionQueueWorker(app.client)
 
-  function buildTaskModalView(taskType, taskTypeLabel, values = {}) {
+  function buildTaskModalView({
+    departmentKey = DEFAULT_DEPARTMENT_KEY,
+    taskType,
+    taskTypeLabel,
+    values = {},
+    leadTimeWarning = false,
+  }) {
+    const department = getDepartment(departmentKey)
+
     return {
       type: 'modal',
       callback_id: 'submit_task',
-      private_metadata: JSON.stringify({ taskType, taskTypeLabel }),
+      private_metadata: JSON.stringify({ departmentKey: department.key, taskType, taskTypeLabel }),
       title: { type: 'plain_text', text: '📋 Бриф задачі' },
       submit: { type: 'plain_text', text: 'Створити задачу' },
       close: { type: 'plain_text', text: 'Скасувати' },
-      blocks: getModalBlocks(taskType, values),
+      blocks: getModalBlocks(taskType, values, {
+        departmentKey: department.key,
+        leadTimeWarning,
+      }),
     }
   }
 
   // Крок 1 — юзер вибрав тип задачі, відкриваємо форму з полями
   app.view('select_task_type', async ({ ack, body, client, view }) => {
+    const metadata = parsePrivateMetadata(view.private_metadata)
+    const departmentKey = resolveDepartmentKey(metadata.departmentKey)
     const taskType = view.state.values.task_type_block.task_type.selected_option.value
     const taskTypeLabel = view.state.values.task_type_block.task_type.selected_option.text.text
 
     await ack({
       response_action: 'update',
-      view: buildTaskModalView(taskType, taskTypeLabel),
+      view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel }),
     })
   })
 
   app.action('platform', async ({ ack, body, client }) => {
     await ack()
 
-    const { taskType, taskTypeLabel } = JSON.parse(body.view.private_metadata)
+    const { departmentKey = DEFAULT_DEPARTMENT_KEY, taskType, taskTypeLabel } = parsePrivateMetadata(body.view.private_metadata)
     const values = {
       ...body.view.state.values,
       platform_block: {
@@ -475,121 +624,176 @@ export function registerSubmissionHandlers(app) {
     await client.views.update({
       view_id: body.view.id,
       hash: body.view.hash,
-      view: buildTaskModalView(taskType, taskTypeLabel, values),
+      view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel, values }),
     })
   })
 
   // Крок 2 — юзер заповнив бриф і натиснув "Створити задачу"
   app.view('submit_task', async ({ ack, body, client, view }) => {
-    await ack()
-
-    const { taskType, taskTypeLabel } = JSON.parse(view.private_metadata)
+    const {
+      departmentKey: rawDepartmentKey = DEFAULT_DEPARTMENT_KEY,
+      taskType,
+      taskTypeLabel,
+    } = parsePrivateMetadata(view.private_metadata)
+    const departmentKey = resolveDepartmentKey(rawDepartmentKey)
+    const department = getDepartment(departmentKey)
     const values = view.state.values
     const userId = body.user.id
     const userName = body.user.name
 
-    // Базові поля
-    const name = values.name_block?.name?.value
-    const priority = values.priority_block?.priority?.selected_option?.value
-    const deadline = values.deadline_block?.deadline?.selected_date
-    const context = values.context_block?.context?.value
-    const style = values.style_block?.style?.value
-    const antiref = values.antiref_block?.antiref?.value
-    const canEditText = values.can_edit_block?.can_edit?.selected_option?.value
-
-    const specificFields = {}
+    let priority = null
+    let deadline = null
+    let context = null
+    let style = null
+    let antiref = null
+    let canEditText = null
+    let videoFormat = null
+    let platform = null
+    let platforms = []
+    let platformOther = null
+    let fieldAnswers = []
+    let specificFields = {}
     const artifacts = {}
 
-    const videoFormat = values.video_format_block?.video_format?.selected_option?.value
-    const platform = values.platform_block?.platform?.selected_option?.value
-    const platformOther = values.platform_other_block?.platform_other?.value
+    const name = values.name_block?.name?.value
 
-    const fieldMapping = {
-      size_block: '📐 Розміри',
-      print_size_block: '📐 Розміри',
-      message_block: '💬 Ключове повідомлення',
-      accent_block: '🎯 Основний акцент',
-      color_model_block: '🎨 Кольорова модель',
-      output_format_block: '📄 Формат файлу на виході',
-      video_format_block: '🎬 Фінальний формат відео',
-      subtitles_block: '💬 Субтитри',
-      cta_block: '📢 CTA',
-      mood_block: '🌀 Концепція / настрій',
-      edit_style_block: '✂️ Стиль монтажу',
-      slides_count_block: '🔢 Кількість слайдів',
-      slides_text_block: '📝 Текст по слайдах',
-      structure_block: '🗂 Структура',
-      audience_block: '👥 Ціль і аудиторія',
-      ai_description_block: '🤖 Що зобразити',
-      new_blocks_block: '➕ Нові блоки',
-      custom_images_block: '🖼 Кастомні картинки',
-      carrier_block: '👕 Тип носія',
-      print_zone_block: '📍 Зони нанесення',
-      variants_block: '🔄 Кількість варіантів',
-      concept_block: '💡 Концепція / меседж',
-      restrictions_block: '🚫 Обмеження',
-      brand_name_block: '🏷 Назва бренду',
-      business_block: '🏢 Опис бізнесу',
-      target_block: '🎯 ЦА',
-      competitors_block: '⚔️ Конкуренти',
-      usage_block: '📍 Де використовуватись',
-      sphere_block: '🏭 Сфера',
-      what_to_fix_block: '🔧 Що прибрати / змінити',
-      person_name_block: '👤 Ім\'я та посада',
-      event_date_block: '📅 Дата події',
-      tv_text_block: '📺 Текст',
-      qr_block: '🔗 QR / посилання',
-      event_name_block: '🎪 Назва івенту',
-      location_block: '📍 Локація',
-      character_block: '🎭 Характер івенту',
-      carriers_list_block: '📋 Перелік носіїв',
-      slide_list_block: '📋 Перелік слайдів для правок',
-      can_shorten_block: '✂️ Можна скорочувати текст',
-      vacancy_block: '💼 Назва вакансії та умови',
-      formats_list_block: '📐 Перелік форматів',
-      promo_desc_block: '💡 Опис задачі',
-      selected_concept_block: '🎯 Обраний концепт',
-      new_text_block: '📝 Новий текст',
-      concept_only_block: '💡 Концепція',
-      hooks_block: '🪝 Хуки',
-      desired_dynamics_block: '🎞 Мінімальний опис бажаної динаміки',
-      construction_block: '🧩 Конструкція',
-      file_packaging_block: '📦 Як передавати елементи',
-      print_effect_block: '✨ Ефект нанесення',
-      other_desc_block: '📝 Опис задачі',
+    if (departmentKey === DEFAULT_DEPARTMENT_KEY) {
+      priority = values.priority_block?.priority?.selected_option?.value
+      deadline = values.deadline_block?.deadline?.selected_date
+      context = values.context_block?.context?.value
+      style = values.style_block?.style?.value
+      antiref = values.antiref_block?.antiref?.value
+      canEditText = values.can_edit_block?.can_edit?.selected_option?.value
+      videoFormat = values.video_format_block?.video_format?.selected_option?.value
+      platform = values.platform_block?.platform?.selected_option?.value
+      platformOther = values.platform_other_block?.platform_other?.value
+      platforms = platform ? [platform] : []
+
+      const fieldMapping = {
+        size_block: '📐 Розміри',
+        print_size_block: '📐 Розміри',
+        message_block: '💬 Ключове повідомлення',
+        accent_block: '🎯 Основний акцент',
+        color_model_block: '🎨 Кольорова модель',
+        output_format_block: '📄 Формат файлу на виході',
+        video_format_block: '🎬 Фінальний формат відео',
+        subtitles_block: '💬 Субтитри',
+        cta_block: '📢 CTA',
+        mood_block: '🌀 Концепція / настрій',
+        edit_style_block: '✂️ Стиль монтажу',
+        slides_count_block: '🔢 Кількість слайдів',
+        slides_text_block: '📝 Текст по слайдах',
+        structure_block: '🗂 Структура',
+        audience_block: '👥 Ціль і аудиторія',
+        ai_description_block: '🤖 Що зобразити',
+        new_blocks_block: '➕ Нові блоки',
+        custom_images_block: '🖼 Кастомні картинки',
+        carrier_block: '👕 Тип носія',
+        print_zone_block: '📍 Зони нанесення',
+        variants_block: '🔄 Кількість варіантів',
+        concept_block: '💡 Концепція / меседж',
+        restrictions_block: '🚫 Обмеження',
+        brand_name_block: '🏷 Назва бренду',
+        business_block: '🏢 Опис бізнесу',
+        target_block: '🎯 ЦА',
+        competitors_block: '⚔️ Конкуренти',
+        usage_block: '📍 Де використовуватись',
+        sphere_block: '🏭 Сфера',
+        what_to_fix_block: '🔧 Що прибрати / змінити',
+        person_name_block: '👤 Ім\'я та посада',
+        event_date_block: '📅 Дата події',
+        tv_text_block: '📺 Текст',
+        qr_block: '🔗 QR / посилання',
+        event_name_block: '🎪 Назва івенту',
+        location_block: '📍 Локація',
+        character_block: '🎭 Характер івенту',
+        carriers_list_block: '📋 Перелік носіїв',
+        slide_list_block: '📋 Перелік слайдів для правок',
+        can_shorten_block: '✂️ Можна скорочувати текст',
+        vacancy_block: '💼 Назва вакансії та умови',
+        formats_list_block: '📐 Перелік форматів',
+        promo_desc_block: '💡 Опис задачі',
+        selected_concept_block: '🎯 Обраний концепт',
+        new_text_block: '📝 Новий текст',
+        concept_only_block: '💡 Концепція',
+        hooks_block: '🪝 Хуки',
+        desired_dynamics_block: '🎞 Мінімальний опис бажаної динаміки',
+        construction_block: '🧩 Конструкція',
+        file_packaging_block: '📦 Як передавати елементи',
+        print_effect_block: '✨ Ефект нанесення',
+        other_desc_block: '📝 Опис задачі',
+      }
+
+      for (const [blockId, label] of Object.entries(fieldMapping)) {
+        const block = values[blockId]
+        if (!block) continue
+        const actionId = Object.keys(block)[0]
+        const element = block[actionId]
+        const val = extractElementValue(element)
+        if (val) specificFields[label] = formatFieldValue(val)
+      }
+
+      const artifactMapping = {
+        artifact_figma_block: 'Figma / макет',
+        artifact_drive_block: 'Google Drive',
+        artifact_video_block: 'Відеоматеріал',
+        artifact_music_block: 'Музика',
+        artifact_photo_block: 'Фото',
+        artifact_logo_block: 'Логотип',
+        artifact_ref_block: 'Референси',
+        artifact_brand_block: 'Бренд-гайд',
+        artifact_pres_block: 'Презентація',
+        artifact_article_block: 'Стаття / текст',
+      }
+
+      for (const [blockId, label] of Object.entries(artifactMapping)) {
+        const block = values[blockId]
+        if (!block) continue
+        const actionId = Object.keys(block)[0]
+        const val = block[actionId]?.value || null
+        if (val) artifacts[label] = val
+      }
+    } else {
+      const dynamicFields = extractDynamicSubmissionFields({ departmentKey, taskType, values })
+      deadline = dynamicFields.deadline
+      context = dynamicFields.context
+      platforms = dynamicFields.platforms
+      platform = dynamicFields.platform
+      fieldAnswers = dynamicFields.fieldAnswers
+      specificFields = dynamicFields.specificFields
+      priority = getLeadTimeOverride(values) === 'urgent' ? 'Urgent' : null
     }
 
-    for (const [blockId, label] of Object.entries(fieldMapping)) {
-      const block = values[blockId]
-      if (!block) continue
-      const actionId = Object.keys(block)[0]
-      const element = block[actionId]
-      let val = element?.value || element?.selected_option?.value || element?.selected_date || null
-      if (val) specificFields[label] = val
+    const leadTimeViolation = getLeadTimeViolation({ departmentKey, taskType, deadline, values })
+    if (leadTimeViolation) {
+      if (leadTimeViolation.override === 'change_date') {
+        await ack({
+          response_action: 'errors',
+          errors: {
+            [`${getDepartmentTaskFields(departmentKey, taskType).find((field) => field.role === 'deadline')?.key || 'deadline'}_block`]:
+              `Зміни дату: для цього типу мінімальний термін — ${leadTimeViolation.minLeadDays} днів.`,
+          },
+        })
+        return
+      }
+
+      await ack({
+        response_action: 'update',
+        view: buildTaskModalView({
+          departmentKey,
+          taskType,
+          taskTypeLabel,
+          values,
+          leadTimeWarning: true,
+        }),
+      })
+      return
     }
 
-    const artifactMapping = {
-      artifact_figma_block: 'Figma / макет',
-      artifact_drive_block: 'Google Drive',
-      artifact_video_block: 'Відеоматеріал',
-      artifact_music_block: 'Музика',
-      artifact_photo_block: 'Фото',
-      artifact_logo_block: 'Логотип',
-      artifact_ref_block: 'Референси',
-      artifact_brand_block: 'Бренд-гайд',
-      artifact_pres_block: 'Презентація',
-      artifact_article_block: 'Стаття / текст',
-    }
-
-    for (const [blockId, label] of Object.entries(artifactMapping)) {
-      const block = values[blockId]
-      if (!block) continue
-      const actionId = Object.keys(block)[0]
-      const val = block[actionId]?.value || null
-      if (val) artifacts[label] = val
-    }
+    await ack()
 
     const submissionPayload = {
+      departmentKey,
       userId,
       userName,
       slackPersonName: userName,
@@ -604,8 +808,10 @@ export function registerSubmissionHandlers(app) {
       canEditText,
       videoFormat,
       platform,
+      platforms,
       platformOther,
       specificFields,
+      fieldAnswers,
       artifacts,
       values,
     }

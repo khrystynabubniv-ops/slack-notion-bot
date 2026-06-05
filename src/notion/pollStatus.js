@@ -27,19 +27,13 @@ import {
 import { buildTaskPageUrl } from './pageUrl.js'
 import { notionRequest } from './request.js'
 import { extractDesignerFromProperties } from './designer.js'
+import { getAllDepartments, getDepartment, resolveDepartmentKey } from '../config/departments.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
-const DATABASE_ID = process.env.NOTION_DATABASE_ID
 const POLLING_RATE_LIMIT_COOLDOWN_MS = Number.parseInt(
   process.env.NOTION_POLL_RATE_LIMIT_COOLDOWN_MS || `${10 * 60 * 1000}`,
   10
 )
-const COMPLETED_STATUS_NAMES = (
-  process.env.NOTION_POLL_COMPLETED_STATUSES || 'Ready'
-)
-  .split(',')
-  .map(normalizeStatusName)
-  .filter(Boolean)
 let commentPollingEnabled = true
 let pollingInProgress = false
 let pollingPausedUntil = 0
@@ -86,12 +80,20 @@ function pausePollingAfterRateLimit(error, context) {
   )
 }
 
-function isCompletedStatus(status) {
+function getCompletedStatusNames(department) {
+  return (department.completedStatuses || [])
+    .map(normalizeStatusName)
+    .filter(Boolean)
+}
+
+function isCompletedStatus(status, department) {
   const normalizedStatus = normalizeStatusName(status)
+  const completedStatusNames = getCompletedStatusNames(department)
+
   return Boolean(
     normalizedStatus &&
       (isQualitySurveyStatus(status) ||
-        COMPLETED_STATUS_NAMES.includes(normalizedStatus) ||
+        completedStatusNames.includes(normalizedStatus) ||
         normalizedStatus.includes('done'))
   )
 }
@@ -120,6 +122,9 @@ async function sendQualitySurveyOnce(slackClient, task, { pageUrl, completedAt, 
     pageId: task.pageId,
     requesterName: task.requesterName,
     requestUrl: pageUrl,
+    team: task.team,
+    hub: task.hub,
+    requestType: task.requestType,
     completedAt,
     slackChannelId: task.slackChannelId,
     slackThreadTs: task.slackThreadTs || task.slackMessageTs,
@@ -131,6 +136,9 @@ async function sendQualitySurveyOnce(slackClient, task, { pageUrl, completedAt, 
     taskName: task.taskName,
     requesterName: task.requesterName,
     requestUrl: pageUrl,
+    team: task.team,
+    hub: task.hub,
+    requestType: task.requestType,
     completedAt,
   })
 
@@ -205,7 +213,9 @@ function extractUrlProperty(page, propertyName) {
   return null
 }
 
-async function getCurrentTaskSnapshots() {
+async function getCurrentTaskSnapshots(department) {
+  if (!department.notionDataSourceId) return {}
+
   const tasks = {}
 
   let hasMore = true
@@ -214,14 +224,14 @@ async function getCurrentTaskSnapshots() {
   while (hasMore) {
     const response = await notionRequest(
       () => notion.databases.query({
-        database_id: DATABASE_ID,
+        database_id: department.notionDataSourceId,
         start_cursor: startCursor,
       }),
-      'database query'
+      `database query (${department.key})`
     )
 
     for (const page of response.results) {
-      const status = extractStatus(page)
+      const status = extractStatus(page, department.key)
       if (!status) continue
 
       tasks[page.id] = {
@@ -362,7 +372,12 @@ function normalizePersonName(value) {
     .trim()
 }
 
+function isSlackThreadMirrorComment(comment) {
+  return normalizePersonName(comment?.text).startsWith('slack thread ·')
+}
+
 function isOwnComment(latestComment, task) {
+  if (isSlackThreadMirrorComment(latestComment)) return true
   if (!task.requesterName || !latestComment.author) return false
   return normalizePersonName(task.requesterName) === normalizePersonName(latestComment.author)
 }
@@ -447,13 +462,14 @@ function getMissingThreadRestoreKey(status) {
 function shouldSendMissingThreadStatusRecovery(task, currentTask) {
   const notificationKey = getFallbackStatusNotificationKey(currentTask.status)
   const restoreKey = getMissingThreadRestoreKey(currentTask.status)
+  const department = getDepartment(task.departmentKey)
 
   return Boolean(
     task.slackUserId &&
       !hasSlackThread(task) &&
       notificationKey &&
       !isInitialStatus(currentTask.status) &&
-      !isCompletedStatus(currentTask.status) &&
+      !isCompletedStatus(currentTask.status, department) &&
       (task.fallbackStatusNotifiedFor !== notificationKey ||
         task.missingThreadRestoreAttemptedFor !== restoreKey)
   )
@@ -680,12 +696,9 @@ async function sendMissingThreadStatusRecovery(slackClient, task, currentTask, p
   await checkpointMissingThreadStatusNotification(task.pageId, currentTask.status)
 }
 
-export async function startPolling(slackClient) {
-  console.log('🔄 Polling started — every 3 minutes')
-
-  setInterval(async () => {
+async function runPollingCycle(slackClient, department) {
     if (pollingInProgress) {
-      console.warn('Notion polling skipped because the previous cycle is still running.')
+      console.warn(`Notion polling skipped for ${department.key} because the previous cycle is still running.`)
       return
     }
 
@@ -697,14 +710,16 @@ export async function startPolling(slackClient) {
     pollingInProgress = true
 
     try {
-      const trackedTasks = await getAllTasks()
+      const trackedTasks = (await getAllTasks()).filter((task) => {
+        return resolveDepartmentKey(task.departmentKey) === department.key
+      })
       if (!trackedTasks.length) return
 
       const activeTrackedTasks = []
       for (const task of trackedTasks) {
         const pageUrl = task.pageUrl || buildTaskPageUrl(task.pageId)
 
-        if (isCompletedStatus(task.lastStatus)) {
+        if (isCompletedStatus(task.lastStatus, department)) {
           try {
             await stopPollingCompletedTask(slackClient, task, {
               pageUrl,
@@ -725,13 +740,13 @@ export async function startPolling(slackClient) {
 
       if (!activeTrackedTasks.length) return
 
-      const currentTasks = await getCurrentTaskSnapshots()
+      const currentTasks = await getCurrentTaskSnapshots(department)
 
       for (const task of activeTrackedTasks) {
         const currentTask = getCurrentTaskSnapshot(currentTasks, task.pageId)
         if (!currentTask?.status) continue
         const pageUrl = task.pageUrl || buildTaskPageUrl(task.pageId)
-        const completed = isCompletedStatus(currentTask.status)
+        const completed = isCompletedStatus(currentTask.status, department)
         let rootMessageRefreshed = false
 
         if (!task.lastStatus) {
@@ -971,5 +986,13 @@ export async function startPolling(slackClient) {
     } finally {
       pollingInProgress = false
     }
-  }, 3 * 60 * 1000)
+}
+
+export async function startPolling(slackClient) {
+  for (const department of getAllDepartments()) {
+    const intervalMs = Math.max(Number(department.pollIntervalSec || 180), 1) * 1000
+
+    console.log(`🔄 Polling started for ${department.key} — every ${Math.round(intervalMs / 1000)}s`)
+    setInterval(() => runPollingCycle(slackClient, department), intervalMs)
+  }
 }

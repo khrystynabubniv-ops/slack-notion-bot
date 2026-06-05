@@ -1,9 +1,9 @@
 import { Client } from '@notionhq/client'
 import { getStatusPropertyNames } from './taskConfig.js'
 import { notionRequest } from './request.js'
+import { getDepartment } from '../config/departments.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
-const DATABASE_ID = process.env.NOTION_DATABASE_ID
 const PARENT_ITEM_PROPERTY = process.env.NOTION_PARENT_ITEM_PROPERTY?.trim() || 'Parent item'
 
 export function normalizePageId(pageId) {
@@ -57,8 +57,8 @@ export function canAcceptTaskResult(currentTasks, pageId) {
   return !childTasks.length || childTasks.every((task) => isAcceptableSubtaskStatus(task.status))
 }
 
-export function extractStatus(page) {
-  for (const propertyName of getStatusPropertyNames()) {
+export function extractStatus(page, departmentKey = 'design') {
+  for (const propertyName of getStatusPropertyNames(departmentKey)) {
     const status = page.properties?.[propertyName]?.status?.name
     if (status) return status
   }
@@ -66,8 +66,9 @@ export function extractStatus(page) {
   return null
 }
 
-async function getChildTaskStatuses(parentPageId) {
-  if (!DATABASE_ID || !parentPageId) return []
+async function getChildTaskStatuses(parentPageId, departmentKey = 'design') {
+  const department = getDepartment(departmentKey)
+  if (!department.notionDataSourceId || !parentPageId) return []
 
   const childTasks = []
   let hasMore = true
@@ -76,7 +77,7 @@ async function getChildTaskStatuses(parentPageId) {
   while (hasMore) {
     const response = await notionRequest(
       () => notion.databases.query({
-        database_id: DATABASE_ID,
+        database_id: department.notionDataSourceId,
         start_cursor: startCursor,
         filter: {
           property: PARENT_ITEM_PROPERTY,
@@ -90,7 +91,7 @@ async function getChildTaskStatuses(parentPageId) {
 
     childTasks.push(...response.results.map((page) => ({
       pageId: page.id,
-      status: extractStatus(page),
+      status: extractStatus(page, departmentKey),
     })))
 
     hasMore = response.has_more
@@ -100,15 +101,15 @@ async function getChildTaskStatuses(parentPageId) {
   return childTasks
 }
 
-export async function getTaskAcceptanceReadiness(pageId) {
+export async function getTaskAcceptanceReadiness(pageId, departmentKey = 'design') {
   const [page, childTasks] = await Promise.all([
     notionRequest(
       () => notion.pages.retrieve({ page_id: pageId }),
       'task retrieve before acceptance readiness check'
     ),
-    getChildTaskStatuses(pageId),
+    getChildTaskStatuses(pageId, departmentKey),
   ])
-  const status = extractStatus(page)
+  const status = extractStatus(page, departmentKey)
   const hasBlockingSubtasks = childTasks.some((task) => !isAcceptableSubtaskStatus(task.status))
 
   return {
