@@ -2,6 +2,14 @@ export const PENDING_DESIGNER_TEXT = 'Designer assign is cooming!'
 
 const DESIGNER_MENTIONS = [
   {
+    slackId: 'U07LJE64188',
+    aliases: ['аня', 'ані', 'анна', 'anna', 'ania', 'anya', 'anna gayuk', 'анна гаюк'],
+  },
+  {
+    slackId: 'U0AGVRH6MHR',
+    aliases: ['саша', 'саші', 'sasha'],
+  },
+  {
     slackId: 'U02RU97BS9K',
     aliases: ['віра', 'вiра', 'vira', 'vera'],
   },
@@ -38,6 +46,12 @@ function escapeMrkdwn(value) {
     .replace(/>/g, '&gt;')
 }
 
+function normalizeSlackId(value) {
+  const normalizedSlackId = String(value || '').trim()
+
+  return /^[UW][A-Z0-9]+$/.test(normalizedSlackId) ? normalizedSlackId : null
+}
+
 function getDesignerName(designer) {
   if (!designer) return ''
   if (typeof designer === 'string') return designer
@@ -49,9 +63,7 @@ function getDirectSlackId(designer) {
   if (!designer || typeof designer !== 'object') return null
 
   const slackId = designer.slackId || designer.slackUserId || designer.userId
-  const normalizedSlackId = String(slackId || '').trim()
-
-  return /^[UW][A-Z0-9]+$/.test(normalizedSlackId) ? normalizedSlackId : null
+  return normalizeSlackId(slackId)
 }
 
 function getDesignerNames(designer) {
@@ -71,6 +83,9 @@ function containsAlias(normalizedName, normalizedAlias) {
 }
 
 export function getDesignerSlackId(designerName) {
+  const directSlackId = normalizeSlackId(designerName)
+  if (directSlackId) return directSlackId
+
   const normalizedName = normalizeName(designerName)
   if (!normalizedName || PLACEHOLDER_NAMES.has(normalizedName)) return null
 
