@@ -111,12 +111,14 @@ function buildDynamicNameBlock(values = {}) {
   return cloneElementWithState(block, values)
 }
 
-function buildDynamicFieldBlock(field, values = {}) {
+function buildDynamicFieldBlock(field, values = {}, { dispatchAction = false } = {}) {
   const block = {
     type: 'input',
     block_id: `${field.key}_block`,
     label: { type: 'plain_text', text: field.label },
     optional: Boolean(field.optional),
+    ...(dispatchAction ? { dispatch_action: true } : {}),
+    ...(field.hint ? { hint: { type: 'plain_text', text: field.hint } } : {}),
   }
 
   if (field.type === 'textarea' || field.type === 'text') {
@@ -221,16 +223,25 @@ function shouldShowDynamicField(field, values = {}) {
   return currentValues.some((value) => expectedValues.includes(value))
 }
 
+function getConditionalControllerKeys(fields) {
+  return new Set(fields
+    .map((field) => field.showWhen?.fieldKey)
+    .filter(Boolean))
+}
+
 function getDynamicDepartmentBlocks(departmentKey, taskType, values = {}, options = {}) {
   const department = getDepartment(departmentKey)
   const taskConfig = department.taskTypes[taskType]
   const fields = getDepartmentTaskFields(department.key, taskType)
   const visibleFields = fields.filter((field) => shouldShowDynamicField(field, values))
+  const controllerKeys = getConditionalControllerKeys(fields)
 
   return [
     buildDynamicNameBlock(values),
     ...(options.leadTimeWarning ? buildLeadTimeWarningBlocks(taskConfig, options.leadTimeWarning) : []),
-    ...visibleFields.map((field) => buildDynamicFieldBlock(field, values)),
+    ...visibleFields.map((field) => buildDynamicFieldBlock(field, values, {
+      dispatchAction: controllerKeys.has(field.key),
+    })),
   ]
 }
 

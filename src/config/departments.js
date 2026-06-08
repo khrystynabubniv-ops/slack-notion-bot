@@ -222,6 +222,12 @@ const smmCommonFields = [
   }),
 ]
 
+const smmNoteField = field('note', 'textarea', 'Додаткова інформація / note', {
+  optional: true,
+  section: 'base',
+  placeholder: 'Можеш додати будь-який контекст, уточнення, тексти, посилання або побажання, які не влізли в поля вище.',
+})
+
 const smmTaskFields = {
   reels: [
     field('talent_consent', 'textarea', 'Хто знімається + чи є згода *'),
@@ -234,29 +240,35 @@ const smmTaskFields = {
   carousel_post: [
     field('structure_choice', 'select', 'Структура каруселі *', {
       options: selectOptions(['Є структура — опишу', 'SMM придумує']),
+      hint: 'Якщо обереш «Є структура — опишу», нижче зʼявиться поле для опису структури.',
     }),
-    field('slide_topics', 'textarea', 'Опис тем слайдів', {
+    field('slide_topics', 'textarea', 'Опис структури каруселі', {
       optional: true,
+      placeholder: 'Опиши структуру або теми слайдів: слайд 1 — ..., слайд 2 — ...',
       showWhen: { fieldKey: 'structure_choice', values: ['Є структура — опишу'] },
     }),
     field('ready_texts', 'select', 'Готові тексти *', {
       options: selectOptions(['Так — посилання', 'Ні, писати з нуля']),
+      hint: 'Якщо обереш «Так — посилання», нижче зʼявиться поле для готових текстів або лінку.',
     }),
-    field('ready_texts_link', 'text', 'Посилання на готові тексти', {
+    field('ready_texts_link', 'textarea', 'Готові тексти / посилання', {
       optional: true,
+      placeholder: 'Встав готовий текст або лінк на документ з текстами.',
       showWhen: { fieldKey: 'ready_texts', values: ['Так — посилання'] },
     }),
     field('design_references', 'text', 'Референси дизайну', { optional: true }),
   ],
   announcement_post: [
-    field('landing_link', 'text', 'Лендинг / прес-реліз *', { notionProperties: ['Ad link'] }),
+    field('landing_link', 'text', 'Лінк на лендинг / прес-реліз *', { notionProperties: ['Ad link'] }),
     field('event_date', 'date', 'Дата події *', { notionProperties: ['Event date'] }),
     field('cta_link', 'textarea', 'CTA + посилання *', { notionProperties: ['Ad CTA'] }),
     field('visual_source', 'select', 'Візуал *', {
       options: selectOptions(['Є — посилання', 'Беремо з лендингу']),
+      hint: 'Якщо обереш «Є — посилання», нижче зʼявиться поле для лінку на візуал.',
     }),
-    field('visual_link', 'text', 'Посилання на візуал', {
+    field('visual_link', 'text', 'Лінк на візуал', {
       optional: true,
+      placeholder: 'Встав лінк на готовий візуал.',
       showWhen: { fieldKey: 'visual_source', values: ['Є — посилання'] },
     }),
   ],
@@ -547,6 +559,7 @@ export function getDepartmentTaskFields(departmentKey = DEFAULT_DEPARTMENT_KEY, 
     return [
       ...smmCommonFields,
       ...(smmTaskFields[taskType] || []),
+      smmNoteField,
     ]
   }
 
