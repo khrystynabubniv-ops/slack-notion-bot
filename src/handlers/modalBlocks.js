@@ -210,6 +210,13 @@ function buildLeadTimeWarningBlocks(taskConfig, leadTimeWarning = {}, department
 
   return [
     {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: '⚠️ Дедлайн ближче за SLA',
+      },
+    },
+    {
       type: 'section',
       text: {
         type: 'mrkdwn',
@@ -233,19 +240,7 @@ function buildLeadTimeWarningBlocks(taskConfig, leadTimeWarning = {}, department
         ],
       },
     },
-  ]
-}
-
-function insertBlocksAfter(blocks, blockId, insertedBlocks = []) {
-  if (!insertedBlocks.length) return blocks
-
-  const targetIndex = blocks.findIndex((block) => block.block_id === blockId)
-  if (targetIndex === -1) return [...blocks, ...insertedBlocks]
-
-  return [
-    ...blocks.slice(0, targetIndex + 1),
-    ...insertedBlocks,
-    ...blocks.slice(targetIndex + 1),
+    divider(),
   ]
 }
 
@@ -279,8 +274,8 @@ function getDynamicDepartmentBlocks(departmentKey, taskType, values = {}, option
   const controllerKeys = getConditionalControllerKeys(fields)
 
   return [
-    buildDynamicNameBlock(values),
     ...(options.leadTimeWarning ? buildLeadTimeWarningBlocks(taskConfig, options.leadTimeWarning, department) : []),
+    buildDynamicNameBlock(values),
     ...visibleFields.map((field) => buildDynamicFieldBlock(field, values, {
       dispatchAction: controllerKeys.has(field.key),
     })),
@@ -2154,16 +2149,10 @@ export function getModalBlocks(taskType, values = {}, options = {}) {
 
   const taskConfig = department.taskTypes[taskType] || {}
   const base = baseBlocks().map((block) => cloneElementWithState(block, values))
-  const baseWithWarning = insertBlocksAfter(
-    base,
-    'deadline_block',
-    options.leadTimeWarning
-      ? buildLeadTimeWarningBlocks(taskConfig, options.leadTimeWarning, department)
-      : []
-  )
   const specific = enhanceSpecificBlocks(specificBlocks[taskType] || [], values)
   return [
-    ...baseWithWarning,
+    ...(options.leadTimeWarning ? buildLeadTimeWarningBlocks(taskConfig, options.leadTimeWarning, department) : []),
+    ...base,
     ...(specific.length ? [divider()] : []),
     ...specific,
   ]
