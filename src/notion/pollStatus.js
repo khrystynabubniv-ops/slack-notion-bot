@@ -392,10 +392,8 @@ function isSlackThreadMirrorComment(comment) {
   return normalizePersonName(comment?.text).startsWith('slack thread ·')
 }
 
-function isOwnComment(latestComment, task) {
-  if (isSlackThreadMirrorComment(latestComment)) return true
-  if (!task.requesterName || !latestComment.author) return false
-  return normalizePersonName(task.requesterName) === normalizePersonName(latestComment.author)
+function isMirroredSlackThreadComment(comment) {
+  return isSlackThreadMirrorComment(comment)
 }
 
 function normalizeTrackedValue(value) {
@@ -973,7 +971,7 @@ async function runPollingCycle(slackClient, department) {
         if (!newComments.length) continue
 
         for (const comment of newComments) {
-          if (isOwnComment(comment, task)) {
+          if (isMirroredSlackThreadComment(comment)) {
             await updateLastComment(task.pageId, comment)
             continue
           }
