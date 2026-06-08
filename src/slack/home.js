@@ -13,7 +13,7 @@ export function registerHomeTab(app) {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*👋 Привіт! Це Design Tasks Bot*\nЯ допоможу швидко поставити задачу дизайн-команді — без зайвих питань у Slack.',
+              text: '*👋 Привіт! Це PR & Comms Bot*\nДопоможу швидко передати запит PR & Comms команді: зберу бриф, створю задачу в Notion і надішлю апдейти в Slack.',
             },
           },
           { type: 'divider' },
@@ -23,11 +23,11 @@ export function registerHomeTab(app) {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '🚀 *Постав нову задачу дизайнерам*\nЗаповни короткий бриф — команда отримає всю потрібну інформацію одразу.',
+              text: '🚀 *Створити новий запит*\nОбери тип задачі, заповни коротку форму — і команда одразу отримає потрібний контекст.',
             },
             accessory: {
               type: 'button',
-              text: { type: 'plain_text', text: '➕ Створити задачу', emoji: true },
+              text: { type: 'plain_text', text: '➕ Створити запит', emoji: true },
               style: 'primary',
               action_id: 'open_new_task_from_home',
             },
@@ -45,67 +45,34 @@ export function registerHomeTab(app) {
           {
             type: 'section',
             fields: [
-              { type: 'mrkdwn', text: '*1️⃣ Вибери тип задачі*\nСтатика, відео, презентація, мерч тощо' },
-              { type: 'mrkdwn', text: '*2️⃣ Заповни бриф*\nТільки потрібні поля для твого типу задачі' },
+              { type: 'mrkdwn', text: '*1️⃣ Обери тип запиту*\nАнонс, текст, медіа, івент або інше' },
+              { type: 'mrkdwn', text: '*2️⃣ Заповни бриф*\nДодай контекст, дедлайн і матеріали' },
             ],
           },
           {
             type: 'section',
             fields: [
-              { type: 'mrkdwn', text: '*3️⃣ Задача створюється в Notion*\nОтримаєш посилання одразу після відправки' },
-              { type: 'mrkdwn', text: '*4️⃣ Отримуй апдейти в Slack*\nБот повідомить коли статус задачі зміниться' },
+              { type: 'mrkdwn', text: '*3️⃣ Отримай задачу в Notion*\nПісля відправки прийде посилання' },
+              { type: 'mrkdwn', text: '*4️⃣ Слідкуй за апдейтами*\nСтатуси й коментарі прийдуть у Slack' },
             ],
           },
           { type: 'divider' },
 
-          // Categories
+          // Use cases
           {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*📋 Які задачі можна поставити?*',
+              text: '*📋 З чим можна звернутися?*',
             },
           },
           {
             type: 'section',
             fields: [
-              { type: 'mrkdwn', text: '🖼 *SMM / Банери*\nСтатика, карусель, промо, ресайзи' },
-              { type: 'mrkdwn', text: '📣 *Promo Creatives*\nПромо по шаблону, нові ідеї (Static / Mix / Video)' },
-            ],
-          },
-          {
-            type: 'section',
-            fields: [
-              { type: 'mrkdwn', text: '🎬 *Монтаж / Анімація*\nПростий або складний монтаж відео' },
-              { type: 'mrkdwn', text: '📊 *Презентації*\nКоригування, по шаблону, wow-презентація' },
-            ],
-          },
-          {
-            type: 'section',
-            fields: [
-              { type: 'mrkdwn', text: '🤖 *ШІ-контент*\nСтатика і динаміка, проста і складна' },
-              { type: 'mrkdwn', text: '🌐 *Веб*\nЛендинги, блог' },
-            ],
-          },
-          {
-            type: 'section',
-            fields: [
-              { type: 'mrkdwn', text: '👕 *Мерч / Поліграфія*\nМерч, друковані матеріали (постер, флаєр, брошура)' },
-              { type: 'mrkdwn', text: '🎯 *Брендинг*\nАйдентика, логотип' },
-            ],
-          },
-          {
-            type: 'section',
-            fields: [
-              { type: 'mrkdwn', text: '📷 *Фото*\nПросте і складне редагування' },
-              { type: 'mrkdwn', text: '📺 *TV / Івент*\nАнонси, UniTV, івенти' },
-            ],
-          },
-          {
-            type: 'section',
-            fields: [
-              { type: 'mrkdwn', text: '📰 *Email / Дайджест*\nБазовий, wow, email-дайджест' },
-              { type: 'mrkdwn', text: '💡 *Інше*\nБудь-яка нетипова задача' },
+              { type: 'mrkdwn', text: '📣 *Анонси та новини*\nЗапуски, оновлення, важливі повідомлення' },
+              { type: 'mrkdwn', text: '✍️ *Тексти й редактура*\nПости, статті, описи, email-тексти' },
+              { type: 'mrkdwn', text: '🎤 *PR та медіа-запити*\nПресрелізи, коментарі, публічні матеріали' },
+              { type: 'mrkdwn', text: '💡 *Інше*\nНетипові PR/Comms задачі' },
             ],
           },
           { type: 'divider' },
@@ -115,7 +82,7 @@ export function registerHomeTab(app) {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*💡 Поради для швидкого брифу*\n• Додай посилання на референси — це прискорює роботу дизайнера\n• Вкажи дедлайн із запасом\n• Якщо маєш файли — додай посилання в брифі або відкрий задачу в Notion після створення',
+              text: '*💡 Для швидкого старту*\nДодай контекст, дедлайн, потрібний формат результату й посилання на матеріали.',
             },
           },
           { type: 'divider' },
@@ -126,7 +93,7 @@ export function registerHomeTab(app) {
             elements: [
               {
                 type: 'mrkdwn',
-                text: '🔧 Питання по боту? Звертайся до адміна · Design Tasks Bot v2.0',
+                text: '🔧 Питання по боту? Звертайся до адміна · PR & Comms Bot',
               },
             ],
           },
