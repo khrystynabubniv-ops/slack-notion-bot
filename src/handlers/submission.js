@@ -175,18 +175,35 @@ function buildTaskThreadText({ taskName, department, status = 'To do', responsib
 async function resolveSlackPersonName(client, { userId, userName }) {
   try {
     const userInfo = await client.users.info({ user: userId })
-    const profile = userInfo.user?.profile
 
-    return (
-      profile?.real_name ||
-      profile?.display_name ||
-      userInfo.user?.real_name ||
-      userName ||
-      userId
-    )
+    return getSlackUserDisplayName(userInfo.user, userName || userId)
   } catch (slackUserErr) {
     console.error('Slack users.info failed, fallback to body.user.name:', slackUserErr)
     return userName || userId
+  }
+}
+
+function getSlackUserDisplayName(user, fallback) {
+  const profile = user?.profile
+
+  return (
+    profile?.real_name ||
+    profile?.display_name ||
+    user?.real_name ||
+    user?.name ||
+    fallback
+  )
+}
+
+async function resolveSelectedSlackUserName(client, slackUserId) {
+  if (!slackUserId) return null
+
+  try {
+    const userInfo = await client.users.info({ user: slackUserId })
+    return getSlackUserDisplayName(userInfo.user, slackUserId)
+  } catch (slackUserErr) {
+    console.error(`Slack users.info failed for selected user ${slackUserId}:`, slackUserErr)
+    return slackUserId
   }
 }
 
@@ -220,11 +237,19 @@ function formatFieldValue(value, field) {
   return value || null
 }
 
+async function formatDynamicFieldValue(client, value, field) {
+  if (field?.type === 'slack_user') {
+    return await resolveSelectedSlackUserName(client, value)
+  }
+
+  return formatFieldValue(value, field)
+}
+
 function getFieldElement(values, fieldKey) {
   return values?.[`${fieldKey}_block`]?.[fieldKey] || null
 }
 
-function extractDynamicSubmissionFields({ departmentKey, taskType, values }) {
+async function extractDynamicSubmissionFields({ client, departmentKey, taskType, values }) {
   const fields = getDepartmentTaskFields(departmentKey, taskType)
   const fieldAnswers = []
   const specificFields = {}
@@ -234,7 +259,7 @@ function extractDynamicSubmissionFields({ departmentKey, taskType, values }) {
 
   for (const field of fields) {
     const rawValue = extractElementValue(getFieldElement(values, field.key))
-    const formattedValue = formatFieldValue(rawValue, field)
+    const formattedValue = await formatDynamicFieldValue(client, rawValue, field)
     if (!formattedValue) continue
 
     fieldAnswers.push({
@@ -805,7 +830,7 @@ export function registerSubmissionHandlers(app) {
         if (val) artifacts[label] = val
       }
     } else {
-      const dynamicFields = extractDynamicSubmissionFields({ departmentKey, taskType, values })
+      const dynamicFields = await extractDynamicSubmissionFields({ client, departmentKey, taskType, values })
       deadline = dynamicFields.deadline
       context = dynamicFields.context
       platforms = dynamicFields.platforms
