@@ -16,7 +16,7 @@ export function buildDepartmentPickerView() {
     type: 'modal',
     callback_id: 'select_department',
     private_metadata: JSON.stringify({}),
-    title: { type: 'plain_text', text: 'Нова задача' },
+    title: { type: 'plain_text', text: 'Новий запит' },
     submit: { type: 'plain_text', text: 'Далі' },
     close: { type: 'plain_text', text: 'Скасувати' },
     blocks: [
@@ -24,17 +24,17 @@ export function buildDepartmentPickerView() {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: 'В який відділ запит?',
+          text: 'Куди летить запит?',
         },
       },
       {
         type: 'input',
         block_id: 'department_block',
-        label: { type: 'plain_text', text: 'Відділ' },
+        label: { type: 'plain_text', text: 'Команда' },
         element: {
           type: 'static_select',
           action_id: 'department',
-          placeholder: { type: 'plain_text', text: 'Обери відділ...' },
+          placeholder: { type: 'plain_text', text: 'Обери команду...' },
           options: departments.map((department) => ({
             text: {
               type: 'plain_text',
@@ -55,7 +55,7 @@ export function buildTaskTypePickerView(departmentKey = DEFAULT_DEPARTMENT_KEY) 
     type: 'modal',
     callback_id: 'select_task_type',
     private_metadata: JSON.stringify({ departmentKey: department.key }),
-    title: { type: 'plain_text', text: `${department.emoji || '📋'} Нова задача` },
+    title: { type: 'plain_text', text: `${department.emoji || '📋'} Новий запит` },
     submit: { type: 'plain_text', text: 'Далі' },
     close: { type: 'plain_text', text: 'Скасувати' },
     blocks: [
@@ -64,14 +64,14 @@ export function buildTaskTypePickerView(departmentKey = DEFAULT_DEPARTMENT_KEY) 
         text: {
           type: 'mrkdwn',
           text: department.key === DEFAULT_DEPARTMENT_KEY
-            ? 'Обери тип задачі — далі побачиш потрібні поля для брифу.'
-            : `Обери тип задачі для ${department.label} — далі побачиш потрібні поля для брифу.`,
+            ? 'Обери тип запиту — далі побачиш потрібні поля для брифу.'
+            : `Обери тип запиту для ${department.label} — далі побачиш потрібні поля для брифу.`,
         },
       },
       {
         type: 'input',
         block_id: 'task_type_block',
-        label: { type: 'plain_text', text: 'Тип задачі' },
+        label: { type: 'plain_text', text: 'Тип запиту' },
         element: {
           type: 'static_select',
           action_id: 'task_type',
