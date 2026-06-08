@@ -46,6 +46,6 @@ export function resolveStatusPropertyName(databaseProperties = {}, departmentKey
   const department = getDepartment(departmentKey)
 
   return getStatusPropertyNames(department.key).find((propertyName) => {
-    return databaseProperties[propertyName]?.type === 'status'
+    return ['status', 'select'].includes(databaseProperties[propertyName]?.type)
   }) || department.statusProperty || DEFAULT_STATUS_PROPERTY
 }

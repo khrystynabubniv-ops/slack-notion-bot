@@ -45,6 +45,7 @@ export async function sendStatusUpdate({
   slackClient,
   slackUserId,
   taskName,
+  departmentKey = 'design',
   oldStatus,
   newStatus,
   assignee,
@@ -66,6 +67,7 @@ export async function sendStatusUpdate({
     channelId: slackChannelId,
     messageTs: slackMessageTs,
     taskName,
+    departmentKey,
     status: newStatus,
     responsible: assignee,
     pageUrl,
@@ -92,6 +94,7 @@ export async function sendTaskFieldUpdate({
   slackClient,
   slackUserId,
   taskName,
+  departmentKey = 'design',
   status,
   responsible,
   finalProjectUrl,
@@ -111,6 +114,7 @@ export async function sendTaskFieldUpdate({
     channelId: slackChannelId,
     messageTs: slackMessageTs,
     taskName,
+    departmentKey,
     status,
     responsible,
     pageUrl,
@@ -140,6 +144,7 @@ export async function sendReviewRequest({
   slackClient,
   slackUserId,
   taskName,
+  departmentKey = 'design',
   status,
   assignee,
   finalProjectUrl,
@@ -159,6 +164,7 @@ export async function sendReviewRequest({
     channelId: slackChannelId,
     messageTs: slackMessageTs,
     taskName,
+    departmentKey,
     status,
     responsible: assignee,
     pageUrl,
@@ -195,6 +201,7 @@ export async function updateRootTaskMessage(slackClient, {
   channelId,
   messageTs,
   taskName,
+  departmentKey = 'design',
   status,
   responsible = null,
   pageUrl,
@@ -212,8 +219,10 @@ export async function updateRootTaskMessage(slackClient, {
 
   const text = await buildRootTaskText(slackClient, {
     taskName,
+    departmentKey,
     status,
     statusEmoji: getStatusEmoji(status),
+    responsible,
     designer,
     taskKind,
     completedRounds,
@@ -223,6 +232,7 @@ export async function updateRootTaskMessage(slackClient, {
     ? getPassiveActionElements({ pageUrl, resultUrl, status })
     : getStatusActionElements({
         newStatus: status,
+        departmentKey,
         pageUrl,
         resultUrl,
         pageId,
@@ -281,8 +291,10 @@ export async function updateRootTaskMessage(slackClient, {
 
 async function buildRootTaskText(slackClient, {
   taskName,
+  departmentKey = 'design',
   status,
   statusEmoji,
+  responsible = null,
   designer,
   taskKind,
   completedRounds = 0,
@@ -294,17 +306,24 @@ async function buildRootTaskText(slackClient, {
   const taskReady = !isFeedback && isReadyStatus(status)
   const ready = feedbackReady || taskReady
   const normalizedCompletedRounds = normalizeNonNegativeInteger(completedRounds, 0)
-  const designerText = await formatDesignerForSlackAsync(slackClient, designer)
+  const isDesignDepartment = departmentKey === 'design'
+  const supportsFeedbackRounds = isDesignDepartment
+  const responsiblePerson = isDesignDepartment ? designer : (designer || responsible)
+  const responsibleText = await formatDesignerForSlackAsync(slackClient, responsiblePerson, {
+    fallback: isDesignDepartment ? undefined : 'не призначено',
+  })
+  const responsibleLabel = isDesignDepartment ? 'Дизайнер' : 'Відповідальний'
 
   return [
     isFeedback ? null : 'Ми отримали твій запит!',
     `*${taskName}*`,
     `${statusEmoji} *Статус${isFeedback ? ' правки' : ''}:* ${status}`,
-    ready ? null : `🎨 *Дизайнер:* ${designerText}`,
-    taskReady ? `✏️ *Раундів правок:* ${normalizedCompletedRounds}` : null,
+    ready ? null : `🎨 *${responsibleLabel}:* ${responsibleText}`,
+    taskReady && supportsFeedbackRounds ? `✏️ *Раундів правок:* ${normalizedCompletedRounds}` : null,
     '',
     getRootTaskStatusText({
       status,
+      departmentKey,
       isFeedback,
       feedbackDone,
       feedbackReady,
@@ -317,6 +336,7 @@ async function buildRootTaskText(slackClient, {
 
 function getRootTaskStatusText({
   status,
+  departmentKey = 'design',
   isFeedback,
   feedbackDone,
   feedbackReady,
@@ -335,6 +355,10 @@ function getRootTaskStatusText({
   }
 
   if (taskReady) {
+    if (departmentKey !== 'design') {
+      return 'Задача готова до наступного кроку. Слідкуй за цим тредом: статус оновиться після публікації або скасування.'
+    }
+
     return completedRounds > 0
       ? 'Готово, результат прийнято після правок :white_check_mark:'
       : 'Готово, результат прийнято без правок :white_check_mark:'
@@ -345,13 +369,17 @@ function getRootTaskStatusText({
   }
 
   if (isInProgressStatus(status)) {
-    return 'Твоя задача вже в роботі у дизайнера. Коли вона буде готова до ревʼю, статус і кнопки оновляться тут.'
+    return departmentKey === 'design'
+      ? 'Твоя задача вже в роботі у дизайнера. Коли вона буде готова до ревʼю, статус і кнопки оновляться тут.'
+      : 'Твоя задача вже в роботі. Коли буде апдейт, статус оновиться тут.'
   }
 
   if (isToDoStatus(status)) {
     return isFeedback
       ? 'Правку передано дизайнеру.'
-      : 'Задачу передано в дизайн-команду. Щойно дизайнер візьме її в роботу, ти побачиш оновлення в цьому треді.'
+      : departmentKey === 'design'
+        ? 'Задачу передано в дизайн-команду. Щойно дизайнер візьме її в роботу, ти побачиш оновлення в цьому треді.'
+        : 'Задачу передано в SMM. Щойно відповідальний візьме її в роботу, ти побачиш оновлення в цьому треді.'
   }
 
   return isFeedback
@@ -362,6 +390,7 @@ function getRootTaskStatusText({
 export async function sendQualitySurvey({
   slackClient,
   slackUserId,
+  departmentKey = 'design',
   taskName,
   pageId,
   requesterName,
@@ -377,6 +406,7 @@ export async function sendQualitySurvey({
   const baseValue = {
     pageId,
     taskName: String(taskName || 'Без назви').slice(0, 1000),
+    departmentKey,
     requesterName: requesterName || null,
     requestUrl: requestUrl || null,
     team: team || null,
@@ -728,6 +758,7 @@ function normalizeUrl(value) {
 
 function getStatusActionElements({
   newStatus,
+  departmentKey = 'design',
   pageUrl,
   resultUrl,
   pageId,
@@ -772,6 +803,10 @@ function getStatusActionElements({
   }
 
   if (isCommentsStatus(newStatus)) {
+    if (departmentKey !== 'design') {
+      return getPassiveActionElements({ pageUrl, resultUrl, status: newStatus })
+    }
+
     const elements = []
     const completedRounds = Math.max(normalizePositiveInteger(roundNumber, 1) - 1, 0)
 
@@ -789,6 +824,7 @@ function getStatusActionElements({
         value: buildAcceptActionValue({
           pageId,
           taskName,
+          departmentKey,
           designer,
           requestUrl: pageUrl,
           resultUrl,
@@ -868,6 +904,7 @@ function getPassiveActionElements({ pageUrl, resultUrl, status }) {
 function buildAcceptActionValue({
   pageId,
   taskName,
+  departmentKey = 'design',
   designer,
   requestUrl,
   resultUrl,
@@ -878,6 +915,7 @@ function buildAcceptActionValue({
   return JSON.stringify({
     pageId,
     taskName: String(taskName || 'Без назви').slice(0, 1000),
+    departmentKey,
     designerName: designer?.name || null,
     designerUserId: designer?.userId || null,
     designerEmail: designer?.email || null,

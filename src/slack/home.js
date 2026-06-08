@@ -1,4 +1,5 @@
 import { DEFAULT_DEPARTMENT_KEY, getTaskTypeGroups as getConfiguredTaskTypeGroups } from '../config/departments.js'
+import { buildInitialTaskEntryView } from './taskEntry.js'
 
 export function registerHomeTab(app) {
   app.event('app_home_opened', async ({ event, client }) => {
@@ -139,28 +140,7 @@ export function registerHomeTab(app) {
     await ack()
     await client.views.open({
       trigger_id: body.trigger_id,
-      view: {
-        type: 'modal',
-        callback_id: 'select_task_type',
-        title: { type: 'plain_text', text: '🎨 Нова задача' },
-        submit: { type: 'plain_text', text: 'Далі →' },
-        close: { type: 'plain_text', text: 'Скасувати' },
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: 'Обери тип задачі — далі побачиш потрібні поля для брифу.',
-            },
-          },
-          {
-            type: 'input',
-            block_id: 'task_type_block',
-            label: { type: 'plain_text', text: 'Тип задачі' },
-            element: getTaskTypeSelect(),
-          },
-        ],
-      },
+      view: buildInitialTaskEntryView(),
     })
   })
 }

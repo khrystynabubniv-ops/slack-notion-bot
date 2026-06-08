@@ -17,6 +17,7 @@ import {
   saveTask,
 } from '../redis/store.js'
 import { formatDesignerForSlack } from '../slack/designerMentions.js'
+import { buildTaskTypePickerView } from '../slack/taskEntry.js'
 import { getModalBlocks } from './modalBlocks.js'
 
 const QUEUE_WORKER_INTERVAL_MS = Number.parseInt(
@@ -81,6 +82,7 @@ function buildFailedSubmissionPayload({
   specificFields,
   fieldAnswers,
   artifacts,
+  isLate,
   values,
   error,
 }) {
@@ -98,6 +100,7 @@ function buildFailedSubmissionPayload({
       videoFormat: videoFormat || null,
       platform: platform || null,
       platformOther: platformOther || null,
+      isLate: Boolean(isLate),
     },
     answers: {
       context: context || null,
@@ -153,13 +156,15 @@ function formatQueueRetryTime(delayMs) {
 }
 
 function buildTaskThreadText({ taskName, department, status = 'To do', responsible = null }) {
-  const responsibleText = formatDesignerForSlack(responsible)
+  const defaultResponsible = department?.ownerLabel ? { name: department.ownerLabel } : null
+  const responsibleText = formatDesignerForSlack(responsible || defaultResponsible)
+  const responsibleLabel = department?.key === DEFAULT_DEPARTMENT_KEY ? 'Дизайнер' : 'Відповідальний'
 
   return [
     'Ми отримали твій запит!',
     `*${taskName}*`,
     `⚪ *Статус:* ${status}`,
-    `🎨 *Дизайнер:* ${responsibleText}`,
+    `🎨 *${responsibleLabel}:* ${responsibleText}`,
     '',
     department?.key === DEFAULT_DEPARTMENT_KEY
       ? 'Задачу передано в дизайн-команду. Щойно дизайнер візьме її в роботу, ти побачиш оновлення в цьому треді.'
@@ -170,18 +175,35 @@ function buildTaskThreadText({ taskName, department, status = 'To do', responsib
 async function resolveSlackPersonName(client, { userId, userName }) {
   try {
     const userInfo = await client.users.info({ user: userId })
-    const profile = userInfo.user?.profile
 
-    return (
-      profile?.real_name ||
-      profile?.display_name ||
-      userInfo.user?.real_name ||
-      userName ||
-      userId
-    )
+    return getSlackUserDisplayName(userInfo.user, userName || userId)
   } catch (slackUserErr) {
     console.error('Slack users.info failed, fallback to body.user.name:', slackUserErr)
     return userName || userId
+  }
+}
+
+function getSlackUserDisplayName(user, fallback) {
+  const profile = user?.profile
+
+  return (
+    profile?.real_name ||
+    profile?.display_name ||
+    user?.real_name ||
+    user?.name ||
+    fallback
+  )
+}
+
+async function resolveSelectedSlackUserName(client, slackUserId) {
+  if (!slackUserId) return null
+
+  try {
+    const userInfo = await client.users.info({ user: slackUserId })
+    return getSlackUserDisplayName(userInfo.user, slackUserId)
+  } catch (slackUserErr) {
+    console.error(`Slack users.info failed for selected user ${slackUserId}:`, slackUserErr)
+    return slackUserId
   }
 }
 
@@ -199,6 +221,7 @@ function extractElementValue(element) {
   if (!element) return null
   if (element.value) return element.value
   if (element.selected_date) return element.selected_date
+  if (element.selected_time) return element.selected_time
   if (element.selected_user) return element.selected_user
   if (element.selected_option?.value) return element.selected_option.value
   if (Array.isArray(element.selected_options)) {
@@ -214,11 +237,19 @@ function formatFieldValue(value, field) {
   return value || null
 }
 
+async function formatDynamicFieldValue(client, value, field) {
+  if (field?.type === 'slack_user') {
+    return await resolveSelectedSlackUserName(client, value)
+  }
+
+  return formatFieldValue(value, field)
+}
+
 function getFieldElement(values, fieldKey) {
   return values?.[`${fieldKey}_block`]?.[fieldKey] || null
 }
 
-function extractDynamicSubmissionFields({ departmentKey, taskType, values }) {
+async function extractDynamicSubmissionFields({ client, departmentKey, taskType, values }) {
   const fields = getDepartmentTaskFields(departmentKey, taskType)
   const fieldAnswers = []
   const specificFields = {}
@@ -228,7 +259,7 @@ function extractDynamicSubmissionFields({ departmentKey, taskType, values }) {
 
   for (const field of fields) {
     const rawValue = extractElementValue(getFieldElement(values, field.key))
-    const formattedValue = formatFieldValue(rawValue, field)
+    const formattedValue = await formatDynamicFieldValue(client, rawValue, field)
     if (!formattedValue) continue
 
     fieldAnswers.push({
@@ -239,6 +270,7 @@ function extractDynamicSubmissionFields({ departmentKey, taskType, values }) {
       formattedValue,
       notionProperties: field.notionProperties || [],
       role: field.role || null,
+      section: field.section || 'specific',
     })
 
     specificFields[field.label.replace(/\s+\*$/, '')] = formattedValue
@@ -281,7 +313,6 @@ function getLeadTimeViolation({ departmentKey, taskType, deadline, values }) {
 
   const providedLeadDays = getDaysUntil(deadline)
   if (providedLeadDays === null || providedLeadDays >= minLeadDays) return null
-  if (getLeadTimeOverride(values) === 'urgent') return null
 
   return {
     taskConfig,
@@ -312,6 +343,7 @@ async function createTaskFromSubmissionPayload(client, payload) {
     specificFields,
     fieldAnswers,
     artifacts,
+    isLate,
   } = payload
   const departmentKey = resolveDepartmentKey(rawDepartmentKey)
   const department = getDepartment(departmentKey)
@@ -336,12 +368,14 @@ async function createTaskFromSubmissionPayload(client, payload) {
     specificFields,
     fieldAnswers,
     artifacts,
+    isLate,
     slackPersonName,
   })
 
   const requesterNotificationText = buildTaskThreadText({
     taskName,
     department,
+    status: department.initialStatus,
   })
   let requesterMessage = null
 
@@ -386,7 +420,9 @@ async function createTaskFromSubmissionPayload(client, payload) {
       pageUrl,
       departmentKey,
       team: department.team,
+      hub: department.label,
       requestType: taskTypeLabel,
+      lastStatus: department.initialStatus,
     })
   } catch (redisErr) {
     notificationTrackingEnabled = false
@@ -593,6 +629,17 @@ export function registerSubmissionHandlers(app) {
     }
   }
 
+  app.view('select_department', async ({ ack, view }) => {
+    const departmentKey = resolveDepartmentKey(
+      view.state.values.department_block.department.selected_option.value
+    )
+
+    await ack({
+      response_action: 'update',
+      view: buildTaskTypePickerView(departmentKey),
+    })
+  })
+
   // Крок 1 — юзер вибрав тип задачі, відкриваємо форму з полями
   app.view('select_task_type', async ({ ack, body, client, view }) => {
     const metadata = parsePrivateMetadata(view.private_metadata)
@@ -628,6 +675,34 @@ export function registerSubmissionHandlers(app) {
     })
   })
 
+  app.action(
+    /^(structure_choice|ready_texts|visual_source|link_needed|ready_copy|title_description|thumbnail|creative|video_asset|source_materials)$/,
+    async ({ ack, body, client }) => {
+      await ack()
+      if (body.view?.callback_id !== 'submit_task') return
+
+      const { departmentKey = DEFAULT_DEPARTMENT_KEY, taskType, taskTypeLabel } = parsePrivateMetadata(body.view.private_metadata)
+      if (resolveDepartmentKey(departmentKey) === DEFAULT_DEPARTMENT_KEY) return
+
+      const action = body.actions?.[0]
+      if (!action?.block_id || !action?.action_id) return
+
+      const values = {
+        ...body.view.state.values,
+        [action.block_id]: {
+          ...body.view.state.values[action.block_id],
+          [action.action_id]: action,
+        },
+      }
+
+      await client.views.update({
+        view_id: body.view.id,
+        hash: body.view.hash,
+        view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel, values }),
+      })
+    }
+  )
+
   // Крок 2 — юзер заповнив бриф і натиснув "Створити задачу"
   app.view('submit_task', async ({ ack, body, client, view }) => {
     const {
@@ -653,6 +728,7 @@ export function registerSubmissionHandlers(app) {
     let platformOther = null
     let fieldAnswers = []
     let specificFields = {}
+    let isLate = false
     const artifacts = {}
 
     const name = values.name_block?.name?.value
@@ -754,18 +830,18 @@ export function registerSubmissionHandlers(app) {
         if (val) artifacts[label] = val
       }
     } else {
-      const dynamicFields = extractDynamicSubmissionFields({ departmentKey, taskType, values })
+      const dynamicFields = await extractDynamicSubmissionFields({ client, departmentKey, taskType, values })
       deadline = dynamicFields.deadline
       context = dynamicFields.context
       platforms = dynamicFields.platforms
       platform = dynamicFields.platform
       fieldAnswers = dynamicFields.fieldAnswers
       specificFields = dynamicFields.specificFields
-      priority = getLeadTimeOverride(values) === 'urgent' ? 'Urgent' : null
+      priority = null
     }
 
     const leadTimeViolation = getLeadTimeViolation({ departmentKey, taskType, deadline, values })
-    if (leadTimeViolation) {
+    if (leadTimeViolation && leadTimeViolation.override !== 'late') {
       if (leadTimeViolation.override === 'change_date') {
         await ack({
           response_action: 'errors',
@@ -784,11 +860,12 @@ export function registerSubmissionHandlers(app) {
           taskType,
           taskTypeLabel,
           values,
-          leadTimeWarning: true,
+          leadTimeWarning: leadTimeViolation,
         }),
       })
       return
     }
+    isLate = Boolean(leadTimeViolation && leadTimeViolation.override === 'late')
 
     await ack()
 
@@ -813,6 +890,7 @@ export function registerSubmissionHandlers(app) {
       specificFields,
       fieldAnswers,
       artifacts,
+      isLate,
       values,
     }
 
@@ -856,7 +934,7 @@ export function registerSubmissionHandlers(app) {
         text:
           `🕐 Задачу прийнято в чергу.\n` +
           `${name || taskTypeLabel}\n` +
-          `Зараз у дизайн-боті багато запитів, тому створення задачі може зайняти трохи більше часу. Напишу тут, щойно задача буде готова.`,
+          `Зараз у боті багато запитів, тому створення задачі може зайняти трохи більше часу. Напишу тут, щойно задача буде готова.`,
       })
     } catch (slackErr) {
       console.error(`Failed to notify ${userId} about queued task submission:`, slackErr)

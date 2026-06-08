@@ -59,7 +59,8 @@ export function canAcceptTaskResult(currentTasks, pageId) {
 
 export function extractStatus(page, departmentKey = 'design') {
   for (const propertyName of getStatusPropertyNames(departmentKey)) {
-    const status = page.properties?.[propertyName]?.status?.name
+    const property = page.properties?.[propertyName]
+    const status = property?.status?.name || property?.select?.name
     if (status) return status
   }
 

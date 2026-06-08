@@ -150,6 +150,7 @@ async function updateAcceptedTaskRootMessage(client, body, payload, taskName, ac
     channelId,
     messageTs: rootTs,
     taskName,
+    departmentKey: payload.departmentKey || 'design',
     status: acceptedStatus,
     designer: {
       name: payload.designerName,
@@ -230,6 +231,7 @@ async function saveAndSyncFeedback(payload, { slackUserId, comment = null, categ
     comment,
     categories,
     slackUserId,
+    departmentKey: payload.departmentKey,
     taskName: payload.taskName,
     requesterName: payload.requesterName,
     requestUrl: payload.requestUrl,
@@ -314,6 +316,7 @@ export async function handleTaskAcceptance({ body, client }) {
       await sendQualitySurvey({
         slackClient: client,
         slackUserId: userId,
+        departmentKey,
         taskName,
         pageId,
         requesterName: feedbackContext.requesterName,
@@ -329,6 +332,7 @@ export async function handleTaskAcceptance({ body, client }) {
       await markFeedbackSurveySent({
         pageId,
         slackUserId: userId,
+        departmentKey,
         taskName,
         requesterName: feedbackContext.requesterName,
         requestUrl: feedbackContext.requestUrl,

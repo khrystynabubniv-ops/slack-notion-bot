@@ -2,6 +2,11 @@ export const DEFAULT_DEPARTMENT_KEY = 'design'
 export const DEFAULT_STATUS = 'To do'
 export const DEFAULT_DESIGN_TEAM = 'Brand Design'
 export const DEFAULT_DESIGN_OWNER_ID = 'f342c30b-c5c1-4a52-8cdf-c8b636928364'
+export const DEFAULT_ACTIVITIES_DATABASE_ID = 'b1ff9daa012c41c597e1d5ad5dd91917'
+export const DEFAULT_SMM_TEAM = 'SMM'
+export const DEFAULT_SMM_OWNER_ID = '77a3e7fe-a555-4c14-b794-d63a6e42a324'
+export const DEFAULT_SMM_HUB_URL = 'https://www.notion.so/SMM-Hub-375ce9899cb781aaab1ddb4c30833e23?source=copy_link'
+export const DEFAULT_SMM_FEEDBACK_DATABASE_ID = '025dce2c634e4a079ee7600ea8c63253'
 export const LEGACY_STATUS_PROPERTY = 'Status'
 
 function env(name, fallback = null) {
@@ -24,6 +29,19 @@ function csvEnv(name, fallback) {
 
 function option(text, value = text) {
   return { text, value }
+}
+
+function field(key, type, label, options = {}) {
+  return {
+    key,
+    type,
+    label,
+    ...options,
+  }
+}
+
+function selectOptions(values) {
+  return values.map((value) => option(value))
 }
 
 const DESIGN_TASK_TYPE_RELATION_IDS = {
@@ -171,6 +189,297 @@ const designTaskTypeGroups = [
   },
 ]
 
+const smmPlatformOptions = selectOptions([
+  'Instagram',
+  'LinkedIn',
+  'YouTube',
+  'Facebook',
+  'TikTok',
+])
+const SMM_ATTACHMENT_HINT = 'Якщо маєш лінки — встав їх сюди. Якщо у тебе файли, після завершення форми перейди в задачу в Notion і прикріпи всі файли туди.'
+
+const smmCommonFields = [
+  field('publication_date', 'date', 'Дата публікації / потрібна дата *', {
+    role: 'deadline',
+    section: 'base',
+    notionProperties: ['Publication date', 'Deadline'],
+  }),
+  field('platforms', 'multi_select', 'Для якої платформи? (можна обрати кілька) *', {
+    role: 'platforms',
+    section: 'base',
+    options: smmPlatformOptions,
+  }),
+  field('context', 'textarea', 'Контекст / ідея — для чого, про що (1–3 речення) *', {
+    role: 'context',
+    section: 'base',
+  }),
+  field('materials', 'text', 'Посилання на матеріали (лендинг, прес-реліз, відео, фото)', {
+    optional: true,
+    section: 'base',
+    placeholder: 'Якщо матеріалів ще немає, залиш поле порожнім',
+  }),
+  field('approver', 'slack_user', 'Хто погоджує з вашої сторони? *', {
+    section: 'base',
+  }),
+]
+
+const smmNoteField = field('note', 'textarea', 'Додаткова інформація / note', {
+  optional: true,
+  section: 'base',
+  placeholder: 'Можеш додати будь-який контекст, уточнення, тексти, посилання або побажання, які не влізли в поля вище.',
+})
+
+const smmTaskFields = {
+  reels: [
+    field('talent_consent', 'textarea', 'Хто знімається + чи є згода *'),
+    field('talent_available_date', 'date', 'Дата доступності героя *'),
+    field('talent_available_from', 'time', 'Герой доступний з *'),
+    field('talent_available_to', 'time', 'Герой доступний до *'),
+    field('style_references', 'text', 'Референси стилю/монтажу', {
+      optional: true,
+      hint: SMM_ATTACHMENT_HINT,
+      placeholder: 'Лінки на референси або короткий опис.',
+    }),
+    field('subtitles', 'select', 'Субтитри *', { options: selectOptions(['Так', 'Ні']) }),
+  ],
+  carousel_post: [
+    field('structure_choice', 'select', 'Структура каруселі *', {
+      options: selectOptions(['Є структура — опишу', 'SMM придумує']),
+      hint: 'Якщо обереш «Є структура — опишу», нижче зʼявиться поле для опису структури.',
+    }),
+    field('slide_topics', 'textarea', 'Опис структури каруселі', {
+      optional: true,
+      placeholder: 'Опиши структуру або теми слайдів: слайд 1 — ..., слайд 2 — ...',
+      showWhen: { fieldKey: 'structure_choice', values: ['Є структура — опишу'] },
+    }),
+    field('ready_texts', 'select', 'Готові тексти *', {
+      options: selectOptions(['Так — посилання', 'Ні, писати з нуля']),
+      hint: 'Якщо обереш «Так — посилання», нижче зʼявиться поле для готових текстів або лінку.',
+    }),
+    field('ready_texts_link', 'textarea', 'Готові тексти / посилання', {
+      optional: true,
+      placeholder: 'Встав готовий текст або лінк на документ з текстами.',
+      showWhen: { fieldKey: 'ready_texts', values: ['Так — посилання'] },
+    }),
+    field('design_references', 'text', 'Референси дизайну', { optional: true }),
+  ],
+  announcement_post: [
+    field('landing_link', 'text', 'Лінк на лендинг / прес-реліз *', { notionProperties: ['Ad link'] }),
+    field('event_date', 'date', 'Дата події *', { notionProperties: ['Event date'] }),
+    field('cta_link', 'textarea', 'CTA + посилання *', { notionProperties: ['Ad CTA'] }),
+    field('visual_source', 'select', 'Візуал *', {
+      options: selectOptions(['Є — посилання', 'Беремо з лендингу']),
+      hint: 'Якщо обереш «Є — посилання», нижче зʼявиться поле для лінку на візуал.',
+    }),
+    field('visual_link', 'text', 'Лінк на візуал', {
+      optional: true,
+      placeholder: 'Встав лінк на готовий візуал.',
+      showWhen: { fieldKey: 'visual_source', values: ['Є — посилання'] },
+    }),
+  ],
+  stories: [
+    field('goal', 'select', 'Мета *', {
+      options: selectOptions(['Анонс', 'Охоплення', 'Голосування', 'Трафік на посилання']),
+    }),
+    field('link_needed', 'select', 'Посилання потрібне? *', {
+      options: selectOptions(['Так', 'Ні']),
+    }),
+    field('story_link', 'text', 'Посилання', {
+      optional: true,
+      showWhen: { fieldKey: 'link_needed', values: ['Так'] },
+    }),
+    field('story_format', 'select', 'Формат *', {
+      options: selectOptions(['Статика', 'Відео', 'Інтерактив']),
+      notionProperties: ['Format'],
+    }),
+    field('ready_materials', 'text', 'Готові матеріали', {
+      optional: true,
+      hint: SMM_ATTACHMENT_HINT,
+      placeholder: 'Лінки на готові матеріали.',
+    }),
+  ],
+  linkedin_newsletter: [
+    field('issue_topic', 'text', 'Тема випуску *'),
+    field('key_points', 'textarea', 'Ключові тези / структура *'),
+    field('ready_copy', 'select', 'Готовий текст *', {
+      options: selectOptions(['Так — посилання', 'Ні, писати з нуля']),
+    }),
+    field('ready_copy_link', 'text', 'Посилання на готовий текст', {
+      optional: true,
+      showWhen: { fieldKey: 'ready_copy', values: ['Так — посилання'] },
+    }),
+  ],
+  video_production: [
+    field('video_idea', 'textarea', 'Що знімаємо / ідея *'),
+    field('shoot_location_date', 'text', 'Локація і дата зйомки *'),
+    field('frame_people_consent', 'textarea', 'Хто в кадрі + згода *'),
+    field('video_references', 'text', 'Референси', {
+      optional: true,
+      hint: SMM_ATTACHMENT_HINT,
+      placeholder: 'Лінки на референси.',
+    }),
+    field('duration', 'text', 'Орієнтовний хронометраж *'),
+    field('publish_where', 'multi_select', 'Де публікуємо? *', {
+      options: selectOptions(['Instagram', 'YouTube', 'LinkedIn', 'TikTok', 'інше']),
+    }),
+  ],
+  youtube_video_publish: [
+    field('video_link', 'text', 'Готове відео *'),
+    field('title_description', 'select', 'Назва + опис *', {
+      options: selectOptions(['Є — додам', 'Треба допомога']),
+    }),
+    field('youtube_title_description_text', 'textarea', 'Назва + опис', {
+      optional: true,
+      showWhen: { fieldKey: 'title_description', values: ['Є — додам'] },
+    }),
+    field('thumbnail', 'select', 'Обкладинка *', {
+      options: selectOptions(['Є — посилання', 'Треба зробити']),
+    }),
+    field('thumbnail_link', 'text', 'Посилання на обкладинку', {
+      optional: true,
+      showWhen: { fieldKey: 'thumbnail', values: ['Є — посилання'] },
+    }),
+    field('tags_category', 'text', 'Теги / категорія *'),
+  ],
+  vacancy_promo_static: [
+    field('vacancy_link', 'text', 'Лінк на вакансію / лендинг *', { notionProperties: ['Ad link'] }),
+    field('budget', 'text', 'Бюджет у доларах ($) *'),
+    field('targeting', 'textarea', 'Гео / аудиторія таргету *'),
+    field('campaign_start_date', 'date', 'Період кампанії: від *'),
+    field('campaign_end_date', 'date', 'Період кампанії: до *'),
+    field('creative', 'select', 'Готовий креатив *', {
+      options: selectOptions(['Є — посилання', 'Треба зробити']),
+      hint: 'Якщо обереш «Треба зробити», опиши своє бачення у полі «Додаткова інформація / note».',
+    }),
+    field('creative_link', 'text', 'Посилання на креатив', {
+      optional: true,
+      showWhen: { fieldKey: 'creative', values: ['Є — посилання'] },
+    }),
+  ],
+  vacancy_promo_video: [
+    field('vacancy_link', 'text', 'Лінк на вакансію / лендинг *', { notionProperties: ['Ad link'] }),
+    field('budget', 'text', 'Бюджет у доларах ($) *'),
+    field('targeting', 'textarea', 'Гео / аудиторія таргету *'),
+    field('campaign_start_date', 'date', 'Період кампанії: від *'),
+    field('campaign_end_date', 'date', 'Період кампанії: до *'),
+    field('creative', 'select', 'Готовий креатив *', {
+      options: selectOptions(['Є — посилання', 'Треба зробити']),
+      hint: 'Якщо обереш «Треба зробити», опиши своє бачення у полі «Додаткова інформація / note».',
+    }),
+    field('video_asset', 'select', 'Готове відео *', {
+      options: selectOptions(['Є — посилання', 'Треба зняти/змонтувати']),
+    }),
+    field('video_asset_link', 'text', 'Посилання на відео', {
+      optional: true,
+      showWhen: { fieldKey: 'video_asset', values: ['Є — посилання'] },
+    }),
+  ],
+  publication_boost: [
+    field('post_link', 'text', 'Посилання на пост *', { notionProperties: ['Ad link'] }),
+    field('budget', 'text', 'Бюджет у доларах ($) *'),
+    field('ad_goal', 'select', 'Ціль *', {
+      options: selectOptions(['Охоплення', 'Трафік', 'Залучення']),
+    }),
+    field('campaign_start_date', 'date', 'Період: від *'),
+    field('campaign_end_date', 'date', 'Період: до *'),
+    field('targeting', 'textarea', 'Гео / аудиторія *'),
+  ],
+  blogger_collab: [
+    field('blogger_profile', 'text', 'Блогер / профіль *', { notionProperties: ['Ad link'] }),
+    field('collab_format', 'select', 'Формат *', {
+      options: selectOptions(['Reels', 'Сторіз', 'Пост', 'Інтеграція']),
+    }),
+    field('terms_budget', 'textarea', 'Бюджет / умови *'),
+    field('key_message', 'textarea', 'Ключове повідомлення *'),
+    field('publish_deadline', 'date', 'Дедлайн виходу *', { role: 'deadline' }),
+  ],
+  drive_upload: [
+    field('upload_content', 'textarea', 'Що завантажуємо *'),
+    field('source_materials', 'select', 'Джерело матеріалів *', {
+      options: selectOptions(['Посилання', 'Передам окремо']),
+    }),
+    field('source_link', 'text', 'Посилання на матеріали', {
+      optional: true,
+      showWhen: { fieldKey: 'source_materials', values: ['Посилання'] },
+    }),
+    field('destination_folder', 'text', 'Куди (папка/диск) *'),
+    field('operation_deadline', 'date', 'Дедлайн *', {
+      role: 'deadline',
+      notionProperties: ['Deadline'],
+    }),
+  ],
+  event_report: [
+    field('event_name', 'text', 'Який івент *'),
+    field('event_date', 'date', 'Дата івенту *', { notionProperties: ['Event date'] }),
+    field('report_data', 'textarea', 'Які дані потрібні *'),
+    field('report_format', 'select', 'Формат звіту *', {
+      options: selectOptions(['Notion', 'Презентація', 'Таблиця']),
+    }),
+    field('report_deadline', 'date', 'Дедлайн *', {
+      role: 'deadline',
+      notionProperties: ['Deadline'],
+    }),
+  ],
+}
+
+const smmCommonFieldExclusions = {
+  blogger_collab: ['publication_date'],
+  drive_upload: ['publication_date', 'platforms', 'materials', 'approver'],
+  event_report: ['publication_date', 'platforms', 'materials', 'approver'],
+}
+
+const smmTaskTypeGroups = [
+  {
+    label: '📱 Контент для публікації',
+    options: [
+      option('Reels', 'reels'),
+      option('Пост-карусель', 'carousel_post'),
+      option('Пост-анонс', 'announcement_post'),
+      option('Сторіз', 'stories'),
+      option('Newsletter LinkedIn', 'linkedin_newsletter'),
+    ],
+  },
+  {
+    label: '🎬 Відео виробництво',
+    options: [
+      option('Зйомка і монтаж відео', 'video_production'),
+      option('Публікація відео на YouTube', 'youtube_video_publish'),
+    ],
+  },
+  {
+    label: '💰 Платне просування',
+    options: [
+      option('Промо вакансій (статика)', 'vacancy_promo_static'),
+      option('Промо вакансій (відео)', 'vacancy_promo_video'),
+      option('Просування публікацій', 'publication_boost'),
+      option('Колаборація з блогером', 'blogger_collab'),
+    ],
+  },
+  {
+    label: '📁 Операційне',
+    options: [
+      option('Завантаження фото/відео на диск', 'drive_upload'),
+      option('Звіт з івенту', 'event_report'),
+    ],
+  },
+]
+
+const smmTaskTypeConfig = {
+  reels: { minLeadDays: intEnv('SMM_REELS_MIN_LEAD_DAYS', 4), defaultProperties: { Format: 'Reels' } },
+  carousel_post: { minLeadDays: intEnv('SMM_CAROUSEL_POST_MIN_LEAD_DAYS', 3), defaultProperties: { Format: 'Carousel' } },
+  announcement_post: { minLeadDays: intEnv('SMM_ANNOUNCEMENT_POST_MIN_LEAD_DAYS', 2), defaultProperties: { Format: 'Static Image' } },
+  stories: { minLeadDays: intEnv('SMM_STORIES_MIN_LEAD_DAYS', 2), defaultProperties: { Format: 'Stories' } },
+  linkedin_newsletter: { minLeadDays: intEnv('SMM_LINKEDIN_NEWSLETTER_MIN_LEAD_DAYS', 4) },
+  video_production: { minLeadDays: intEnv('SMM_VIDEO_PRODUCTION_MIN_LEAD_DAYS', 7), defaultProperties: { Format: 'Video' } },
+  youtube_video_publish: { minLeadDays: intEnv('SMM_YOUTUBE_VIDEO_PUBLISH_MIN_LEAD_DAYS', 2), defaultProperties: { Format: 'Video' } },
+  vacancy_promo_static: { minLeadDays: intEnv('SMM_VACANCY_PROMO_STATIC_MIN_LEAD_DAYS', 3), defaultProperties: { Format: 'Static Image' } },
+  vacancy_promo_video: { minLeadDays: intEnv('SMM_VACANCY_PROMO_VIDEO_MIN_LEAD_DAYS', 7), defaultProperties: { Format: 'Video' } },
+  publication_boost: { minLeadDays: intEnv('SMM_PUBLICATION_BOOST_MIN_LEAD_DAYS', 2) },
+  blogger_collab: { minLeadDays: intEnv('SMM_BLOGGER_COLLAB_MIN_LEAD_DAYS', 7) },
+  drive_upload: { minLeadDays: intEnv('SMM_DRIVE_UPLOAD_MIN_LEAD_DAYS', 1) },
+  event_report: { minLeadDays: intEnv('SMM_EVENT_REPORT_MIN_LEAD_DAYS', 3) },
+}
+
 function buildTaskTypesFromGroups(groups, extraConfigByKey = {}) {
   const taskTypes = {}
 
@@ -195,11 +504,17 @@ export const departments = {
     emoji: '🎨',
     notionDataSourceId: env('NOTION_DESIGN_DATABASE_ID', env('NOTION_DATABASE_ID')),
     notionTemplateId: env('NOTION_DESIGN_TEMPLATE_ID', env('NOTION_TEMPLATE_ID')),
+    hubUrl: env('NOTION_DESIGN_HUB_URL', env('NOTION_BRAND_DESIGN_HUB_URL', null)),
+    feedbackDatabaseId: env('NOTION_DESIGN_FEEDBACK_DATABASE_ID', env('NOTION_FEEDBACK_DATABASE_ID', null)),
     statusProperty: env('NOTION_DESIGN_STATUS_PROPERTY', env('NOTION_STATUS_PROPERTY', 'Design Status')),
+    initialStatus: env('NOTION_DESIGN_INITIAL_STATUS', DEFAULT_STATUS),
     completedStatuses: csvEnv('NOTION_DESIGN_COMPLETED_STATUSES', env('NOTION_POLL_COMPLETED_STATUSES', 'Ready')),
+    qualitySurveyStatuses: csvEnv('NOTION_DESIGN_QUALITY_SURVEY_STATUSES', 'Ready'),
+    supportsFeedbackRounds: true,
     pollIntervalSec: intEnv('NOTION_DESIGN_POLL_INTERVAL_SEC', 180),
     notifyChannel: env('DESIGN_CHANNEL_ID'),
     ownerId: env('NOTION_DESIGN_OWNER_ID', DEFAULT_DESIGN_OWNER_ID),
+    ownerLabel: env('NOTION_DESIGN_OWNER_LABEL', null),
     team: env('NOTION_DESIGN_TEAM', DEFAULT_DESIGN_TEAM),
     taskTypeGroups: designTaskTypeGroups,
     taskTypes: buildTaskTypesFromGroups(
@@ -209,9 +524,38 @@ export const departments = {
       }))
     ),
   },
+  smm: {
+    key: 'smm',
+    label: 'SMM',
+    emoji: '📱',
+    notionDataSourceId: env(
+      'NOTION_SMM_DATABASE_ID',
+      env('NOTION_ACTIVITIES_DATABASE_ID', env('NOTION_DATABASE_ID', DEFAULT_ACTIVITIES_DATABASE_ID))
+    ),
+    notionTemplateId: env('NOTION_SMM_TEMPLATE_ID', env('NOTION_SMM_TASK_TEMPLATE_ID', null)),
+    hubUrl: env('NOTION_SMM_HUB_URL', DEFAULT_SMM_HUB_URL),
+    feedbackDatabaseId: env('NOTION_SMM_FEEDBACK_DATABASE_ID', DEFAULT_SMM_FEEDBACK_DATABASE_ID),
+    statusProperty: env('NOTION_SMM_STATUS_PROPERTY', 'SMM статус'),
+    initialStatus: env('NOTION_SMM_INITIAL_STATUS', 'To do'),
+    completedStatuses: csvEnv('NOTION_SMM_COMPLETED_STATUSES', 'Published,Canceled,Cancelled'),
+    qualitySurveyStatuses: csvEnv('NOTION_SMM_QUALITY_SURVEY_STATUSES', 'Published'),
+    supportsFeedbackRounds: false,
+    useBodyBrief: true,
+    pollIntervalSec: intEnv('NOTION_SMM_POLL_INTERVAL_SEC', 180),
+    notifyChannel: env('SMM_CHANNEL_ID', env('SLACK_SMM_NOTIFY_CHANNEL', null)),
+    ownerId: env('NOTION_SMM_OWNER_ID', DEFAULT_SMM_OWNER_ID),
+    ownerLabel: env('NOTION_SMM_OWNER_LABEL', 'Anna Gayuk'),
+    team: env('NOTION_SMM_TEAM', DEFAULT_SMM_TEAM),
+    defaultProperties: {
+      'SMM needed': true,
+      'SMM briefed': true,
+    },
+    taskTypeGroups: smmTaskTypeGroups,
+    taskTypes: buildTaskTypesFromGroups(smmTaskTypeGroups, smmTaskTypeConfig),
+  },
 }
 
-export const RESERVED_DEPARTMENT_KEYS = ['event', 'smm', 'pr', 'employer_brand']
+export const RESERVED_DEPARTMENT_KEYS = ['event', 'pr', 'employer_brand']
 
 export function resolveDepartmentKey(departmentKey) {
   return departments[departmentKey]?.key || DEFAULT_DEPARTMENT_KEY
@@ -239,7 +583,21 @@ export function getDepartmentTaskType(departmentKey, taskType) {
   return getDepartment(departmentKey).taskTypes[taskType] || null
 }
 
-export function getDepartmentTaskFields() {
+export function getDepartmentTaskFields(departmentKey = DEFAULT_DEPARTMENT_KEY, taskType = null) {
+  const department = getDepartment(departmentKey)
+  if (department.key === 'smm' && taskType) {
+    const excludedCommonFields = new Set(smmCommonFieldExclusions[taskType] || [])
+    const commonFields = smmCommonFields.filter((fieldConfig) => {
+      return !excludedCommonFields.has(fieldConfig.key)
+    })
+
+    return [
+      ...commonFields,
+      ...(smmTaskFields[taskType] || []),
+      smmNoteField,
+    ]
+  }
+
   return []
 }
 
