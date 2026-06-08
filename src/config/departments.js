@@ -196,6 +196,7 @@ const smmPlatformOptions = selectOptions([
   'Facebook',
   'TikTok',
 ])
+const SMM_ATTACHMENT_HINT = 'Якщо маєш лінки — встав їх сюди. Якщо у тебе файли, після завершення форми перейди в задачу в Notion і прикріпи всі файли туди.'
 
 const smmCommonFields = [
   field('publication_date', 'date', 'Дата публікації / потрібна дата *', {
@@ -234,7 +235,11 @@ const smmTaskFields = {
     field('talent_available_date', 'date', 'Дата доступності героя *'),
     field('talent_available_from', 'time', 'Герой доступний з *'),
     field('talent_available_to', 'time', 'Герой доступний до *'),
-    field('style_references', 'text', 'Референси стилю/монтажу', { optional: true }),
+    field('style_references', 'text', 'Референси стилю/монтажу', {
+      optional: true,
+      hint: SMM_ATTACHMENT_HINT,
+      placeholder: 'Лінки на референси або короткий опис.',
+    }),
     field('subtitles', 'select', 'Субтитри *', { options: selectOptions(['Так', 'Ні']) }),
   ],
   carousel_post: [
@@ -287,7 +292,11 @@ const smmTaskFields = {
       options: selectOptions(['Статика', 'Відео', 'Інтерактив']),
       notionProperties: ['Format'],
     }),
-    field('ready_materials', 'text', 'Готові матеріали', { optional: true }),
+    field('ready_materials', 'text', 'Готові матеріали', {
+      optional: true,
+      hint: SMM_ATTACHMENT_HINT,
+      placeholder: 'Лінки на готові матеріали.',
+    }),
   ],
   linkedin_newsletter: [
     field('issue_topic', 'text', 'Тема випуску *'),
@@ -304,7 +313,11 @@ const smmTaskFields = {
     field('video_idea', 'textarea', 'Що знімаємо / ідея *'),
     field('shoot_location_date', 'text', 'Локація і дата зйомки *'),
     field('frame_people_consent', 'textarea', 'Хто в кадрі + згода *'),
-    field('video_references', 'text', 'Референси', { optional: true }),
+    field('video_references', 'text', 'Референси', {
+      optional: true,
+      hint: SMM_ATTACHMENT_HINT,
+      placeholder: 'Лінки на референси.',
+    }),
     field('duration', 'text', 'Орієнтовний хронометраж *'),
     field('publish_where', 'multi_select', 'Де публікуємо? *', {
       options: selectOptions(['Instagram', 'YouTube', 'LinkedIn', 'TikTok', 'інше']),
@@ -329,12 +342,14 @@ const smmTaskFields = {
     field('tags_category', 'text', 'Теги / категорія *'),
   ],
   vacancy_promo_static: [
-    field('vacancy_link', 'text', 'Вакансія / лендинг *', { notionProperties: ['Ad link'] }),
-    field('budget', 'text', 'Бюджет *'),
+    field('vacancy_link', 'text', 'Лінк на вакансію / лендинг *', { notionProperties: ['Ad link'] }),
+    field('budget', 'text', 'Бюджет у доларах ($) *'),
     field('targeting', 'textarea', 'Гео / аудиторія таргету *'),
-    field('campaign_period', 'text', 'Період кампанії *'),
+    field('campaign_start_date', 'date', 'Період кампанії: від *'),
+    field('campaign_end_date', 'date', 'Період кампанії: до *'),
     field('creative', 'select', 'Готовий креатив *', {
       options: selectOptions(['Є — посилання', 'Треба зробити']),
+      hint: 'Якщо обереш «Треба зробити», опиши своє бачення у полі «Додаткова інформація / note».',
     }),
     field('creative_link', 'text', 'Посилання на креатив', {
       optional: true,
@@ -342,12 +357,14 @@ const smmTaskFields = {
     }),
   ],
   vacancy_promo_video: [
-    field('vacancy_link', 'text', 'Вакансія / лендинг *', { notionProperties: ['Ad link'] }),
-    field('budget', 'text', 'Бюджет *'),
+    field('vacancy_link', 'text', 'Лінк на вакансію / лендинг *', { notionProperties: ['Ad link'] }),
+    field('budget', 'text', 'Бюджет у доларах ($) *'),
     field('targeting', 'textarea', 'Гео / аудиторія таргету *'),
-    field('campaign_period', 'text', 'Період кампанії *'),
+    field('campaign_start_date', 'date', 'Період кампанії: від *'),
+    field('campaign_end_date', 'date', 'Період кампанії: до *'),
     field('creative', 'select', 'Готовий креатив *', {
       options: selectOptions(['Є — посилання', 'Треба зробити']),
+      hint: 'Якщо обереш «Треба зробити», опиши своє бачення у полі «Додаткова інформація / note».',
     }),
     field('video_asset', 'select', 'Готове відео *', {
       options: selectOptions(['Є — посилання', 'Треба зняти/змонтувати']),
@@ -359,11 +376,12 @@ const smmTaskFields = {
   ],
   publication_boost: [
     field('post_link', 'text', 'Посилання на пост *', { notionProperties: ['Ad link'] }),
-    field('budget', 'text', 'Бюджет *'),
+    field('budget', 'text', 'Бюджет у доларах ($) *'),
     field('ad_goal', 'select', 'Ціль *', {
       options: selectOptions(['Охоплення', 'Трафік', 'Залучення']),
     }),
-    field('campaign_period', 'text', 'Період *'),
+    field('campaign_start_date', 'date', 'Період: від *'),
+    field('campaign_end_date', 'date', 'Період: до *'),
     field('targeting', 'textarea', 'Гео / аудиторія *'),
   ],
   blogger_collab: [
@@ -373,7 +391,7 @@ const smmTaskFields = {
     }),
     field('terms_budget', 'textarea', 'Бюджет / умови *'),
     field('key_message', 'textarea', 'Ключове повідомлення *'),
-    field('publish_deadline', 'date', 'Дедлайн виходу *'),
+    field('publish_deadline', 'date', 'Дедлайн виходу *', { role: 'deadline' }),
   ],
   drive_upload: [
     field('upload_content', 'textarea', 'Що завантажуємо *'),
@@ -385,7 +403,10 @@ const smmTaskFields = {
       showWhen: { fieldKey: 'source_materials', values: ['Посилання'] },
     }),
     field('destination_folder', 'text', 'Куди (папка/диск) *'),
-    field('operation_deadline', 'date', 'Дедлайн *', { notionProperties: ['Deadline'] }),
+    field('operation_deadline', 'date', 'Дедлайн *', {
+      role: 'deadline',
+      notionProperties: ['Deadline'],
+    }),
   ],
   event_report: [
     field('event_name', 'text', 'Який івент *'),
@@ -394,8 +415,17 @@ const smmTaskFields = {
     field('report_format', 'select', 'Формат звіту *', {
       options: selectOptions(['Notion', 'Презентація', 'Таблиця']),
     }),
-    field('report_deadline', 'date', 'Дедлайн *', { notionProperties: ['Deadline'] }),
+    field('report_deadline', 'date', 'Дедлайн *', {
+      role: 'deadline',
+      notionProperties: ['Deadline'],
+    }),
   ],
+}
+
+const smmCommonFieldExclusions = {
+  blogger_collab: ['publication_date'],
+  drive_upload: ['publication_date', 'platforms', 'materials', 'approver'],
+  event_report: ['publication_date', 'platforms', 'materials', 'approver'],
 }
 
 const smmTaskTypeGroups = [
@@ -556,8 +586,13 @@ export function getDepartmentTaskType(departmentKey, taskType) {
 export function getDepartmentTaskFields(departmentKey = DEFAULT_DEPARTMENT_KEY, taskType = null) {
   const department = getDepartment(departmentKey)
   if (department.key === 'smm' && taskType) {
+    const excludedCommonFields = new Set(smmCommonFieldExclusions[taskType] || [])
+    const commonFields = smmCommonFields.filter((fieldConfig) => {
+      return !excludedCommonFields.has(fieldConfig.key)
+    })
+
     return [
-      ...smmCommonFields,
+      ...commonFields,
       ...(smmTaskFields[taskType] || []),
       smmNoteField,
     ]
