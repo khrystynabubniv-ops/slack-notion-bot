@@ -306,6 +306,26 @@ function getDaysUntil(dateString) {
   return Math.ceil((target.getTime() - today.getTime()) / (24 * 60 * 60 * 1000))
 }
 
+function formatDaysUk(days) {
+  const normalizedDays = Number.isFinite(days) ? days : 0
+  const absoluteDays = Math.abs(normalizedDays)
+  const lastTwoDigits = absoluteDays % 100
+  const lastDigit = absoluteDays % 10
+  const suffix = lastTwoDigits >= 11 && lastTwoDigits <= 14
+    ? 'днів'
+    : lastDigit === 1
+      ? 'день'
+      : [2, 3, 4].includes(lastDigit)
+        ? 'дні'
+        : 'днів'
+
+  return `${normalizedDays} ${suffix}`
+}
+
+function getLeadTimeText(leadTimeViolation) {
+  return leadTimeViolation.taskConfig?.minLeadLabel || formatDaysUk(leadTimeViolation.minLeadDays)
+}
+
 function getLeadTimeViolation({ departmentKey, taskType, deadline, values }) {
   const taskConfig = getDepartmentTaskType(departmentKey, taskType)
   const minLeadDays = taskConfig?.minLeadDays || 0
@@ -317,6 +337,7 @@ function getLeadTimeViolation({ departmentKey, taskType, deadline, values }) {
   return {
     taskConfig,
     minLeadDays,
+    minLeadLabel: taskConfig?.minLeadLabel || null,
     providedLeadDays,
     override: getLeadTimeOverride(values),
   }
@@ -847,7 +868,7 @@ export function registerSubmissionHandlers(app) {
           response_action: 'errors',
           errors: {
             [`${getDepartmentTaskFields(departmentKey, taskType).find((field) => field.role === 'deadline')?.key || 'deadline'}_block`]:
-              `Зміни дату: для цього типу мінімальний термін — ${leadTimeViolation.minLeadDays} днів.`,
+              `Зміни дату: для цього типу мінімальний термін — ${getLeadTimeText(leadTimeViolation)}.`,
           },
         })
         return

@@ -68,7 +68,7 @@ Phase 2 додає SMM-змінні поверх Design aliases і тестов�
 - `NOTION_SMM_QUALITY_SURVEY_STATUSES=Published`
 - `NOTION_SMM_FEEDBACK_DATABASE_ID=025dce2c634e4a079ee7600ea8c63253`
 - `NOTION_SMM_OWNER_ID`, `NOTION_SMM_OWNER_LABEL`, `NOTION_SMM_TEAM=SMM`
-- `SMM_*_MIN_LEAD_DAYS` для дедлайнів SMM-типів
+- `DESIGN_*_MIN_LEAD_DAYS` і `SMM_*_MIN_LEAD_DAYS` для SLA/late-перевірки дедлайнів
 - `REDIS_KEY_PREFIX` для тестового Redis namespace
 - `TEST_TASK_PREFIX` для sandbox задач, наприклад `[ТЕСТ]`
 
@@ -107,6 +107,7 @@ Webhook приймає payload із Notion, шукає ID батьківсько
 - `notifyChannel`: `DESIGN_CHANNEL_ID`
 - `ownerId`: `NOTION_DESIGN_OWNER_ID` або старий owner id
 - `taskTypes`: старі Design task type relation IDs
+- `minLeadDays`: SLA з політики роботи з дизайн-запитами; якщо дедлайн ближчий, модалка запропонує змінити дату або відправити задачу як `late`
 
 `smm` налаштований як greenfield-гілка:
 
@@ -187,6 +188,7 @@ User whitelist / data boundary:
 - Для перенесення відповідей зі Slack-треду в Notion інтеграція має мати право створювати коментарі.
 - Якщо хочеш, щоб нові задачі створювалися з готового Notion template, задай `NOTION_TEMPLATE_ID` для Design або `NOTION_SMM_TASK_TEMPLATE_ID` / `NOTION_SMM_TEMPLATE_ID` для SMM.
 - Template застосовується асинхронно одразу після створення page. Це зручно для кейсу, де в template вже є нативна кнопка `Add subtask`.
+- Для Design і SMM late-флоу пише у властивість `Late` (checkbox) у цільовій Notion-базі.
 - Для SMM у Activities потрібні властивості `Team` (select з опцією `SMM`), `SMM статус` (select), `Owner` (people), `Late` (checkbox), `Deadline` (date), `Publication date` (date), `Platform` або `Platforms`, `Description` (rich text).
 - Для Design опитування якості роботи надсилається на `Ready`. Для SMM `Ready` не завершує поллінг і не показує дизайн-кнопки правок; опитування надсилається на `Published`, а поллінг зупиняється на `Published` або `Canceled`.
 - Для задач-правок у базі мають бути властивості `Parent item` (relation), `Sub-type` (select), `Description` (rich text) і, за потреби, `Тип правки`. Їхні назви можна змінити через `NOTION_PARENT_ITEM_PROPERTY`, `NOTION_SUB_TYPE_PROPERTY`, `NOTION_DESCRIPTION_PROPERTY` і `NOTION_FEEDBACK_TYPE_PROPERTY`.
@@ -228,7 +230,8 @@ User whitelist / data boundary:
 - `REDIS_KEY_PREFIX=test:`
 - `TEST_TASK_PREFIX=[ТЕСТ]`
 - живі Notion database IDs
-- для SMM: Activities database, `Team=SMM`, `SMM статус`, `Late`
+- для Design і SMM: у відповідній Notion database є `Late` checkbox для late-флоу
+- для SMM: Activities database, `Team=SMM`, `SMM статус`
 
 Усі тестові задачі мають починатися з `[ТЕСТ]`; бот додає цей префікс до title, якщо `TEST_TASK_PREFIX` заданий. Якщо в Notion-базі є checkbox або tag `Test`, бот спробує виставити його автоматично, але для SMM зараз достатньо тільки title-префікса. Після тесту знайди записи через `Name contains [ТЕСТ]` і видали вручну.
 

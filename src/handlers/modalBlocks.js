@@ -170,14 +170,43 @@ function buildDynamicFieldBlock(field, values = {}, { dispatchAction = false } =
   return cloneElementWithState(block, values)
 }
 
-function buildLeadTimeWarningBlocks(taskConfig, leadTimeWarning = {}) {
+function formatDaysUk(days) {
+  const normalizedDays = Number.isFinite(days) ? days : 0
+  const absoluteDays = Math.abs(normalizedDays)
+  const lastTwoDigits = absoluteDays % 100
+  const lastDigit = absoluteDays % 10
+  const suffix = lastTwoDigits >= 11 && lastTwoDigits <= 14
+    ? 'днів'
+    : lastDigit === 1
+      ? 'день'
+      : [2, 3, 4].includes(lastDigit)
+        ? 'дні'
+        : 'днів'
+
+  return `${normalizedDays} ${suffix}`
+}
+
+function getMinLeadText(taskConfig, minLeadDays) {
+  return taskConfig?.minLeadLabel || formatDaysUk(minLeadDays)
+}
+
+function getDepartmentReviewText(department) {
+  if (department?.key === DEFAULT_DEPARTMENT_KEY) return 'дизайн-команда'
+
+  return department?.label || 'команда'
+}
+
+function buildLeadTimeWarningBlocks(taskConfig, leadTimeWarning = {}, department = null) {
   const minLeadDays = leadTimeWarning.minLeadDays || taskConfig?.minLeadDays || 0
   const providedLeadDays = Number.isFinite(leadTimeWarning.providedLeadDays)
     ? leadTimeWarning.providedLeadDays
     : null
+  const taskLabel = taskConfig?.label || 'цього типу задачі'
+  const minLeadText = leadTimeWarning.minLeadLabel || getMinLeadText(taskConfig, minLeadDays)
+  const reviewerText = getDepartmentReviewText(department)
   const providedText = providedLeadDays === null
     ? ''
-    : ` Ти вказуєш ${providedLeadDays} дн.`
+    : ` Ти вказуєш ${formatDaysUk(providedLeadDays)}.`
 
   return [
     {
@@ -185,9 +214,9 @@ function buildLeadTimeWarningBlocks(taskConfig, leadTimeWarning = {}) {
       text: {
         type: 'mrkdwn',
         text:
-          `⚠️ За політикою дедлайнів для *${taskConfig.label}* мінімальний термін — *${minLeadDays} днів*.` +
+          `⚠️ За політикою дедлайнів для *${taskLabel}* мінімальний термін — *${minLeadText}*.` +
           `${providedText}\n` +
-          'Можеш змінити дату або відправити задачу як late: SMM розгляне її окремо без гарантії виконання в цей термін.',
+          `Можеш змінити дату або відправити задачу як late: ${reviewerText} розгляне її окремо без гарантії виконання в цей термін.`,
       },
     },
     {
@@ -204,6 +233,19 @@ function buildLeadTimeWarningBlocks(taskConfig, leadTimeWarning = {}) {
         ],
       },
     },
+  ]
+}
+
+function insertBlocksAfter(blocks, blockId, insertedBlocks = []) {
+  if (!insertedBlocks.length) return blocks
+
+  const targetIndex = blocks.findIndex((block) => block.block_id === blockId)
+  if (targetIndex === -1) return [...blocks, ...insertedBlocks]
+
+  return [
+    ...blocks.slice(0, targetIndex + 1),
+    ...insertedBlocks,
+    ...blocks.slice(targetIndex + 1),
   ]
 }
 
@@ -238,7 +280,7 @@ function getDynamicDepartmentBlocks(departmentKey, taskType, values = {}, option
 
   return [
     buildDynamicNameBlock(values),
-    ...(options.leadTimeWarning ? buildLeadTimeWarningBlocks(taskConfig, options.leadTimeWarning) : []),
+    ...(options.leadTimeWarning ? buildLeadTimeWarningBlocks(taskConfig, options.leadTimeWarning, department) : []),
     ...visibleFields.map((field) => buildDynamicFieldBlock(field, values, {
       dispatchAction: controllerKeys.has(field.key),
     })),
@@ -2104,14 +2146,24 @@ const specificBlocks = {
 
 export function getModalBlocks(taskType, values = {}, options = {}) {
   const departmentKey = options.departmentKey || DEFAULT_DEPARTMENT_KEY
+  const department = getDepartment(departmentKey)
 
   if (departmentKey !== DEFAULT_DEPARTMENT_KEY) {
     return getDynamicDepartmentBlocks(departmentKey, taskType, values, options)
   }
 
+  const taskConfig = department.taskTypes[taskType] || {}
+  const base = baseBlocks().map((block) => cloneElementWithState(block, values))
+  const baseWithWarning = insertBlocksAfter(
+    base,
+    'deadline_block',
+    options.leadTimeWarning
+      ? buildLeadTimeWarningBlocks(taskConfig, options.leadTimeWarning, department)
+      : []
+  )
   const specific = enhanceSpecificBlocks(specificBlocks[taskType] || [], values)
   return [
-    ...baseBlocks().map((block) => cloneElementWithState(block, values)),
+    ...baseWithWarning,
     ...(specific.length ? [divider()] : []),
     ...specific,
   ]

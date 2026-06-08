@@ -19,6 +19,18 @@ function intEnv(name, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+function leadTimeEnv(name, fallback, fallbackLabel = null) {
+  const rawValue = process.env[name]?.trim()
+  const minLeadDays = intEnv(name, fallback)
+  const rawDays = rawValue ? Number.parseInt(rawValue, 10) : null
+  const shouldUseFallbackLabel = fallbackLabel && (!rawValue || rawDays === fallback)
+
+  return {
+    minLeadDays,
+    ...(shouldUseFallbackLabel ? { minLeadLabel: fallbackLabel } : {}),
+  }
+}
+
 function csvEnv(name, fallback) {
   const source = env(name, fallback)
   return String(source || '')
@@ -87,6 +99,56 @@ const DESIGN_TASK_TYPE_RELATION_IDS = {
   event_complex: '4dfce989-9cb7-8372-bc59-01222d1aaa29',
   other: '349ce989-9cb7-80f9-832f-c55be91be724',
 }
+
+const designTaskLeadTimes = {
+  static_simple: leadTimeEnv('DESIGN_STATIC_SIMPLE_MIN_LEAD_DAYS', 2),
+  static_complex: leadTimeEnv('DESIGN_STATIC_COMPLEX_MIN_LEAD_DAYS', 4),
+  carousel: leadTimeEnv('DESIGN_CAROUSEL_MIN_LEAD_DAYS', 4),
+  resize: leadTimeEnv('DESIGN_RESIZE_MIN_LEAD_DAYS', 2),
+  promo_creo_static_template: leadTimeEnv('DESIGN_PROMO_CREO_STATIC_TEMPLATE_MIN_LEAD_DAYS', 2),
+  promo_creo_static_ideas: leadTimeEnv('DESIGN_PROMO_CREO_STATIC_IDEAS_MIN_LEAD_DAYS', 4),
+  promo_creo_mix_template: leadTimeEnv('DESIGN_PROMO_CREO_MIX_TEMPLATE_MIN_LEAD_DAYS', 3),
+  promo_creo_mix_ideas: leadTimeEnv('DESIGN_PROMO_CREO_MIX_IDEAS_MIN_LEAD_DAYS', 11, '1.5 тижні'),
+  promo_creo_video_template: leadTimeEnv('DESIGN_PROMO_CREO_VIDEO_TEMPLATE_MIN_LEAD_DAYS', 3),
+  promo_creo_video_ideas: leadTimeEnv('DESIGN_PROMO_CREO_VIDEO_IDEAS_MIN_LEAD_DAYS', 11, '1.5 тижні'),
+  video_simple: leadTimeEnv('DESIGN_VIDEO_SIMPLE_MIN_LEAD_DAYS', 3),
+  video_complex: leadTimeEnv('DESIGN_VIDEO_COMPLEX_MIN_LEAD_DAYS', 11, '1.5 тижні'),
+  pres_edit: leadTimeEnv('DESIGN_PRES_EDIT_MIN_LEAD_DAYS', 3),
+  pres_template: leadTimeEnv('DESIGN_PRES_TEMPLATE_MIN_LEAD_DAYS', 7, '1 тиждень'),
+  pres_wow: leadTimeEnv('DESIGN_PRES_WOW_MIN_LEAD_DAYS', 14, '2 тижні'),
+  ai_static_simple: leadTimeEnv('DESIGN_AI_STATIC_SIMPLE_MIN_LEAD_DAYS', 2),
+  ai_static_complex: leadTimeEnv('DESIGN_AI_STATIC_COMPLEX_MIN_LEAD_DAYS', 14, '2 тижні'),
+  ai_dynamic_simple: leadTimeEnv('DESIGN_AI_DYNAMIC_SIMPLE_MIN_LEAD_DAYS', 2),
+  ai_dynamic_complex: leadTimeEnv('DESIGN_AI_DYNAMIC_COMPLEX_MIN_LEAD_DAYS', 14, '2 тижні'),
+  landing_template: leadTimeEnv('DESIGN_LANDING_TEMPLATE_MIN_LEAD_DAYS', 14, '2 тижні'),
+  landing_wow: leadTimeEnv('DESIGN_LANDING_WOW_MIN_LEAD_DAYS', 42, '6 тижнів'),
+  blog: leadTimeEnv('DESIGN_BLOG_MIN_LEAD_DAYS', 1),
+  digest_simple: leadTimeEnv('DESIGN_DIGEST_SIMPLE_MIN_LEAD_DAYS', 7, '1 тиждень'),
+  digest_wow: leadTimeEnv('DESIGN_DIGEST_WOW_MIN_LEAD_DAYS', 21, '3 тижні'),
+  email_digest: leadTimeEnv('DESIGN_EMAIL_DIGEST_MIN_LEAD_DAYS', 7, '1 тиждень'),
+  merch_simple: leadTimeEnv('DESIGN_MERCH_SIMPLE_MIN_LEAD_DAYS', 3),
+  merch_ref: leadTimeEnv('DESIGN_MERCH_REF_MIN_LEAD_DAYS', 7, '1 тиждень'),
+  merch_research: leadTimeEnv('DESIGN_MERCH_RESEARCH_MIN_LEAD_DAYS', 7, '1 тиждень'),
+  print_materials: leadTimeEnv('DESIGN_PRINT_MATERIALS_MIN_LEAD_DAYS', 7, '1 тиждень'),
+  photo_simple: leadTimeEnv('DESIGN_PHOTO_SIMPLE_MIN_LEAD_DAYS', 1),
+  photo_complex: leadTimeEnv('DESIGN_PHOTO_COMPLEX_MIN_LEAD_DAYS', 3),
+  tv_announce: leadTimeEnv('DESIGN_TV_ANNOUNCE_MIN_LEAD_DAYS', 2),
+  tv_static: leadTimeEnv('DESIGN_TV_STATIC_MIN_LEAD_DAYS', 7, '1 тиждень'),
+  event_simple: leadTimeEnv('DESIGN_EVENT_SIMPLE_MIN_LEAD_DAYS', 21, '3 тижні'),
+  event_complex: leadTimeEnv('DESIGN_EVENT_COMPLEX_MIN_LEAD_DAYS', 60, '2 місяці'),
+}
+
+const designTaskTypeConfig = Object.fromEntries(
+  Object.entries(DESIGN_TASK_TYPE_RELATION_IDS).map(([key, relationId]) => {
+    return [
+      key,
+      {
+        notionTaskTypeRelationId: relationId,
+        ...(designTaskLeadTimes[key] || {}),
+      },
+    ]
+  })
+)
 
 const designTaskTypeGroups = [
   {
@@ -517,12 +579,7 @@ export const departments = {
     ownerLabel: env('NOTION_DESIGN_OWNER_LABEL', null),
     team: env('NOTION_DESIGN_TEAM', DEFAULT_DESIGN_TEAM),
     taskTypeGroups: designTaskTypeGroups,
-    taskTypes: buildTaskTypesFromGroups(
-      designTaskTypeGroups,
-      Object.fromEntries(Object.entries(DESIGN_TASK_TYPE_RELATION_IDS).map(([key, relationId]) => {
-        return [key, { notionTaskTypeRelationId: relationId }]
-      }))
-    ),
+    taskTypes: buildTaskTypesFromGroups(designTaskTypeGroups, designTaskTypeConfig),
   },
   smm: {
     key: 'smm',
