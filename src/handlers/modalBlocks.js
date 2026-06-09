@@ -436,7 +436,6 @@ const specificBlocks = {
           { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
           { text: { type: 'plain_text', text: 'LinkedIn' }, value: 'LinkedIn' },
           { text: { type: 'plain_text', text: 'Facebook' }, value: 'Facebook' },
-          { text: { type: 'plain_text', text: 'TikTok' }, value: 'TikTok' },
           { text: { type: 'plain_text', text: 'Email' }, value: 'Email' },
           { text: { type: 'plain_text', text: 'Print' }, value: 'Print' },
           { text: { type: 'plain_text', text: 'Corpsite' }, value: 'Corpsite' },
@@ -1416,7 +1415,6 @@ const specificBlocks = {
         placeholder: { type: 'plain_text', text: 'Вибери...' },
         options: [
           { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
-          { text: { type: 'plain_text', text: 'TikTok' }, value: 'TikTok' },
           { text: { type: 'plain_text', text: 'YouTube' }, value: 'YouTube' },
         ],
       },
@@ -1443,7 +1441,7 @@ const specificBlocks = {
         type: 'plain_text_input',
         action_id: 'ai_description',
         multiline: true,
-        placeholder: { type: 'plain_text', text: 'Повністю згенерована відеосцена: місто майбутнього, 15 сек, для TikTok' },
+        placeholder: { type: 'plain_text', text: 'Повністю згенерована відеосцена: місто майбутнього, 15 сек, для Instagram' },
       },
     },
     {
@@ -1455,7 +1453,6 @@ const specificBlocks = {
         action_id: 'platform',
         placeholder: { type: 'plain_text', text: 'Вибери...' },
         options: [
-          { text: { type: 'plain_text', text: 'TikTok' }, value: 'TikTok' },
           { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
           { text: { type: 'plain_text', text: 'YouTube' }, value: 'YouTube' },
         ],

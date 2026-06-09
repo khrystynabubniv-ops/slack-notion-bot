@@ -697,7 +697,7 @@ export function registerSubmissionHandlers(app) {
   })
 
   app.action(
-    /^(structure_choice|ready_texts|visual_source|link_needed|ready_copy|title_description|thumbnail|creative|video_asset|source_materials)$/,
+    /^(structure_choice|ready_texts|visual_source|link_needed|title_description|thumbnail|ad_goal|fixed_budget|source_materials)$/,
     async ({ ack, body, client }) => {
       await ack()
       if (body.view?.callback_id !== 'submit_task') return

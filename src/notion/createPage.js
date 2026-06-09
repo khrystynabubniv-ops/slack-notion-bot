@@ -450,7 +450,15 @@ export async function createNotionPage({
     addPropertyByDatabaseType(properties, databaseProperties, ['Late'], true)
   }
 
-  const normalizedPlatforms = platforms.length ? platforms.map(resolvePlatform).filter(Boolean) : [notionPlatform].filter(Boolean)
+  const defaultPlatforms = Array.isArray(taskConfig.defaultPlatforms)
+    ? taskConfig.defaultPlatforms
+    : [taskConfig.defaultPlatforms].filter(Boolean)
+  const platformSource = platforms.length
+    ? platforms
+    : defaultPlatforms.length
+      ? defaultPlatforms
+      : [notionPlatform].filter(Boolean)
+  const normalizedPlatforms = platformSource.map(resolvePlatform).filter(Boolean)
   if (normalizedPlatforms.length) {
     if (!addPropertyByDatabaseType(properties, databaseProperties, ['Platforms', 'Platform'], normalizedPlatforms)) {
       addPropertyIfType(properties, databaseProperties, 'Platform', ['select'], {

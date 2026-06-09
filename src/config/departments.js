@@ -256,9 +256,19 @@ const smmPlatformOptions = selectOptions([
   'LinkedIn',
   'YouTube',
   'Facebook',
-  'TikTok',
 ])
+const smmReelsPlatformOptions = selectOptions(['Instagram'])
+const smmCarouselPlatformOptions = selectOptions(['Instagram', 'LinkedIn', 'Facebook'])
+const smmPaidPromoPlatformOptions = selectOptions(['Meta', 'Google Ads', 'LinkedIn Ads'])
 const SMM_ATTACHMENT_HINT = 'Якщо маєш лінки — встав їх сюди. Якщо у тебе файли, після завершення форми перейди в задачу в Notion і прикріпи всі файли туди.'
+
+function smmPlatformsField(options = smmPlatformOptions) {
+  return field('platforms', 'multi_select', 'Для якої платформи? (можна обрати кілька) *', {
+    role: 'platforms',
+    section: 'base',
+    options,
+  })
+}
 
 const smmCommonFields = [
   field('publication_date', 'date', 'Дата публікації / потрібна дата *', {
@@ -266,16 +276,12 @@ const smmCommonFields = [
     section: 'base',
     notionProperties: ['Publication date', 'Deadline'],
   }),
-  field('platforms', 'multi_select', 'Для якої платформи? (можна обрати кілька) *', {
-    role: 'platforms',
-    section: 'base',
-    options: smmPlatformOptions,
-  }),
+  smmPlatformsField(),
   field('context', 'textarea', 'Контекст / ідея — для чого, про що (1–3 речення) *', {
     role: 'context',
     section: 'base',
   }),
-  field('materials', 'text', 'Посилання на матеріали (лендинг, прес-реліз, відео, фото)', {
+  field('materials', 'text', 'Посилання на матеріали (лендинг, прес-реліз, вакансія, відео, фото)', {
     optional: true,
     section: 'base',
     placeholder: 'Якщо матеріалів ще немає, залиш поле порожнім',
@@ -294,11 +300,7 @@ const smmNoteField = field('note', 'textarea', 'Додаткова інформ�
 const smmTaskFields = {
   reels: [
     field('talent_consent', 'textarea', 'Хто знімається + чи є згода *'),
-    field('talent_available_date', 'date', 'Дата доступності героя *'),
-    field('talent_available_from', 'time', 'Герой доступний з *'),
-    field('talent_available_to', 'time', 'Герой доступний до *'),
-    field('style_references', 'text', 'Референси стилю/монтажу', {
-      optional: true,
+    field('style_references', 'text', 'Референси стилю/монтажу *', {
       hint: SMM_ATTACHMENT_HINT,
       placeholder: 'Лінки на референси або короткий опис.',
     }),
@@ -361,15 +363,8 @@ const smmTaskFields = {
     }),
   ],
   linkedin_newsletter: [
-    field('issue_topic', 'text', 'Тема випуску *'),
-    field('key_points', 'textarea', 'Ключові тези / структура *'),
-    field('ready_copy', 'select', 'Готовий текст *', {
-      options: selectOptions(['Так — посилання', 'Ні, писати з нуля']),
-    }),
-    field('ready_copy_link', 'text', 'Посилання на готовий текст', {
-      optional: true,
-      showWhen: { fieldKey: 'ready_copy', values: ['Так — посилання'] },
-    }),
+    field('key_points', 'textarea', 'Список вакансій *'),
+    field('ready_copy_link', 'text', 'Посилання на готовий текст *'),
   ],
   video_production: [
     field('video_idea', 'textarea', 'Що знімаємо / ідея *'),
@@ -381,9 +376,23 @@ const smmTaskFields = {
       placeholder: 'Лінки на референси.',
     }),
     field('duration', 'text', 'Орієнтовний хронометраж *'),
-    field('publish_where', 'multi_select', 'Де публікуємо? *', {
-      options: selectOptions(['Instagram', 'YouTube', 'LinkedIn', 'TikTok', 'інше']),
+    field('editing_needed', 'select', 'Чи потрібен монтаж? *', {
+      options: selectOptions(['Так', 'Ні']),
     }),
+  ],
+  video_editing: [
+    field('video_materials', 'text', 'Посилання на відеоматеріали *', {
+      hint: SMM_ATTACHMENT_HINT,
+      placeholder: 'Лінк на папку або файл з матеріалами.',
+    }),
+    field('edit_brief', 'textarea', 'Що потрібно змонтувати / ідея *'),
+    field('video_references', 'text', 'Референси', {
+      optional: true,
+      hint: SMM_ATTACHMENT_HINT,
+      placeholder: 'Лінки на референси.',
+    }),
+    field('duration', 'text', 'Орієнтовний хронометраж *'),
+    field('subtitles', 'select', 'Субтитри *', { options: selectOptions(['Так', 'Ні']) }),
   ],
   youtube_video_publish: [
     field('video_link', 'text', 'Готове відео *'),
@@ -401,57 +410,59 @@ const smmTaskFields = {
       optional: true,
       showWhen: { fieldKey: 'thumbnail', values: ['Є — посилання'] },
     }),
-    field('tags_category', 'text', 'Теги / категорія *'),
+    field('video_visibility', 'select', 'Видимість відео *', {
+      options: selectOptions(['Публічне', 'Приховане']),
+    }),
   ],
   vacancy_promo_static: [
-    field('vacancy_link', 'text', 'Лінк на вакансію / лендинг *', { notionProperties: ['Ad link'] }),
-    field('budget', 'text', 'Бюджет у доларах ($) *'),
+    field('vacancies_list', 'textarea', 'Список вакансій або посилання на список вакансій *', {
+      placeholder: 'Додай лінк на список або кілька вакансій окремими рядками.',
+    }),
     field('targeting', 'textarea', 'Гео / аудиторія таргету *'),
     field('campaign_start_date', 'date', 'Період кампанії: від *'),
     field('campaign_end_date', 'date', 'Період кампанії: до *'),
-    field('creative', 'select', 'Готовий креатив *', {
-      options: selectOptions(['Є — посилання', 'Треба зробити']),
-      hint: 'Якщо обереш «Треба зробити», опиши своє бачення у полі «Додаткова інформація / note».',
-    }),
-    field('creative_link', 'text', 'Посилання на креатив', {
-      optional: true,
-      showWhen: { fieldKey: 'creative', values: ['Є — посилання'] },
-    }),
   ],
   vacancy_promo_video: [
-    field('vacancy_link', 'text', 'Лінк на вакансію / лендинг *', { notionProperties: ['Ad link'] }),
-    field('budget', 'text', 'Бюджет у доларах ($) *'),
+    field('vacancies_list', 'textarea', 'Список вакансій або посилання на список вакансій *', {
+      placeholder: 'Додай лінк на список або кілька вакансій окремими рядками.',
+    }),
     field('targeting', 'textarea', 'Гео / аудиторія таргету *'),
     field('campaign_start_date', 'date', 'Період кампанії: від *'),
     field('campaign_end_date', 'date', 'Період кампанії: до *'),
-    field('creative', 'select', 'Готовий креатив *', {
-      options: selectOptions(['Є — посилання', 'Треба зробити']),
-      hint: 'Якщо обереш «Треба зробити», опиши своє бачення у полі «Додаткова інформація / note».',
-    }),
-    field('video_asset', 'select', 'Готове відео *', {
-      options: selectOptions(['Є — посилання', 'Треба зняти/змонтувати']),
-    }),
     field('video_asset_link', 'text', 'Посилання на відео', {
       optional: true,
-      showWhen: { fieldKey: 'video_asset', values: ['Є — посилання'] },
+      hint: SMM_ATTACHMENT_HINT,
+      placeholder: 'Якщо відео вже готове, додай лінк.',
     }),
   ],
   publication_boost: [
     field('post_link', 'text', 'Посилання на пост *', { notionProperties: ['Ad link'] }),
     field('budget', 'text', 'Бюджет у доларах ($) *'),
     field('ad_goal', 'select', 'Ціль *', {
-      options: selectOptions(['Охоплення', 'Трафік', 'Залучення']),
+      options: selectOptions(['Охоплення', 'Кліки', 'Інше (напишу в коментарі)']),
     }),
+    field('ad_goal_other', 'textarea', 'Коментар до цілі *', {
+      showWhen: { fieldKey: 'ad_goal', values: ['Інше (напишу в коментарі)'] },
+    }),
+    field('success_kpi', 'textarea', 'KPI успішної кампанії *'),
     field('campaign_start_date', 'date', 'Період: від *'),
     field('campaign_end_date', 'date', 'Період: до *'),
     field('targeting', 'textarea', 'Гео / аудиторія *'),
   ],
   blogger_collab: [
     field('blogger_profile', 'text', 'Блогер / профіль *', { notionProperties: ['Ad link'] }),
-    field('collab_format', 'select', 'Формат *', {
-      options: selectOptions(['Reels', 'Сторіз', 'Пост', 'Інтеграція']),
+    field('collab_goal', 'select', 'Ціль *', {
+      options: selectOptions(['Промо вакансій', 'Промо івентів', 'Побудова знання']),
     }),
-    field('terms_budget', 'textarea', 'Бюджет / умови *'),
+    field('collab_format', 'select', 'Формат *', {
+      options: selectOptions(['Reels', 'Сторіз', 'Пост']),
+    }),
+    field('fixed_budget', 'select', 'Чи є фіксований бюджет? *', {
+      options: selectOptions(['Так', 'Ні']),
+    }),
+    field('budget_amount', 'text', 'Бюджет *', {
+      showWhen: { fieldKey: 'fixed_budget', values: ['Так'] },
+    }),
     field('key_message', 'textarea', 'Ключове повідомлення *'),
     field('publish_deadline', 'date', 'Дедлайн виходу *', { role: 'deadline' }),
   ],
@@ -485,9 +496,23 @@ const smmTaskFields = {
 }
 
 const smmCommonFieldExclusions = {
-  blogger_collab: ['publication_date'],
+  announcement_post: ['materials'],
+  stories: ['platforms'],
+  linkedin_newsletter: ['platforms', 'context', 'materials'],
+  youtube_video_publish: ['platforms', 'materials'],
+  vacancy_promo_static: ['materials', 'approver'],
+  vacancy_promo_video: ['materials', 'approver'],
+  publication_boost: ['approver'],
+  blogger_collab: ['publication_date', 'materials'],
   drive_upload: ['publication_date', 'platforms', 'materials', 'approver'],
   event_report: ['publication_date', 'platforms', 'materials', 'approver'],
+}
+
+const smmCommonFieldOverrides = {
+  reels: { platforms: smmPlatformsField(smmReelsPlatformOptions) },
+  carousel_post: { platforms: smmPlatformsField(smmCarouselPlatformOptions) },
+  vacancy_promo_static: { platforms: smmPlatformsField(smmPaidPromoPlatformOptions) },
+  vacancy_promo_video: { platforms: smmPlatformsField(smmPaidPromoPlatformOptions) },
 }
 
 const smmTaskTypeGroups = [
@@ -504,7 +529,8 @@ const smmTaskTypeGroups = [
   {
     label: '🎬 Відео виробництво',
     options: [
-      option('Зйомка і монтаж відео', 'video_production'),
+      option('Зйомка відео', 'video_production'),
+      option('Монтаж відео', 'video_editing'),
       option('Публікація відео на YouTube', 'youtube_video_publish'),
     ],
   },
@@ -530,10 +556,11 @@ const smmTaskTypeConfig = {
   reels: { minLeadDays: intEnv('SMM_REELS_MIN_LEAD_DAYS', 4), defaultProperties: { Format: 'Reels' } },
   carousel_post: { minLeadDays: intEnv('SMM_CAROUSEL_POST_MIN_LEAD_DAYS', 3), defaultProperties: { Format: 'Carousel' } },
   announcement_post: { minLeadDays: intEnv('SMM_ANNOUNCEMENT_POST_MIN_LEAD_DAYS', 2), defaultProperties: { Format: 'Static Image' } },
-  stories: { minLeadDays: intEnv('SMM_STORIES_MIN_LEAD_DAYS', 2), defaultProperties: { Format: 'Stories' } },
-  linkedin_newsletter: { minLeadDays: intEnv('SMM_LINKEDIN_NEWSLETTER_MIN_LEAD_DAYS', 4) },
+  stories: { minLeadDays: intEnv('SMM_STORIES_MIN_LEAD_DAYS', 2), defaultProperties: { Format: 'Stories' }, defaultPlatforms: ['Instagram'] },
+  linkedin_newsletter: { minLeadDays: intEnv('SMM_LINKEDIN_NEWSLETTER_MIN_LEAD_DAYS', 4), defaultPlatforms: ['LinkedIn'] },
   video_production: { minLeadDays: intEnv('SMM_VIDEO_PRODUCTION_MIN_LEAD_DAYS', 7), defaultProperties: { Format: 'Video' } },
-  youtube_video_publish: { minLeadDays: intEnv('SMM_YOUTUBE_VIDEO_PUBLISH_MIN_LEAD_DAYS', 2), defaultProperties: { Format: 'Video' } },
+  video_editing: { minLeadDays: intEnv('SMM_VIDEO_EDITING_MIN_LEAD_DAYS', intEnv('SMM_VIDEO_PRODUCTION_MIN_LEAD_DAYS', 7)), defaultProperties: { Format: 'Video' } },
+  youtube_video_publish: { minLeadDays: intEnv('SMM_YOUTUBE_VIDEO_PUBLISH_MIN_LEAD_DAYS', 2), defaultProperties: { Format: 'Video' }, defaultPlatforms: ['YouTube'] },
   vacancy_promo_static: { minLeadDays: intEnv('SMM_VACANCY_PROMO_STATIC_MIN_LEAD_DAYS', 3), defaultProperties: { Format: 'Static Image' } },
   vacancy_promo_video: { minLeadDays: intEnv('SMM_VACANCY_PROMO_VIDEO_MIN_LEAD_DAYS', 7), defaultProperties: { Format: 'Video' } },
   publication_boost: { minLeadDays: intEnv('SMM_PUBLICATION_BOOST_MIN_LEAD_DAYS', 2) },
@@ -644,8 +671,11 @@ export function getDepartmentTaskFields(departmentKey = DEFAULT_DEPARTMENT_KEY, 
   const department = getDepartment(departmentKey)
   if (department.key === 'smm' && taskType) {
     const excludedCommonFields = new Set(smmCommonFieldExclusions[taskType] || [])
+    const commonFieldOverrides = smmCommonFieldOverrides[taskType] || {}
     const commonFields = smmCommonFields.filter((fieldConfig) => {
       return !excludedCommonFields.has(fieldConfig.key)
+    }).map((fieldConfig) => {
+      return commonFieldOverrides[fieldConfig.key] || fieldConfig
     })
 
     return [
