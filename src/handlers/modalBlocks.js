@@ -148,10 +148,15 @@ function buildDynamicFieldBlock(field, values = {}, { dispatchAction = false } =
       options: field.options.map(getPlainTextOption),
     }
   } else if (field.type === 'multi_select') {
+    const hasSingleOption = field.options.length === 1
+
     block.element = {
       type: 'multi_static_select',
       action_id: field.key,
-      placeholder: { type: 'plain_text', text: 'Обери один або кілька варіантів...' },
+      placeholder: {
+        type: 'plain_text',
+        text: hasSingleOption ? 'Обери варіант...' : 'Обери один або кілька варіантів...',
+      },
       options: field.options.map(getPlainTextOption),
     }
   } else if (field.type === 'slack_user') {

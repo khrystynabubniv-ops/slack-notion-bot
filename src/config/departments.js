@@ -263,7 +263,11 @@ const smmPaidPromoPlatformOptions = selectOptions(['Meta', 'Google Ads', 'Linked
 const SMM_ATTACHMENT_HINT = 'Якщо маєш лінки — встав їх сюди. Якщо у тебе файли, після завершення форми перейди в задачу в Notion і прикріпи всі файли туди.'
 
 function smmPlatformsField(options = smmPlatformOptions) {
-  return field('platforms', 'multi_select', 'Для якої платформи? (можна обрати кілька) *', {
+  const label = options.length === 1
+    ? 'Для якої платформи? *'
+    : 'Для якої платформи? (можна обрати кілька) *'
+
+  return field('platforms', 'multi_select', label, {
     role: 'platforms',
     section: 'base',
     options,
