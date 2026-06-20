@@ -143,6 +143,10 @@ function addPropertyIfType(properties, databaseProperties, propertyName, expecte
 function buildPropertyForDatabaseType(propertyType, value) {
   if (value === null || value === undefined || value === '') return null
 
+  if (propertyType === 'checkbox') {
+    return { checkbox: Boolean(value) }
+  }
+
   const values = Array.isArray(value) ? value.filter(Boolean) : [value].filter(Boolean)
   const firstValue = values[0]
   if (!firstValue) return null
@@ -174,8 +178,6 @@ function buildPropertyForDatabaseType(propertyType, value) {
         ? { date: { start: dateValue } }
         : null
     }
-    case 'checkbox':
-      return { checkbox: Boolean(firstValue) }
     case 'number': {
       const parsed = Number.parseFloat(String(firstValue).replace(',', '.'))
       return Number.isFinite(parsed) ? { number: parsed } : null

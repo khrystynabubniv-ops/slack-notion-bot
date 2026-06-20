@@ -171,17 +171,20 @@ function formatEventOwner(department) {
   return 'не призначено'
 }
 
-function buildEventDeadlineWarning({ deadline, taskConfig, isLate }) {
-  if (!isLate || !deadline || !taskConfig?.minLeadDays) return null
+function buildEventDeadlineWarning({ deadline, taskConfig, isLate, leadTimeWarning }) {
+  const minLeadDays = leadTimeWarning?.minLeadDays || taskConfig?.minLeadDays
+  if (!isLate || !deadline || !minLeadDays) return null
 
-  const daysUntil = getDaysUntil(deadline)
+  const daysUntil = Number.isFinite(leadTimeWarning?.providedLeadDays)
+    ? leadTimeWarning.providedLeadDays
+    : getDaysUntil(deadline)
   const submittedTiming = daysUntil < 0
     ? `дедлайн уже минув на ${formatDaysUk(daysUntil)}`
     : `твій запит подано за ${formatDaysUk(daysUntil)} до дедлайну`
 
   return (
     '⚠️ Зверни увагу: за внутрішньою політикою мінімальний термін ' +
-    `для цього типу задачі - ${formatDaysUk(taskConfig.minLeadDays)}. ${submittedTiming}.\n` +
+    `для цього типу задачі - ${formatDaysUk(minLeadDays)}. ${submittedTiming}.\n` +
     'Запит переглянуть окремо, а апдейт прийде в це повідомлення.'
   )
 }
@@ -194,8 +197,9 @@ function buildEventTaskThreadText({
   deadline,
   taskConfig,
   isLate,
+  leadTimeWarning,
 }) {
-  const warning = buildEventDeadlineWarning({ deadline, taskConfig, isLate })
+  const warning = buildEventDeadlineWarning({ deadline, taskConfig, isLate, leadTimeWarning })
 
   return [
     '🎪 *Твій запит прийнято!*',
@@ -221,6 +225,7 @@ function buildTaskThreadText({
   deadline = null,
   taskConfig = null,
   isLate = false,
+  leadTimeWarning = null,
 }) {
   if (department?.key === 'event') {
     return buildEventTaskThreadText({
@@ -231,6 +236,7 @@ function buildTaskThreadText({
       deadline,
       taskConfig,
       isLate,
+      leadTimeWarning,
     })
   }
 
@@ -248,6 +254,32 @@ function buildTaskThreadText({
       ? 'Задачу передано в дизайн-команду. Щойно дизайнер візьме її в роботу, ти побачиш оновлення в цьому треді.'
       : `Задачу передано в ${department?.label || 'команду'}. Щойно відповідальний візьме її в роботу, ти побачиш оновлення в цьому треді.`,
   ].join('\n')
+}
+
+function getFieldAnswerValue(fieldAnswers = [], key) {
+  return fieldAnswers.find((field) => field.key === key)?.formattedValue || null
+}
+
+function buildSubmittedTaskName({
+  department,
+  taskConfig,
+  name,
+  taskTypeLabel,
+  fieldAnswers,
+}) {
+  const primaryName = String(name || taskTypeLabel || 'Новий запит').trim()
+
+  if (department?.key !== 'event' || !taskConfig?.shortTitle) {
+    return primaryName
+  }
+
+  const secondaryName = taskConfig.secondaryTitleFieldKey
+    ? getFieldAnswerValue(fieldAnswers, taskConfig.secondaryTitleFieldKey)
+    : null
+
+  return secondaryName
+    ? `[${taskConfig.shortTitle}] ${primaryName} / ${secondaryName}`
+    : `[${taskConfig.shortTitle}] ${primaryName}`
 }
 
 async function resolveSlackPersonName(client, { userId, userName }) {
@@ -310,6 +342,7 @@ function extractElementValue(element) {
 }
 
 function formatFieldValue(value, field) {
+  if (field?.type === 'checkbox') return value ? 'Так' : 'Ні'
   if (Array.isArray(value)) return value.join(', ')
   if (field?.type === 'slack_user' && value) return `<@${value}>`
   return value || null
@@ -327,6 +360,21 @@ function getFieldElement(values, fieldKey) {
   return values?.[`${fieldKey}_block`]?.[fieldKey] || null
 }
 
+function extractDynamicFieldValue(values, field) {
+  if (field.type === 'time_range') {
+    const startTime = extractElementValue(getFieldElement(values, `${field.key}_from`))
+    const endTime = extractElementValue(getFieldElement(values, `${field.key}_to`))
+
+    return startTime && endTime ? `${startTime} - ${endTime}` : null
+  }
+
+  if (field.type === 'checkbox') {
+    return extractElementValue(getFieldElement(values, field.key))?.length > 0
+  }
+
+  return extractElementValue(getFieldElement(values, field.key))
+}
+
 async function extractDynamicSubmissionFields({ client, departmentKey, taskType, values }) {
   const fields = getDepartmentTaskFields(departmentKey, taskType)
   const fieldAnswers = []
@@ -336,7 +384,9 @@ async function extractDynamicSubmissionFields({ client, departmentKey, taskType,
   let platforms = []
 
   for (const field of fields) {
-    const rawValue = extractElementValue(getFieldElement(values, field.key))
+    const rawValue = extractDynamicFieldValue(values, field)
+    if (field.type === 'checkbox' && field.optional && rawValue === false) continue
+
     const formattedValue = await formatDynamicFieldValue(client, rawValue, field)
     if (!formattedValue) continue
 
@@ -404,9 +454,43 @@ function getLeadTimeText(leadTimeViolation) {
   return leadTimeViolation.taskConfig?.minLeadLabel || formatDaysUk(leadTimeViolation.minLeadDays)
 }
 
+function getConfiguredLeadTime(taskConfig, values) {
+  const defaultLeadTime = {
+    minLeadDays: taskConfig?.minLeadDays || 0,
+    minLeadLabel: taskConfig?.minLeadLabel || null,
+    recommendedLeadLabel: taskConfig?.recommendedLeadLabel || null,
+  }
+
+  if (!taskConfig?.leadTimeFieldKey || !taskConfig?.minLeadDaysByValue) {
+    return defaultLeadTime
+  }
+
+  const leadTimeValue = extractElementValue(getFieldElement(values, taskConfig.leadTimeFieldKey))
+  const leadTimeConfig = taskConfig.minLeadDaysByValue[leadTimeValue]
+  if (!leadTimeConfig) return defaultLeadTime
+
+  if (typeof leadTimeConfig === 'number') {
+    return {
+      minLeadDays: leadTimeConfig,
+      minLeadLabel: null,
+      recommendedLeadLabel: null,
+    }
+  }
+
+  return {
+    minLeadDays: leadTimeConfig.minLeadDays || 0,
+    minLeadLabel: leadTimeConfig.minLeadLabel || null,
+    recommendedLeadLabel: leadTimeConfig.recommendedLeadLabel || null,
+  }
+}
+
 function getLeadTimeViolation({ departmentKey, taskType, deadline, values }) {
   const taskConfig = getDepartmentTaskType(departmentKey, taskType)
-  const minLeadDays = taskConfig?.minLeadDays || 0
+  const {
+    minLeadDays,
+    minLeadLabel,
+    recommendedLeadLabel,
+  } = getConfiguredLeadTime(taskConfig, values)
   if (!minLeadDays || !deadline) return null
 
   const providedLeadDays = getDaysUntil(deadline)
@@ -415,8 +499,8 @@ function getLeadTimeViolation({ departmentKey, taskType, deadline, values }) {
   return {
     taskConfig,
     minLeadDays,
-    minLeadLabel: taskConfig?.minLeadLabel || null,
-    recommendedLeadLabel: taskConfig?.recommendedLeadLabel || null,
+    minLeadLabel,
+    recommendedLeadLabel,
     providedLeadDays,
     override: getLeadTimeOverride(values),
   }
@@ -444,13 +528,20 @@ async function createTaskFromSubmissionPayload(client, payload) {
     fieldAnswers,
     artifacts,
     isLate,
+    leadTimeWarning,
   } = payload
   const departmentKey = resolveDepartmentKey(rawDepartmentKey)
   const department = getDepartment(departmentKey)
   const taskConfig = getDepartmentTaskType(departmentKey, taskType)
   const slackPersonName = await resolveSlackPersonName(client, { userId, userName })
   let notificationTrackingEnabled = true
-  const taskName = applyTestTaskPrefix(name || taskTypeLabel)
+  const taskName = applyTestTaskPrefix(buildSubmittedTaskName({
+    department,
+    taskConfig,
+    name,
+    taskTypeLabel,
+    fieldAnswers,
+  }))
 
   const { pageId, pageUrl } = await createNotionPage({
     departmentKey,
@@ -481,6 +572,7 @@ async function createTaskFromSubmissionPayload(client, payload) {
     deadline,
     taskConfig,
     isLate,
+    leadTimeWarning,
   })
   let requesterMessage = null
 
@@ -1024,6 +1116,14 @@ export function registerSubmissionHandlers(app) {
       fieldAnswers,
       artifacts,
       isLate,
+      leadTimeWarning: isLate
+        ? {
+            minLeadDays: leadTimeViolation.minLeadDays,
+            minLeadLabel: leadTimeViolation.minLeadLabel,
+            recommendedLeadLabel: leadTimeViolation.recommendedLeadLabel,
+            providedLeadDays: leadTimeViolation.providedLeadDays,
+          }
+        : null,
       values,
     }
 

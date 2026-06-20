@@ -508,7 +508,9 @@ function isRootTaskMessageCandidate(message, taskName) {
   if (!text.includes(normalizedTaskName)) return false
   if (isFallbackStatusRecoveryMessage(message)) return false
 
-  return text.includes('задача створена') || text.includes('ми отримали твій запит')
+  return text.includes('задача створена') ||
+    text.includes('ми отримали твій запит') ||
+    text.includes('твій запит прийнято')
 }
 
 async function getSlackDmHistory(slackClient, slackUserId) {

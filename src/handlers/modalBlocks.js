@@ -82,6 +82,25 @@ function cloneElementWithState(block, values) {
     })
   }
 
+  if (type === 'radio_buttons' && currentValue && nextBlock.element.options) {
+    const initialOption = nextBlock.element.options.find((option) => option.value === currentValue)
+    if (initialOption) nextBlock.element.initial_option = initialOption
+  }
+
+  if (type === 'checkboxes' && nextBlock.element.options) {
+    const selectedValues = Array.isArray(currentValue)
+      ? currentValue
+      : currentValue
+        ? ['yes']
+        : []
+
+    if (selectedValues.length) {
+      nextBlock.element.initial_options = nextBlock.element.options.filter((option) => {
+        return selectedValues.includes(option.value)
+      })
+    }
+  }
+
   if (type === 'users_select' && typeof currentValue === 'string') {
     nextBlock.element.initial_user = currentValue
   }
@@ -121,12 +140,14 @@ function buildDynamicFieldBlock(field, values = {}, { dispatchAction = false } =
     ...(field.hint ? { hint: { type: 'plain_text', text: field.hint } } : {}),
   }
 
-  if (field.type === 'textarea' || field.type === 'text') {
+  if (field.type === 'textarea' || field.type === 'text' || field.type === 'number') {
     block.element = {
       type: 'plain_text_input',
       action_id: field.key,
       multiline: field.type === 'textarea',
-      ...(field.placeholder ? { placeholder: { type: 'plain_text', text: field.placeholder } } : {}),
+      ...(field.placeholder || field.type === 'number'
+        ? { placeholder: { type: 'plain_text', text: field.placeholder || 'Наприклад: 25' } }
+        : {}),
     }
   } else if (field.type === 'date') {
     block.element = {
@@ -146,6 +167,23 @@ function buildDynamicFieldBlock(field, values = {}, { dispatchAction = false } =
       action_id: field.key,
       placeholder: { type: 'plain_text', text: 'Обери...' },
       options: field.options.map(getPlainTextOption),
+    }
+  } else if (field.type === 'radio') {
+    block.element = {
+      type: 'radio_buttons',
+      action_id: field.key,
+      options: field.options.map(getPlainTextOption),
+    }
+  } else if (field.type === 'checkbox') {
+    block.element = {
+      type: 'checkboxes',
+      action_id: field.key,
+      options: [
+        {
+          text: { type: 'plain_text', text: 'Так' },
+          value: 'yes',
+        },
+      ],
     }
   } else if (field.type === 'multi_select') {
     const hasSingleOption = field.options.length === 1
@@ -173,6 +211,34 @@ function buildDynamicFieldBlock(field, values = {}, { dispatchAction = false } =
   }
 
   return cloneElementWithState(block, values)
+}
+
+function buildDynamicTimeRangeBlocks(field, values = {}) {
+  const startKey = `${field.key}_from`
+  const endKey = `${field.key}_to`
+
+  return [
+    buildDynamicFieldBlock({
+      ...field,
+      key: startKey,
+      type: 'time',
+      label: field.startLabel || `${field.label.replace(/\s+\*$/, '')} від *`,
+    }, values),
+    buildDynamicFieldBlock({
+      ...field,
+      key: endKey,
+      type: 'time',
+      label: field.endLabel || `${field.label.replace(/\s+\*$/, '')} до *`,
+    }, values),
+  ]
+}
+
+function buildDynamicFieldBlocks(field, values = {}, options = {}) {
+  if (field.type === 'time_range') {
+    return buildDynamicTimeRangeBlocks(field, values)
+  }
+
+  return [buildDynamicFieldBlock(field, values, options)]
 }
 
 function formatDaysUk(days) {
@@ -285,7 +351,7 @@ function getDynamicDepartmentBlocks(departmentKey, taskType, values = {}, option
   return [
     ...(options.leadTimeWarning ? buildLeadTimeWarningBlocks(taskConfig, options.leadTimeWarning, department) : []),
     buildDynamicNameBlock(values, taskConfig),
-    ...visibleFields.map((field) => buildDynamicFieldBlock(field, values, {
+    ...visibleFields.flatMap((field) => buildDynamicFieldBlocks(field, values, {
       dispatchAction: controllerKeys.has(field.key),
     })),
   ]

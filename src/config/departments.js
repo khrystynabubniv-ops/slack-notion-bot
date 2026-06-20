@@ -583,6 +583,19 @@ const smmTaskTypeConfig = {
   event_report: { minLeadDays: intEnv('SMM_EVENT_REPORT_MIN_LEAD_DAYS', 3) },
 }
 
+const eventComplexityOptions = selectOptions(['Simple', 'Medium', 'Complex'])
+const eventTypeOptions = selectOptions(['Партнерський', 'Власний'])
+const locationConfirmedOptions = selectOptions(['Так, є адреса', 'Ні, треба шукати'])
+const budgetPlaceholder = 'Наприклад: $500'
+const eventInternalComplexityHint =
+  'Simple - невелика подія в офісі без складного сетапу. Medium - потрібні кейтеринг, декор, подарунки або техніка. Complex - велика подія з кількома зонами, підрядниками, записом або повною координацією.'
+const eventExternalComplexityHint =
+  'Simple - локація вже зрозуміла, потрібна базова координація. Medium - треба допомогти з локацією, підрядниками, кейтерингом або логістикою. Complex - масштабна подія з бронюванням, кількома підрядниками, технікою, декором і повним супроводом.'
+const conferenceComplexityHint =
+  'Simple - базова підготовка команди та матеріалів. Medium - стенд, мерч, логістика або активність на місці. Complex - повний сетап участі: стенд, монтаж/демонтаж, логістика, активності, підрядники й багато айтемів.'
+const giftsCustomComplexityHint =
+  'Simple - готове рішення з мінімальною персоналізацією. Medium - індивідуальний набір, дизайн або кілька позицій. Complex - кастомне виробництво, складні матеріали, погодження макетів або довгий цикл виготовлення.'
+
 const eventCommonFields = [
   field('event_date', 'date', 'Дата івенту *', {
     role: 'deadline',
@@ -629,6 +642,175 @@ const eventNoteField = field('note', 'textarea', 'Додаткова інфор�
 })
 
 const eventTaskFields = {
+  merch: [
+    field('project', 'text', 'Проєкт *'),
+    field('quantity', 'number', 'Кількість *'),
+    field('references', 'textarea', 'Референси', { optional: true }),
+    field('budget', 'text', 'Бюджет, $ *', {
+      placeholder: budgetPlaceholder,
+      notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
+    }),
+    field('audience', 'text', 'Аудиторія *'),
+    field('context', 'textarea', 'Контекст - для чого потрібно *', { role: 'context' }),
+    field('deadline_receive', 'date', 'Дедлайн отримання *', {
+      role: 'deadline',
+      notionProperties: ['Deadline'],
+    }),
+  ],
+  event_internal: [
+    field('event_date', 'date', 'Дата події *', {
+      role: 'deadline',
+      notionProperties: ['Event date', 'Deadline'],
+    }),
+    field('office_location', 'text', 'Локація в офісі *'),
+    field('start_time', 'time', 'Час початку *'),
+    field('event_type', 'select', 'Тип події *', { options: eventTypeOptions }),
+    field('guests_count', 'number', 'Кількість гостей *'),
+    field('budget', 'text', 'Бюджет, $ *', {
+      placeholder: budgetPlaceholder,
+      notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
+    }),
+    field('complexity', 'select', 'Рівень складності *', {
+      options: eventComplexityOptions,
+      hint: eventInternalComplexityHint,
+    }),
+    field('concept', 'textarea', 'Концепція заходу *'),
+    field('design_concept', 'text', 'Дизайн-концепт', { optional: true }),
+    field('audience', 'text', 'Аудиторія *'),
+    field('context', 'textarea', 'Загальний контекст *', { role: 'context' }),
+    field('welcome_packs', 'checkbox', 'Потрібні велком-паки?', { optional: true }),
+    field('gifts_needed', 'checkbox', 'Потрібні подарунки?', { optional: true }),
+    field('gifts_quantity', 'number', 'Якщо подарунки потрібні - кількість', { optional: true }),
+    field('catering', 'text', 'Кейтеринг', { optional: true }),
+    field('photographer', 'checkbox', 'Потрібен фотограф?', { optional: true }),
+    field('recording', 'checkbox', 'Потрібен запис події?', { optional: true }),
+    field('badges', 'checkbox', 'Потрібні бейджі?', { optional: true }),
+    field('tech_setup', 'text', 'Технічний сетап', { optional: true }),
+  ],
+  event_external: [
+    field('event_date', 'date', 'Дата події *', {
+      role: 'deadline',
+      notionProperties: ['Event date', 'Deadline'],
+    }),
+    field('location', 'text', 'Локація *', {
+      placeholder: 'Назва локації або район',
+      notionProperties: ['Location'],
+    }),
+    field('location_confirmed', 'radio', 'Підтверджена локація? *', { options: locationConfirmedOptions }),
+    field('location_address', 'text', 'Якщо так - адреса локації', {
+      optional: true,
+      placeholder: 'Адреса локації',
+    }),
+    field('start_time', 'time', 'Час початку *'),
+    field('event_type', 'select', 'Тип події *', { options: eventTypeOptions }),
+    field('guests_count', 'number', 'Кількість гостей *'),
+    field('budget', 'text', 'Бюджет, $ *', {
+      placeholder: budgetPlaceholder,
+      notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
+    }),
+    field('complexity', 'select', 'Рівень складності *', {
+      options: eventComplexityOptions,
+      hint: eventExternalComplexityHint,
+    }),
+    field('concept', 'textarea', 'Концепція заходу *', {
+      placeholder: 'Опишіть ідею, формат і ключові активності',
+    }),
+    field('design_concept', 'text', 'Дизайн-концепт', {
+      optional: true,
+      placeholder: 'Посилання або короткий опис',
+    }),
+    field('audience', 'text', 'Аудиторія *', { placeholder: 'Для кого подія' }),
+    field('context', 'textarea', 'Загальний контекст *', {
+      role: 'context',
+      placeholder: 'Навіщо подія і який очікуваний результат',
+    }),
+    field('welcome_packs', 'checkbox', 'Потрібні велком-паки?', { optional: true }),
+    field('gifts_needed', 'checkbox', 'Потрібні подарунки?', { optional: true }),
+    field('gifts_quantity', 'number', 'Якщо подарунки потрібні - кількість', { optional: true }),
+    field('catering', 'text', 'Кейтеринг', {
+      optional: true,
+      placeholder: 'Кава, снеки, обід або інші потреби',
+    }),
+    field('photographer', 'checkbox', 'Потрібен фотограф?', { optional: true }),
+    field('recording', 'checkbox', 'Потрібен запис події?', { optional: true }),
+    field('badges', 'checkbox', 'Потрібні бейджі?', { optional: true }),
+    field('tech_setup', 'text', 'Технічний сетап', {
+      optional: true,
+      placeholder: 'Мікрофони, екран, звук, стрим тощо',
+    }),
+  ],
+  conference: [
+    field('event_date', 'date', 'Дата події *', {
+      role: 'deadline',
+      notionProperties: ['Event date', 'Deadline'],
+    }),
+    field('location', 'text', 'Локація *', { notionProperties: ['Location'] }),
+    field('setup_date', 'date', 'Дата монтажу *'),
+    field('setup_time', 'time', 'Час монтажу *'),
+    field('teardown_date', 'date', 'Дата демонтажу *'),
+    field('teardown_time', 'time', 'Час демонтажу *'),
+    field('participants_count', 'number', 'Кількість учасників від Universe *', {
+      notionProperties: ['Participants', 'Attendees'],
+    }),
+    field('event_attendees_count', 'number', 'Кількість учасників події', { optional: true }),
+    field('budget', 'text', 'Бюджет, $ *', {
+      placeholder: budgetPlaceholder,
+      notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
+    }),
+    field('complexity', 'select', 'Рівень складності *', {
+      options: eventComplexityOptions,
+      hint: conferenceComplexityHint,
+    }),
+    field('team_look', 'text', 'Зовнішній вигляд команди *'),
+    field('context', 'textarea', 'Загальний контекст *', { role: 'context' }),
+    field('stand_logistics', 'checkbox', 'Потрібна логістика стенду?', { optional: true }),
+    field('merch_packaging', 'textarea', 'Мерч для пакування', { optional: true }),
+    field('stand_activity', 'textarea', 'Активність на стенді', { optional: true }),
+    field('extra_items', 'textarea', 'Додаткові айтеми для замовлення', { optional: true }),
+  ],
+  gifts_ready: [
+    field('items', 'textarea', 'Перелік айтемів для відправки *'),
+    field('recipient_details', 'textarea', 'Реквізити отримувача - ПІБ, адреса, телефон *'),
+    field('payer', 'text', 'Хто платник за відправку *'),
+    field('gift_deadline', 'date', 'Дедлайн отримання подарунку *', {
+      role: 'deadline',
+      notionProperties: ['Deadline'],
+    }),
+  ],
+  gifts_custom: [
+    field('quantity', 'number', 'Кількість *'),
+    field('budget', 'text', 'Бюджет, $ *', {
+      placeholder: budgetPlaceholder,
+      notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
+    }),
+    field('references', 'textarea', 'Референси *'),
+    field('complexity', 'select', 'Рівень складності *', {
+      options: eventComplexityOptions,
+      hint: giftsCustomComplexityHint,
+    }),
+    field('context', 'textarea', 'Загальний контекст *', { role: 'context' }),
+    field('deadline_receive', 'date', 'Дедлайн отримання *', {
+      role: 'deadline',
+      notionProperties: ['Deadline'],
+    }),
+  ],
+  activity: [
+    field('date', 'date', 'Дата *', {
+      role: 'deadline',
+      notionProperties: ['Event date', 'Deadline'],
+    }),
+    field('location', 'text', 'Локація *', {
+      placeholder: 'Вкажіть локацію',
+      notionProperties: ['Location'],
+    }),
+    field('work_time', 'time_range', 'Час роботи *'),
+    field('references', 'textarea', 'Референси *'),
+    field('budget', 'text', 'Бюджет, $ *', {
+      placeholder: budgetPlaceholder,
+      notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
+    }),
+    field('context', 'textarea', 'Загальний контекст *', { role: 'context' }),
+  ],
   stand_concept_simple: [
     field('project_date', 'date', 'Дата проєкту *', {
       role: 'deadline',
@@ -780,11 +962,25 @@ const eventTaskFields = {
 }
 
 const eventTaskFieldsWithoutCommon = new Set([
+  'merch',
+  'event_internal',
+  'event_external',
+  'conference',
+  'gifts_ready',
+  'gifts_custom',
+  'activity',
   'stand_concept_simple',
   'stand_concept_complex',
   'field_conference',
 ])
 const eventTaskFieldsWithoutNote = new Set([
+  'merch',
+  'event_internal',
+  'event_external',
+  'conference',
+  'gifts_ready',
+  'gifts_custom',
+  'activity',
   'stand_concept_simple',
   'stand_concept_complex',
   'field_conference',
@@ -794,17 +990,102 @@ const eventTaskTypeGroups = [
   {
     label: '🎪 Event',
     options: [
+      option('Виготовлення мерчу', 'merch'),
+      option('Організація події (внутрішня локація)', 'event_internal'),
+      option('Організація події (зовнішня локація)', 'event_external'),
+      option('Підготовка до виїзної конференції / ярмарку', 'conference'),
+      option('Підготовка та відправка подарунків (готова продукція)', 'gifts_ready'),
+      option('Підготовка та відправка подарунків (індивідуальне виготовлення)', 'gifts_custom'),
+      option('Організація активності на зовнішній локації', 'activity'),
       option('Підготовка концепту стенду', 'stand_concept'),
       option('Підготовка до виїзних конференцій/ярмарків', 'field_conference'),
-      option('Новий івент', 'event_new'),
-      option('Підтримка івенту', 'event_support'),
-      option('Матеріали для івенту', 'event_materials'),
-      option('Звіт після івенту', 'event_report'),
     ],
   },
 ]
 
 const eventTaskTypeConfig = {
+  merch: {
+    label: 'Виготовлення мерчу',
+    nameLabel: 'Вид продукції *',
+    namePlaceholder: 'Вкажіть вид продукції',
+    shortTitle: 'Мерч',
+    secondaryTitleFieldKey: 'project',
+    minLeadDays: intEnv('EVENT_MERCH_MIN_LEAD_DAYS', 45),
+    minLeadLabel: '45 днів',
+    recommendedLeadLabel: '2 місяці',
+    defaultProperties: { 'EB Activity Type': 'Merch' },
+  },
+  event_internal: {
+    label: 'Організація події (внутрішня локація)',
+    nameLabel: 'Назва події *',
+    namePlaceholder: 'Вкажіть назву події',
+    shortTitle: 'Подія в офісі',
+    leadTimeFieldKey: 'complexity',
+    minLeadDaysByValue: {
+      Simple: { minLeadDays: 7, minLeadLabel: '1 тиждень' },
+      Medium: { minLeadDays: 14, minLeadLabel: '2 тижні' },
+      Complex: { minLeadDays: 21, minLeadLabel: '3 тижні' },
+    },
+    defaultProperties: { 'EB Activity Type': 'Event Internal' },
+  },
+  event_external: {
+    label: 'Організація події (зовнішня локація)',
+    nameLabel: 'Назва події *',
+    namePlaceholder: 'Наприклад: Team meetup',
+    shortTitle: 'Зовнішня подія',
+    leadTimeFieldKey: 'complexity',
+    minLeadDaysByValue: {
+      Simple: { minLeadDays: 14, minLeadLabel: '2 тижні' },
+      Medium: { minLeadDays: 21, minLeadLabel: '3 тижні' },
+      Complex: { minLeadDays: 28, minLeadLabel: '4 тижні' },
+    },
+    defaultProperties: { 'EB Activity Type': 'Event External' },
+  },
+  conference: {
+    label: 'Підготовка до виїзної конференції / ярмарку',
+    nameLabel: 'Назва проєкту / конференції *',
+    namePlaceholder: 'Вкажіть назву проєкту або конференції',
+    shortTitle: 'Конференція',
+    leadTimeFieldKey: 'complexity',
+    minLeadDaysByValue: {
+      Simple: { minLeadDays: 14, minLeadLabel: '2 тижні' },
+      Medium: { minLeadDays: 30, minLeadLabel: '1 місяць' },
+      Complex: { minLeadDays: 60, minLeadLabel: '2 місяці' },
+    },
+    defaultProperties: { 'EB Activity Type': 'Conference' },
+  },
+  gifts_ready: {
+    label: 'Підготовка та відправка подарунків (готова продукція)',
+    nameLabel: 'Назва проєкту *',
+    namePlaceholder: 'Вкажіть назву проєкту',
+    shortTitle: 'Готові подарунки',
+    minLeadDays: intEnv('EVENT_GIFTS_READY_MIN_LEAD_DAYS', 1),
+    minLeadLabel: '1 день',
+    recommendedLeadLabel: '3 дні',
+    defaultProperties: { 'EB Activity Type': 'Ready Gifts' },
+  },
+  gifts_custom: {
+    label: 'Підготовка та відправка подарунків (індивідуальне виготовлення)',
+    nameLabel: 'Для кого подарунок *',
+    namePlaceholder: 'Вкажіть отримувача або групу отримувачів',
+    shortTitle: 'Інд. подарунки',
+    leadTimeFieldKey: 'complexity',
+    minLeadDaysByValue: {
+      Simple: { minLeadDays: 2, minLeadLabel: '2 дні' },
+      Medium: { minLeadDays: 10, minLeadLabel: '1,5 тижні' },
+      Complex: { minLeadDays: 60, minLeadLabel: '2 місяці' },
+    },
+    defaultProperties: { 'EB Activity Type': 'Custom Gifts' },
+  },
+  activity: {
+    label: 'Організація активності на зовнішній локації',
+    nameLabel: 'Назва проєкту *',
+    namePlaceholder: 'Вкажіть назву проєкту',
+    shortTitle: 'Активність',
+    minLeadDays: intEnv('EVENT_ACTIVITY_MIN_LEAD_DAYS', 21),
+    minLeadLabel: '3 тижні',
+    defaultProperties: { 'EB Activity Type': 'External Activity' },
+  },
   stand_concept: {
     complexityOptions: [
       {
