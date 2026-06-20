@@ -8,6 +8,8 @@ export const DEFAULT_SMM_OWNER_ID = '77a3e7fe-a555-4c14-b794-d63a6e42a324'
 export const DEFAULT_SMM_HUB_URL = 'https://www.notion.so/SMM-Hub-375ce9899cb781aaab1ddb4c30833e23?source=copy_link'
 export const DEFAULT_SMM_FEEDBACK_DATABASE_ID = '025dce2c634e4a079ee7600ea8c63253'
 export const DEFAULT_EVENT_TEAM = 'Event'
+export const DEFAULT_EVENT_OWNER_ID = '2cdd872b-594c-815b-acd7-000259d98a51'
+export const DEFAULT_EVENT_OWNER_LABEL = 'Mariia Tarasiuk'
 export const LEGACY_STATUS_PROPERTY = 'Status'
 
 function env(name, fallback = null) {
@@ -968,20 +970,22 @@ export const departments = {
     notionTemplateId: env('NOTION_EVENT_TEMPLATE_ID', env('NOTION_EVENT_TASK_TEMPLATE_ID', null)),
     hubUrl: env('NOTION_EVENT_HUB_URL', null),
     feedbackDatabaseId: env('NOTION_EVENT_FEEDBACK_DATABASE_ID', null),
-    statusProperty: env('NOTION_EVENT_STATUS_PROPERTY', env('NOTION_SMM_STATUS_PROPERTY', 'SMM статус')),
-    initialStatus: env('NOTION_EVENT_INITIAL_STATUS', 'To do'),
+    statusProperty: env('NOTION_EVENT_STATUS_PROPERTY', 'Status'),
+    initialStatus: env('NOTION_EVENT_INITIAL_STATUS', 'Backlog'),
     completedStatuses: csvEnv('NOTION_EVENT_COMPLETED_STATUSES', 'Done,Completed,Canceled,Cancelled'),
     qualitySurveyStatuses: csvEnv('NOTION_EVENT_QUALITY_SURVEY_STATUSES', ''),
     supportsFeedbackRounds: false,
     useBodyBrief: true,
     pollIntervalSec: intEnv('NOTION_EVENT_POLL_INTERVAL_SEC', 180),
     notifyChannel: env('EVENT_CHANNEL_ID', env('SLACK_EVENT_NOTIFY_CHANNEL', null)),
-    ownerId: env('NOTION_EVENT_OWNER_ID', null),
-    ownerLabel: env('NOTION_EVENT_OWNER_LABEL', null),
+    ownerId: env('NOTION_EVENT_OWNER_ID', DEFAULT_EVENT_OWNER_ID),
+    ownerLabel: env('NOTION_EVENT_OWNER_LABEL', DEFAULT_EVENT_OWNER_LABEL),
+    ownerSlackId: env('SLACK_EVENT_OWNER_ID', env('SLACK_MARIA_USER_ID', null)),
     team: env('NOTION_EVENT_TEAM', DEFAULT_EVENT_TEAM),
     defaultProperties: {
       'Event needed': true,
       'Event briefed': true,
+      'Brief received': false,
     },
     taskTypeGroups: eventTaskTypeGroups,
     taskTypes: buildTaskTypesFromGroups(eventTaskTypeGroups, eventTaskTypeConfig),

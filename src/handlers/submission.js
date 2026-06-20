@@ -157,7 +157,83 @@ function formatQueueRetryTime(delayMs) {
   })
 }
 
-function buildTaskThreadText({ taskName, department, status = 'To do', responsible = null }) {
+function formatDateUk(dateString) {
+  if (!dateString) return 'не вказано'
+
+  const [year, month, day] = String(dateString).split('-')
+  return year && month && day ? `${day}.${month}.${year}` : dateString
+}
+
+function formatEventOwner(department) {
+  if (department?.ownerSlackId) return `<@${department.ownerSlackId}>`
+  if (department?.ownerLabel) return department.ownerLabel
+
+  return 'не призначено'
+}
+
+function buildEventDeadlineWarning({ deadline, taskConfig, isLate }) {
+  if (!isLate || !deadline || !taskConfig?.minLeadDays) return null
+
+  const daysUntil = getDaysUntil(deadline)
+  const submittedTiming = daysUntil < 0
+    ? `дедлайн уже минув на ${formatDaysUk(daysUntil)}`
+    : `твій запит подано за ${formatDaysUk(daysUntil)} до дедлайну`
+
+  return (
+    '⚠️ Зверни увагу: за внутрішньою політикою мінімальний термін ' +
+    `для цього типу задачі - ${formatDaysUk(taskConfig.minLeadDays)}. ${submittedTiming}.\n` +
+    'Запит переглянуть окремо, а апдейт прийде в це повідомлення.'
+  )
+}
+
+function buildEventTaskThreadText({
+  taskName,
+  department,
+  status,
+  taskTypeLabel,
+  deadline,
+  taskConfig,
+  isLate,
+}) {
+  const warning = buildEventDeadlineWarning({ deadline, taskConfig, isLate })
+
+  return [
+    '🎪 *Твій запит прийнято!*',
+    '',
+    `*${taskName}*`,
+    `📋 Тип: ${taskTypeLabel || taskConfig?.label || 'не вказано'}`,
+    `📅 Дедлайн: ${formatDateUk(deadline)}`,
+    `🔄 Статус: *${status || 'Backlog'}*`,
+    `👤 Відповідальна: ${formatEventOwner(department)}`,
+    warning ? '' : null,
+    warning,
+    '',
+    'Заявку створено й передано далі. Я оновлюватиму статус у цьому повідомленні й окремо напишу, коли він зміниться.',
+  ].filter((line) => line !== null).join('\n')
+}
+
+function buildTaskThreadText({
+  taskName,
+  department,
+  status = 'To do',
+  responsible = null,
+  taskTypeLabel = null,
+  deadline = null,
+  taskConfig = null,
+  isLate = false,
+}) {
+  if (department?.key === 'event') {
+    return buildEventTaskThreadText({
+      taskName,
+      department,
+      status,
+      taskTypeLabel,
+      deadline,
+      taskConfig,
+      isLate,
+    })
+  }
+
   const defaultResponsible = department?.ownerLabel ? { name: department.ownerLabel } : null
   const responsibleText = formatDesignerForSlack(responsible || defaultResponsible)
   const responsibleLabel = department?.key === DEFAULT_DEPARTMENT_KEY ? 'Дизайнер' : 'Відповідальний'
@@ -371,6 +447,7 @@ async function createTaskFromSubmissionPayload(client, payload) {
   } = payload
   const departmentKey = resolveDepartmentKey(rawDepartmentKey)
   const department = getDepartment(departmentKey)
+  const taskConfig = getDepartmentTaskType(departmentKey, taskType)
   const slackPersonName = await resolveSlackPersonName(client, { userId, userName })
   let notificationTrackingEnabled = true
   const taskName = applyTestTaskPrefix(name || taskTypeLabel)
@@ -400,6 +477,10 @@ async function createTaskFromSubmissionPayload(client, payload) {
     taskName,
     department,
     status: department.initialStatus,
+    taskTypeLabel,
+    deadline,
+    taskConfig,
+    isLate,
   })
   let requesterMessage = null
 
@@ -420,7 +501,10 @@ async function createTaskFromSubmissionPayload(client, payload) {
           elements: [
             {
               type: 'button',
-              text: { type: 'plain_text', text: '📋 Відкрити в Notion / додати файли' },
+              text: {
+                type: 'plain_text',
+                text: departmentKey === 'event' ? 'Відкрити в Notion' : '📋 Відкрити в Notion / додати файли',
+              },
               url: pageUrl,
               style: 'primary',
             },

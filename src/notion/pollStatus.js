@@ -668,6 +668,8 @@ async function refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, c
     roundNumber: roundsCount + 1,
     designer: currentTask.designer,
     canAcceptResult,
+    requestType: task.requestType,
+    deadline: currentTask.deadline,
   })
 }
 
@@ -707,6 +709,8 @@ async function sendMissingThreadStatusRecovery(slackClient, task, currentTask, p
     completedRounds: roundsCount,
     designer: currentTask.designer,
     canAcceptResult,
+    requestType: notificationTask.requestType,
+    deadline: currentTask.deadline,
   })
 
   await checkpointMissingThreadStatusNotification(task.pageId, currentTask.status)
@@ -813,6 +817,8 @@ async function runPollingCycle(slackClient, department) {
               completedRounds: roundsCount,
               designer: currentTask.designer,
               canAcceptResult,
+              requestType: task.requestType,
+              deadline: currentTask.deadline,
             })
             rootMessageRefreshed = true
             if (!hasSlackThread(task)) {
@@ -889,6 +895,8 @@ async function runPollingCycle(slackClient, department) {
                 roundNumber: roundsCount + 1,
                 designer: currentTask.designer,
                 canAcceptResult,
+                requestType: task.requestType,
+                deadline: currentTask.deadline,
               })
               rootMessageRefreshed = true
             }
@@ -911,6 +919,8 @@ async function runPollingCycle(slackClient, department) {
                 roundNumber: roundsCount + 1,
                 designer: currentTask.designer,
                 canAcceptResult,
+                requestType: task.requestType,
+                deadline: currentTask.deadline,
               })
               rootMessageRefreshed = true
             }

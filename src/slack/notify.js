@@ -1,6 +1,8 @@
 import { formatDesignerForSlackAsync } from './designerMentions.js'
+import { getDepartment } from '../config/departments.js'
 
 const STATUS_EMOJI = {
+  Backlog: '🔄',
   'To do': '⚪',
   'In progress': '🔵',
   Comments: '🟠',
@@ -41,6 +43,18 @@ function isToDoStatus(status) {
   return normalized.includes('to do') || normalized.includes('todo') || normalized.includes('ту ду')
 }
 
+function isBacklogStatus(status) {
+  const normalized = getNormalizedStatus(status)
+  return normalized === 'backlog' || normalized.includes('backlog')
+}
+
+function formatDateUk(dateString) {
+  if (!dateString) return null
+
+  const [year, month, day] = String(dateString).split('-')
+  return year && month && day ? `${day}.${month}.${year}` : dateString
+}
+
 export async function sendStatusUpdate({
   slackClient,
   slackUserId,
@@ -60,6 +74,8 @@ export async function sendStatusUpdate({
   completedRounds = null,
   designer,
   canAcceptResult = true,
+  requestType = null,
+  deadline = null,
 }) {
   const resultUrl = normalizeUrl(finalProjectUrl)
 
@@ -78,6 +94,8 @@ export async function sendStatusUpdate({
     roundNumber,
     designer,
     canAcceptResult,
+    requestType,
+    deadline,
   })
 
   await postThreadStatusMovement(slackClient, {
@@ -107,6 +125,8 @@ export async function sendTaskFieldUpdate({
   roundNumber = 1,
   designer = null,
   canAcceptResult = true,
+  requestType = null,
+  deadline = null,
 }) {
   const resultUrl = normalizeUrl(finalProjectUrl)
 
@@ -124,6 +144,8 @@ export async function sendTaskFieldUpdate({
     roundNumber,
     designer,
     canAcceptResult,
+    requestType,
+    deadline,
   })
 
   if (!slackChannelId || !slackMessageTs) {
@@ -157,6 +179,8 @@ export async function sendReviewRequest({
   roundNumber = 1,
   designer,
   canAcceptResult = true,
+  requestType = null,
+  deadline = null,
 }) {
   const resultUrl = normalizeUrl(finalProjectUrl)
 
@@ -174,6 +198,8 @@ export async function sendReviewRequest({
     roundNumber,
     designer,
     canAcceptResult,
+    requestType,
+    deadline,
   })
 
   await postThreadReviewMovement(slackClient, {
@@ -214,6 +240,8 @@ export async function updateRootTaskMessage(slackClient, {
   statusNote = null,
   suppressStatusActions = false,
   canAcceptResult = true,
+  requestType = null,
+  deadline = null,
 }) {
   if (!channelId || !messageTs) return
 
@@ -227,6 +255,8 @@ export async function updateRootTaskMessage(slackClient, {
     taskKind,
     completedRounds,
     statusNote,
+    requestType,
+    deadline,
   })
   const actionElements = suppressStatusActions
     ? getPassiveActionElements({ pageUrl, resultUrl, status })
@@ -299,6 +329,8 @@ async function buildRootTaskText(slackClient, {
   taskKind,
   completedRounds = 0,
   statusNote = null,
+  requestType = null,
+  deadline = null,
 }) {
   const isFeedback = taskKind === 'feedback'
   const feedbackDone = isFeedback && isDoneStatus(status)
@@ -307,18 +339,47 @@ async function buildRootTaskText(slackClient, {
   const ready = feedbackReady || taskReady
   const normalizedCompletedRounds = normalizeNonNegativeInteger(completedRounds, 0)
   const isDesignDepartment = departmentKey === 'design'
+  const isEventDepartment = departmentKey === 'event'
+  const department = getDepartment(departmentKey)
   const supportsFeedbackRounds = isDesignDepartment
-  const responsiblePerson = isDesignDepartment ? designer : (designer || responsible)
+  const defaultResponsible = isEventDepartment && department?.ownerSlackId
+    ? { name: department.ownerLabel || null, userId: department.ownerSlackId }
+    : null
+  const responsiblePerson = isDesignDepartment ? designer : (designer || responsible || defaultResponsible)
   const responsibleText = await formatDesignerForSlackAsync(slackClient, responsiblePerson, {
     fallback: isDesignDepartment ? undefined : 'не призначено',
   })
-  const responsibleLabel = isDesignDepartment ? 'Дизайнер' : 'Відповідальний'
+  const responsibleLabel = isDesignDepartment ? 'Дизайнер' : isEventDepartment ? 'Відповідальна' : 'Відповідальний'
+  const responsibleIcon = isDesignDepartment ? '🎨' : isEventDepartment ? '👤' : '🎨'
+
+  if (isEventDepartment && !isFeedback) {
+    return [
+      '🎪 *Твій запит прийнято!*',
+      '',
+      `*${taskName}*`,
+      requestType ? `📋 Тип: ${requestType}` : null,
+      deadline ? `📅 Дедлайн: ${formatDateUk(deadline)}` : null,
+      `${statusEmoji} *Статус:* ${status}`,
+      `${responsibleIcon} *${responsibleLabel}:* ${responsibleText}`,
+      '',
+      getRootTaskStatusText({
+        status,
+        departmentKey,
+        isFeedback,
+        feedbackDone,
+        feedbackReady,
+        taskReady,
+        completedRounds: normalizedCompletedRounds,
+        statusNote,
+      }),
+    ].filter((line) => line !== null).join('\n')
+  }
 
   return [
     isFeedback ? null : 'Ми отримали твій запит!',
     `*${taskName}*`,
     `${statusEmoji} *Статус${isFeedback ? ' правки' : ''}:* ${status}`,
-    ready ? null : `🎨 *${responsibleLabel}:* ${responsibleText}`,
+    ready ? null : `${responsibleIcon} *${responsibleLabel}:* ${responsibleText}`,
     taskReady && supportsFeedbackRounds ? `✏️ *Раундів правок:* ${normalizedCompletedRounds}` : null,
     '',
     getRootTaskStatusText({
@@ -379,7 +440,13 @@ function getRootTaskStatusText({
       ? 'Правку передано дизайнеру.'
       : departmentKey === 'design'
         ? 'Задачу передано в дизайн-команду. Щойно дизайнер візьме її в роботу, ти побачиш оновлення в цьому треді.'
-        : 'Задачу передано в SMM. Щойно відповідальний візьме її в роботу, ти побачиш оновлення в цьому треді.'
+        : departmentKey === 'event'
+          ? 'Заявку створено й передано далі. Я оновлюватиму статус у цьому повідомленні й окремо напишу, коли він зміниться.'
+          : 'Задачу передано в SMM. Щойно відповідальний візьме її в роботу, ти побачиш оновлення в цьому треді.'
+  }
+
+  if (departmentKey === 'event' && isBacklogStatus(status)) {
+    return 'Заявку створено й передано далі. Я оновлюватиму статус у цьому повідомленні й окремо напишу, коли він зміниться.'
   }
 
   return isFeedback
