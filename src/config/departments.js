@@ -612,9 +612,10 @@ const eventCommonFields = [
     section: 'base',
     notionProperties: ['Location'],
   }),
-  field('budget', 'text', 'Бюджет', {
+  field('budget', 'text', 'Бюджет, $', {
     optional: true,
     section: 'base',
+    placeholder: budgetPlaceholder,
     notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
   }),
   field('context', 'textarea', 'Контекст / ціль івенту *', {
@@ -825,7 +826,7 @@ const eventTaskFields = {
       section: 'base',
       notionProperties: ['Stand size', 'Size'],
     }),
-    field('participants_count', 'text', 'Кількість учасників *', {
+    field('participants_count', 'number', 'Кількість учасників *', {
       section: 'base',
       notionProperties: ['Participants', 'Attendees'],
     }),
@@ -845,8 +846,9 @@ const eventTaskFields = {
     field('context', 'textarea', 'Загальний контекст / напрацьовані ідеї / напрямок *', {
       section: 'base',
     }),
-    field('budget', 'text', 'Бюджет *', {
+    field('budget', 'text', 'Бюджет, $ *', {
       section: 'base',
+      placeholder: budgetPlaceholder,
       notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
     }),
   ],
@@ -864,7 +866,7 @@ const eventTaskFields = {
       section: 'base',
       notionProperties: ['Stand size', 'Size'],
     }),
-    field('participants_count', 'text', 'Кількість учасників *', {
+    field('participants_count', 'number', 'Кількість учасників *', {
       section: 'base',
       notionProperties: ['Participants', 'Attendees'],
     }),
@@ -884,8 +886,9 @@ const eventTaskFields = {
     field('context', 'textarea', 'Загальний контекст / напрацьовані ідеї / напрямок *', {
       section: 'base',
     }),
-    field('budget', 'text', 'Бюджет *', {
+    field('budget', 'text', 'Бюджет, $ *', {
       section: 'base',
+      placeholder: budgetPlaceholder,
       notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
     }),
   ],
@@ -899,20 +902,28 @@ const eventTaskFields = {
       section: 'base',
       notionProperties: ['Location'],
     }),
-    field('installation_date', 'text', 'Дата монтажу/демонтажу *', {
+    field('setup_date', 'date', 'Дата монтажу *', {
       section: 'base',
       notionProperties: ['Mounting date', 'Installation date'],
     }),
-    field('installation_time', 'text', 'Час монтажу/демонтажу *', {
+    field('setup_time', 'time', 'Час монтажу *', {
       section: 'base',
       notionProperties: ['Mounting time', 'Installation time'],
+    }),
+    field('teardown_date', 'date', 'Дата демонтажу *', {
+      section: 'base',
+      notionProperties: ['Demounting date', 'Teardown date'],
+    }),
+    field('teardown_time', 'time', 'Час демонтажу *', {
+      section: 'base',
+      notionProperties: ['Demounting time', 'Teardown time'],
     }),
     field('logistics_needed', 'select', 'Чи потрібна логістика *', {
       section: 'base',
       options: selectOptions(['Так', 'Ні', 'Потрібно обговорити']),
       notionProperties: ['Logistics needed', 'Logistics'],
     }),
-    field('participants_count', 'text', 'Кількість учасників *', {
+    field('participants_count', 'number', 'Кількість учасників від Universe *', {
       section: 'base',
       notionProperties: ['Participants', 'Attendees'],
     }),
@@ -924,8 +935,9 @@ const eventTaskFields = {
       role: 'context',
       section: 'base',
     }),
-    field('budget', 'text', 'Бюджет *', {
+    field('budget', 'text', 'Бюджет, $ *', {
       section: 'base',
+      placeholder: budgetPlaceholder,
       notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
     }),
   ],

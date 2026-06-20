@@ -204,6 +204,32 @@ function addPropertyByDatabaseType(properties, databaseProperties, propertyNames
   return false
 }
 
+function getDatabaseOptionNames(databaseProperties, propertyName) {
+  const propertyConfig = databaseProperties[propertyName]
+  const optionSource = propertyConfig?.[propertyConfig.type]
+  return (optionSource?.options || [])
+    .map((option) => option.name)
+    .filter(Boolean)
+}
+
+function resolveStatusValue(databaseProperties, statusPropertyName, preferredStatus) {
+  const propertyType = databaseProperties[statusPropertyName]?.type
+  if (!['select', 'status'].includes(propertyType)) return preferredStatus
+
+  const optionNames = getDatabaseOptionNames(databaseProperties, statusPropertyName)
+  if (!optionNames.length || optionNames.includes(preferredStatus)) return preferredStatus
+
+  const fallbackStatus = optionNames.find((optionName) => optionName.toLowerCase() === 'to do') ||
+    optionNames[0]
+
+  console.warn(
+    `Configured status "${preferredStatus}" is missing from Notion property "${statusPropertyName}". ` +
+    `Using "${fallbackStatus}" instead.`
+  )
+
+  return fallbackStatus
+}
+
 function buildTitle(name) {
   return [{ text: { content: clampText(name) || 'Untitled' } }]
 }
@@ -414,7 +440,11 @@ export async function createNotionPage({
     properties,
     databaseProperties,
     [statusPropertyName],
-    department.initialStatus || DEFAULT_STATUS
+    resolveStatusValue(
+      databaseProperties,
+      statusPropertyName,
+      department.initialStatus || DEFAULT_STATUS
+    )
   )
   if (department.key === 'design') {
     addPropertyIfType(properties, databaseProperties, 'Design needed', ['checkbox'], {
