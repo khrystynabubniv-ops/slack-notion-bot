@@ -96,15 +96,15 @@ function getPlainTextOption(option) {
   }
 }
 
-function buildDynamicNameBlock(values = {}) {
+function buildDynamicNameBlock(values = {}, taskConfig = {}) {
   const block = {
     type: 'input',
     block_id: 'name_block',
-    label: { type: 'plain_text', text: 'Назва задачі (коротко, про що) *' },
+    label: { type: 'plain_text', text: taskConfig.nameLabel || 'Назва задачі (коротко, про що) *' },
     element: {
       type: 'plain_text_input',
       action_id: 'name',
-      placeholder: { type: 'plain_text', text: 'Коротка назва запиту' },
+      placeholder: { type: 'plain_text', text: taskConfig.namePlaceholder || 'Коротка назва запиту' },
     },
   }
 
@@ -208,10 +208,14 @@ function buildLeadTimeWarningBlocks(taskConfig, leadTimeWarning = {}, department
     : null
   const taskLabel = taskConfig?.label || 'цього типу задачі'
   const minLeadText = leadTimeWarning.minLeadLabel || getMinLeadText(taskConfig, minLeadDays)
+  const recommendedLeadText = leadTimeWarning.recommendedLeadLabel || taskConfig?.recommendedLeadLabel || null
   const reviewerText = getDepartmentReviewText(department)
   const providedText = providedLeadDays === null
     ? ''
     : ` Ти вказуєш ${formatDaysUk(providedLeadDays)}.`
+  const recommendedText = recommendedLeadText
+    ? ` Рекомендовано — *${recommendedLeadText}*.`
+    : ''
 
   return [
     {
@@ -227,7 +231,7 @@ function buildLeadTimeWarningBlocks(taskConfig, leadTimeWarning = {}, department
         type: 'mrkdwn',
         text:
           `⚠️ За політикою дедлайнів для *${taskLabel}* мінімальний термін — *${minLeadText}*.` +
-          `${providedText}\n` +
+          `${recommendedText}${providedText}\n` +
           `Можеш змінити дату або відправити задачу як late: ${reviewerText} розгляне її окремо без гарантії виконання в цей термін.`,
       },
     },
@@ -280,7 +284,7 @@ function getDynamicDepartmentBlocks(departmentKey, taskType, values = {}, option
 
   return [
     ...(options.leadTimeWarning ? buildLeadTimeWarningBlocks(taskConfig, options.leadTimeWarning, department) : []),
-    buildDynamicNameBlock(values),
+    buildDynamicNameBlock(values, taskConfig),
     ...visibleFields.map((field) => buildDynamicFieldBlock(field, values, {
       dispatchAction: controllerKeys.has(field.key),
     })),

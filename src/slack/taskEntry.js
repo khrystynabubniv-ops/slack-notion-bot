@@ -2,6 +2,7 @@ import {
   DEFAULT_DEPARTMENT_KEY,
   getAllDepartments,
   getDepartment,
+  getTaskTypeComplexityOptions,
   getTaskTypeGroups,
 } from '../config/departments.js'
 
@@ -77,6 +78,51 @@ export function buildTaskTypePickerView(departmentKey = DEFAULT_DEPARTMENT_KEY) 
           action_id: 'task_type',
           placeholder: { type: 'plain_text', text: 'Вибери тип...' },
           option_groups: getTaskTypeGroups(department.key),
+        },
+      },
+    ],
+  }
+}
+
+export function buildTaskComplexityPickerView({
+  departmentKey = DEFAULT_DEPARTMENT_KEY,
+  taskType,
+  taskTypeLabel,
+}) {
+  const department = getDepartment(departmentKey)
+  const complexityOptions = getTaskTypeComplexityOptions(department.key, taskType)
+
+  return {
+    type: 'modal',
+    callback_id: 'select_task_complexity',
+    private_metadata: JSON.stringify({ departmentKey: department.key, taskType, taskTypeLabel }),
+    title: { type: 'plain_text', text: '🎪 Складність' },
+    submit: { type: 'plain_text', text: 'Далі' },
+    close: { type: 'plain_text', text: 'Скасувати' },
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text:
+            `Обери рівень складності для *${taskTypeLabel}*.\n` +
+            complexityOptions
+              .map((option) => `*${option.label}* — ${option.description}`)
+              .join('\n'),
+        },
+      },
+      {
+        type: 'input',
+        block_id: 'complexity_block',
+        label: { type: 'plain_text', text: 'Рівень складності' },
+        element: {
+          type: 'static_select',
+          action_id: 'complexity',
+          placeholder: { type: 'plain_text', text: 'Обери рівень...' },
+          options: complexityOptions.map((option) => ({
+            text: { type: 'plain_text', text: option.label },
+            value: option.value,
+          })),
         },
       },
     ],

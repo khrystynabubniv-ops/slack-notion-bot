@@ -5,6 +5,8 @@ import {
   getDepartment,
   getDepartmentTaskFields,
   getDepartmentTaskType,
+  getTaskTypeComplexityOptions,
+  resolveTaskTypeComplexity,
   resolveDepartmentKey,
 } from '../config/departments.js'
 import {
@@ -17,7 +19,7 @@ import {
   saveTask,
 } from '../redis/store.js'
 import { formatDesignerForSlack } from '../slack/designerMentions.js'
-import { buildTaskTypePickerView } from '../slack/taskEntry.js'
+import { buildTaskComplexityPickerView, buildTaskTypePickerView } from '../slack/taskEntry.js'
 import { getModalBlocks } from './modalBlocks.js'
 
 const QUEUE_WORKER_INTERVAL_MS = Number.parseInt(
@@ -338,6 +340,7 @@ function getLeadTimeViolation({ departmentKey, taskType, deadline, values }) {
     taskConfig,
     minLeadDays,
     minLeadLabel: taskConfig?.minLeadLabel || null,
+    recommendedLeadLabel: taskConfig?.recommendedLeadLabel || null,
     providedLeadDays,
     override: getLeadTimeOverride(values),
   }
@@ -667,6 +670,31 @@ export function registerSubmissionHandlers(app) {
     const departmentKey = resolveDepartmentKey(metadata.departmentKey)
     const taskType = view.state.values.task_type_block.task_type.selected_option.value
     const taskTypeLabel = view.state.values.task_type_block.task_type.selected_option.text.text
+    const complexityOptions = getTaskTypeComplexityOptions(departmentKey, taskType)
+
+    if (complexityOptions.length > 0) {
+      await ack({
+        response_action: 'update',
+        view: buildTaskComplexityPickerView({ departmentKey, taskType, taskTypeLabel }),
+      })
+      return
+    }
+
+    await ack({
+      response_action: 'update',
+      view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel }),
+    })
+  })
+
+  app.view('select_task_complexity', async ({ ack, view }) => {
+    const metadata = parsePrivateMetadata(view.private_metadata)
+    const departmentKey = resolveDepartmentKey(metadata.departmentKey)
+    const categoryTaskType = metadata.taskType
+    const categoryTaskTypeLabel = metadata.taskTypeLabel
+    const selectedComplexity = view.state.values.complexity_block.complexity.selected_option
+    const taskType = resolveTaskTypeComplexity(departmentKey, categoryTaskType, selectedComplexity.value)
+    const taskConfig = getDepartmentTaskType(departmentKey, taskType)
+    const taskTypeLabel = taskConfig?.label || `${categoryTaskTypeLabel} — ${selectedComplexity.text.text}`
 
     await ack({
       response_action: 'update',

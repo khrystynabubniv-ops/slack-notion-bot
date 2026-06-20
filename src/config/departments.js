@@ -7,11 +7,19 @@ export const DEFAULT_SMM_TEAM = 'SMM'
 export const DEFAULT_SMM_OWNER_ID = '77a3e7fe-a555-4c14-b794-d63a6e42a324'
 export const DEFAULT_SMM_HUB_URL = 'https://www.notion.so/SMM-Hub-375ce9899cb781aaab1ddb4c30833e23?source=copy_link'
 export const DEFAULT_SMM_FEEDBACK_DATABASE_ID = '025dce2c634e4a079ee7600ea8c63253'
+export const DEFAULT_EVENT_TEAM = 'Event'
 export const LEGACY_STATUS_PROPERTY = 'Status'
 
 function env(name, fallback = null) {
   const value = process.env[name]?.trim()
   return value || fallback
+}
+
+function boolEnv(name, fallback = false) {
+  const value = process.env[name]?.trim().toLowerCase()
+  if (!value) return fallback
+
+  return ['1', 'true', 'yes', 'on'].includes(value)
 }
 
 function intEnv(name, fallback) {
@@ -573,6 +581,299 @@ const smmTaskTypeConfig = {
   event_report: { minLeadDays: intEnv('SMM_EVENT_REPORT_MIN_LEAD_DAYS', 3) },
 }
 
+const eventCommonFields = [
+  field('event_date', 'date', 'Дата івенту *', {
+    role: 'deadline',
+    section: 'base',
+    notionProperties: ['Event date', 'Deadline'],
+  }),
+  field('event_format', 'select', 'Формат івенту *', {
+    section: 'base',
+    options: selectOptions(['Online', 'Offline', 'Hybrid']),
+    notionProperties: ['Format'],
+  }),
+  field('location', 'text', 'Локація / платформа', {
+    optional: true,
+    section: 'base',
+    notionProperties: ['Location'],
+  }),
+  field('budget', 'text', 'Бюджет', {
+    optional: true,
+    section: 'base',
+    notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
+  }),
+  field('context', 'textarea', 'Контекст / ціль івенту *', {
+    role: 'context',
+    section: 'base',
+  }),
+  field('audience', 'textarea', 'Аудиторія *', {
+    section: 'base',
+    notionProperties: ['Audience', 'Target audience'],
+  }),
+  field('materials', 'text', 'Посилання на матеріали', {
+    optional: true,
+    section: 'base',
+    placeholder: 'Лендінг, Figma, Drive, референси або інші матеріали.',
+  }),
+  field('approver', 'slack_user', 'Хто погоджує з вашої сторони? *', {
+    section: 'base',
+  }),
+]
+
+const eventNoteField = field('note', 'textarea', 'Додаткова інформація / note', {
+  optional: true,
+  section: 'base',
+  placeholder: 'Усе, що важливо для Event команди і не вмістилось у полях вище.',
+})
+
+const eventTaskFields = {
+  stand_concept_simple: [
+    field('project_date', 'date', 'Дата проєкту *', {
+      role: 'deadline',
+      section: 'base',
+      notionProperties: ['Event date', 'Deadline'],
+    }),
+    field('location', 'text', 'Локація *', {
+      section: 'base',
+      notionProperties: ['Location'],
+    }),
+    field('stand_size', 'text', 'Розмір стенду *', {
+      section: 'base',
+      notionProperties: ['Stand size', 'Size'],
+    }),
+    field('participants_count', 'text', 'Кількість учасників *', {
+      section: 'base',
+      notionProperties: ['Participants', 'Attendees'],
+    }),
+    field('merch_needed', 'select', 'Чи потрібен мерч *', {
+      section: 'base',
+      options: selectOptions(['Так', 'Ні', 'Потрібно обговорити']),
+      notionProperties: ['Merch needed', 'Merch'],
+    }),
+    field('team_look', 'textarea', 'Зовнішній вигляд команди *', {
+      section: 'base',
+      notionProperties: ['Team look', 'Team appearance'],
+    }),
+    field('activity_goal', 'textarea', 'Мета активності *', {
+      role: 'context',
+      section: 'base',
+    }),
+    field('context', 'textarea', 'Загальний контекст / напрацьовані ідеї / напрямок *', {
+      section: 'base',
+    }),
+    field('budget', 'text', 'Бюджет *', {
+      section: 'base',
+      notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
+    }),
+  ],
+  stand_concept_complex: [
+    field('project_date', 'date', 'Дата проєкту *', {
+      role: 'deadline',
+      section: 'base',
+      notionProperties: ['Event date', 'Deadline'],
+    }),
+    field('location', 'text', 'Локація *', {
+      section: 'base',
+      notionProperties: ['Location'],
+    }),
+    field('stand_size', 'text', 'Розмір стенду *', {
+      section: 'base',
+      notionProperties: ['Stand size', 'Size'],
+    }),
+    field('participants_count', 'text', 'Кількість учасників *', {
+      section: 'base',
+      notionProperties: ['Participants', 'Attendees'],
+    }),
+    field('merch_needed', 'select', 'Чи потрібен мерч *', {
+      section: 'base',
+      options: selectOptions(['Так', 'Ні', 'Потрібно обговорити']),
+      notionProperties: ['Merch needed', 'Merch'],
+    }),
+    field('team_look', 'textarea', 'Зовнішній вигляд команди *', {
+      section: 'base',
+      notionProperties: ['Team look', 'Team appearance'],
+    }),
+    field('activity_goal', 'textarea', 'Мета активності *', {
+      role: 'context',
+      section: 'base',
+    }),
+    field('context', 'textarea', 'Загальний контекст / напрацьовані ідеї / напрямок *', {
+      section: 'base',
+    }),
+    field('budget', 'text', 'Бюджет *', {
+      section: 'base',
+      notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
+    }),
+  ],
+  field_conference: [
+    field('project_date', 'date', 'Дата проєкту *', {
+      role: 'deadline',
+      section: 'base',
+      notionProperties: ['Event date', 'Deadline'],
+    }),
+    field('location', 'text', 'Локація *', {
+      section: 'base',
+      notionProperties: ['Location'],
+    }),
+    field('installation_date', 'text', 'Дата монтажу/демонтажу *', {
+      section: 'base',
+      notionProperties: ['Mounting date', 'Installation date'],
+    }),
+    field('installation_time', 'text', 'Час монтажу/демонтажу *', {
+      section: 'base',
+      notionProperties: ['Mounting time', 'Installation time'],
+    }),
+    field('logistics_needed', 'select', 'Чи потрібна логістика *', {
+      section: 'base',
+      options: selectOptions(['Так', 'Ні', 'Потрібно обговорити']),
+      notionProperties: ['Logistics needed', 'Logistics'],
+    }),
+    field('participants_count', 'text', 'Кількість учасників *', {
+      section: 'base',
+      notionProperties: ['Participants', 'Attendees'],
+    }),
+    field('team_look', 'textarea', 'Зовнішній вигляд команди *', {
+      section: 'base',
+      notionProperties: ['Team look', 'Team appearance'],
+    }),
+    field('context', 'textarea', 'Загальний контекст *', {
+      role: 'context',
+      section: 'base',
+    }),
+    field('budget', 'text', 'Бюджет *', {
+      section: 'base',
+      notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
+    }),
+  ],
+  event_new: [
+    field('event_goal', 'textarea', 'Що має відбутися / короткий опис *'),
+    field('expected_attendees', 'text', 'Орієнтовна кількість учасників', {
+      optional: true,
+      notionProperties: ['Attendees', 'Participants'],
+    }),
+    field('deliverables', 'textarea', 'Що потрібно від Event команди *'),
+  ],
+  event_support: [
+    field('current_status', 'textarea', 'Що вже готово *'),
+    field('support_needed', 'textarea', 'Яка підтримка потрібна *'),
+  ],
+  event_materials: [
+    field('materials_needed', 'textarea', 'Які матеріали потрібні *'),
+    field('sizes_formats', 'textarea', 'Формати / розміри', {
+      optional: true,
+      notionProperties: ['Formats', 'Sizes'],
+    }),
+  ],
+  event_report: [
+    field('report_data', 'textarea', 'Які дані потрібні *'),
+    field('report_format', 'select', 'Формат звіту *', {
+      options: selectOptions(['Notion', 'Презентація', 'Таблиця']),
+      notionProperties: ['Format'],
+    }),
+    field('report_deadline', 'date', 'Дедлайн звіту *', {
+      role: 'deadline',
+      notionProperties: ['Deadline'],
+    }),
+  ],
+}
+
+const eventTaskFieldsWithoutCommon = new Set([
+  'stand_concept_simple',
+  'stand_concept_complex',
+  'field_conference',
+])
+const eventTaskFieldsWithoutNote = new Set([
+  'stand_concept_simple',
+  'stand_concept_complex',
+  'field_conference',
+])
+
+const eventTaskTypeGroups = [
+  {
+    label: '🎪 Event',
+    options: [
+      option('Підготовка концепту стенду', 'stand_concept'),
+      option('Підготовка до виїзних конференцій/ярмарків', 'field_conference'),
+      option('Новий івент', 'event_new'),
+      option('Підтримка івенту', 'event_support'),
+      option('Матеріали для івенту', 'event_materials'),
+      option('Звіт після івенту', 'event_report'),
+    ],
+  },
+]
+
+const eventTaskTypeConfig = {
+  stand_concept: {
+    complexityOptions: [
+      {
+        value: 'simple',
+        label: 'SIMPLE',
+        taskType: 'stand_concept_simple',
+        description: 'Невелика активність, що є причиною збирати анкети та дарувати подарунки.',
+      },
+      {
+        value: 'complex',
+        label: 'COMPLEX',
+        taskType: 'stand_concept_complex',
+        description: 'Активність є визначною частиною стенду, навколо чого будується вся концепція.',
+      },
+    ],
+  },
+  stand_concept_simple: {
+    label: 'Підготовка концепту стенду — SIMPLE',
+    nameLabel: 'Назва проєкту *',
+    namePlaceholder: 'Назва проєкту або події',
+    category: '🎪 Event',
+    minLeadDays: intEnv('EVENT_STAND_CONCEPT_SIMPLE_MIN_LEAD_DAYS', 21),
+    minLeadLabel: '3 тижні',
+    recommendedLeadLabel: '1 місяць',
+    defaultProperties: {
+      'EB Activity Type': 'Підготовка концепту стенду',
+      Complexity: 'SIMPLE',
+    },
+  },
+  stand_concept_complex: {
+    label: 'Підготовка концепту стенду — COMPLEX',
+    nameLabel: 'Назва проєкту *',
+    namePlaceholder: 'Назва проєкту або події',
+    category: '🎪 Event',
+    minLeadDays: intEnv('EVENT_STAND_CONCEPT_COMPLEX_MIN_LEAD_DAYS', 45),
+    minLeadLabel: '1,5 місяці',
+    recommendedLeadLabel: '2 місяці',
+    defaultProperties: {
+      'EB Activity Type': 'Підготовка концепту стенду',
+      Complexity: 'COMPLEX',
+    },
+  },
+  field_conference: {
+    label: 'Підготовка до виїзних конференцій/ярмарків',
+    nameLabel: 'Назва проєкту *',
+    namePlaceholder: 'Назва проєкту або події',
+    minLeadDays: intEnv('EVENT_FIELD_CONFERENCE_MIN_LEAD_DAYS', 18),
+    minLeadLabel: '2,5 тижні',
+    recommendedLeadLabel: '3 тижні',
+    defaultProperties: {
+      'EB Activity Type': 'Підготовка до виїзних конференцій/ярмарків',
+    },
+  },
+  event_new: {
+    minLeadDays: intEnv('EVENT_NEW_MIN_LEAD_DAYS', 30),
+    defaultProperties: { 'EB Activity Type': 'Event' },
+  },
+  event_support: {
+    minLeadDays: intEnv('EVENT_SUPPORT_MIN_LEAD_DAYS', 14),
+    defaultProperties: { 'EB Activity Type': 'Event support' },
+  },
+  event_materials: {
+    minLeadDays: intEnv('EVENT_MATERIALS_MIN_LEAD_DAYS', 7),
+    defaultProperties: { 'EB Activity Type': 'Event materials' },
+  },
+  event_report: {
+    minLeadDays: intEnv('EVENT_REPORT_MIN_LEAD_DAYS', 3),
+    defaultProperties: { 'EB Activity Type': 'Event report' },
+  },
+}
+
 function buildTaskTypesFromGroups(groups, extraConfigByKey = {}) {
   const taskTypes = {}
 
@@ -587,7 +888,21 @@ function buildTaskTypesFromGroups(groups, extraConfigByKey = {}) {
     }
   }
 
+  for (const [key, config] of Object.entries(extraConfigByKey)) {
+    if (!taskTypes[key] && config.label) {
+      taskTypes[key] = {
+        key,
+        category: config.category || null,
+        ...config,
+      }
+    }
+  }
+
   return taskTypes
+}
+
+function isEventDepartmentEnabled() {
+  return boolEnv('EVENT_DEPARTMENT_ENABLED') || Boolean(env('NOTION_EVENT_DATABASE_ID'))
 }
 
 export const departments = {
@@ -641,12 +956,47 @@ export const departments = {
     taskTypeGroups: smmTaskTypeGroups,
     taskTypes: buildTaskTypesFromGroups(smmTaskTypeGroups, smmTaskTypeConfig),
   },
+  event: {
+    key: 'event',
+    label: 'Event',
+    emoji: '🎪',
+    active: isEventDepartmentEnabled(),
+    notionDataSourceId: env(
+      'NOTION_EVENT_DATABASE_ID',
+      env('NOTION_ACTIVITIES_DATABASE_ID', env('NOTION_DATABASE_ID', DEFAULT_ACTIVITIES_DATABASE_ID))
+    ),
+    notionTemplateId: env('NOTION_EVENT_TEMPLATE_ID', env('NOTION_EVENT_TASK_TEMPLATE_ID', null)),
+    hubUrl: env('NOTION_EVENT_HUB_URL', null),
+    feedbackDatabaseId: env('NOTION_EVENT_FEEDBACK_DATABASE_ID', null),
+    statusProperty: env('NOTION_EVENT_STATUS_PROPERTY', env('NOTION_SMM_STATUS_PROPERTY', 'SMM статус')),
+    initialStatus: env('NOTION_EVENT_INITIAL_STATUS', 'To do'),
+    completedStatuses: csvEnv('NOTION_EVENT_COMPLETED_STATUSES', 'Done,Completed,Canceled,Cancelled'),
+    qualitySurveyStatuses: csvEnv('NOTION_EVENT_QUALITY_SURVEY_STATUSES', ''),
+    supportsFeedbackRounds: false,
+    useBodyBrief: true,
+    pollIntervalSec: intEnv('NOTION_EVENT_POLL_INTERVAL_SEC', 180),
+    notifyChannel: env('EVENT_CHANNEL_ID', env('SLACK_EVENT_NOTIFY_CHANNEL', null)),
+    ownerId: env('NOTION_EVENT_OWNER_ID', null),
+    ownerLabel: env('NOTION_EVENT_OWNER_LABEL', null),
+    team: env('NOTION_EVENT_TEAM', DEFAULT_EVENT_TEAM),
+    defaultProperties: {
+      'Event needed': true,
+      'Event briefed': true,
+    },
+    taskTypeGroups: eventTaskTypeGroups,
+    taskTypes: buildTaskTypesFromGroups(eventTaskTypeGroups, eventTaskTypeConfig),
+  },
 }
 
-export const RESERVED_DEPARTMENT_KEYS = ['event', 'pr', 'employer_brand']
+export const RESERVED_DEPARTMENT_KEYS = ['pr', 'employer_brand']
+
+function isDepartmentActive(department) {
+  return Boolean(department && department.active !== false)
+}
 
 export function resolveDepartmentKey(departmentKey) {
-  return departments[departmentKey]?.key || DEFAULT_DEPARTMENT_KEY
+  const department = departments[departmentKey]
+  return isDepartmentActive(department) ? department.key : DEFAULT_DEPARTMENT_KEY
 }
 
 export function getDepartment(departmentKey) {
@@ -654,7 +1004,7 @@ export function getDepartment(departmentKey) {
 }
 
 export function getAllDepartments() {
-  return Object.values(departments)
+  return Object.values(departments).filter(isDepartmentActive)
 }
 
 export function getTaskTypeGroups(departmentKey = DEFAULT_DEPARTMENT_KEY) {
@@ -669,6 +1019,17 @@ export function getTaskTypeGroups(departmentKey = DEFAULT_DEPARTMENT_KEY) {
 
 export function getDepartmentTaskType(departmentKey, taskType) {
   return getDepartment(departmentKey).taskTypes[taskType] || null
+}
+
+export function getTaskTypeComplexityOptions(departmentKey, taskType) {
+  return getDepartmentTaskType(departmentKey, taskType)?.complexityOptions || []
+}
+
+export function resolveTaskTypeComplexity(departmentKey, taskType, complexityValue) {
+  const complexityOption = getTaskTypeComplexityOptions(departmentKey, taskType)
+    .find((option) => option.value === complexityValue)
+
+  return complexityOption?.taskType || taskType
 }
 
 export function getDepartmentTaskFields(departmentKey = DEFAULT_DEPARTMENT_KEY, taskType = null) {
@@ -686,6 +1047,17 @@ export function getDepartmentTaskFields(departmentKey = DEFAULT_DEPARTMENT_KEY, 
       ...commonFields,
       ...(smmTaskFields[taskType] || []),
       smmNoteField,
+    ]
+  }
+
+  if (department.key === 'event' && taskType) {
+    const commonFields = eventTaskFieldsWithoutCommon.has(taskType) ? [] : eventCommonFields
+    const noteFields = eventTaskFieldsWithoutNote.has(taskType) ? [] : [eventNoteField]
+
+    return [
+      ...commonFields,
+      ...(eventTaskFields[taskType] || []),
+      ...noteFields,
     ]
   }
 
