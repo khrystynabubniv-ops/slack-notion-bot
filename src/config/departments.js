@@ -583,18 +583,81 @@ const smmTaskTypeConfig = {
   event_report: { minLeadDays: intEnv('SMM_EVENT_REPORT_MIN_LEAD_DAYS', 3) },
 }
 
-const eventComplexityOptions = selectOptions(['Simple', 'Medium', 'Complex'])
 const eventTypeOptions = selectOptions(['Партнерський', 'Власний'])
 const locationConfirmedOptions = selectOptions(['Так, є адреса', 'Ні, треба шукати'])
 const budgetPlaceholder = 'Наприклад: $500'
-const eventInternalComplexityHint =
-  'Simple - невелика подія в офісі без складного сетапу. Medium - потрібні кейтеринг, декор, подарунки або техніка. Complex - велика подія з кількома зонами, підрядниками, записом або повною координацією.'
-const eventExternalComplexityHint =
-  'Simple - локація вже зрозуміла, потрібна базова координація. Medium - треба допомогти з локацією, підрядниками, кейтерингом або логістикою. Complex - масштабна подія з бронюванням, кількома підрядниками, технікою, декором і повним супроводом.'
-const conferenceComplexityHint =
-  'Simple - базова підготовка команди та матеріалів. Medium - стенд, мерч, логістика або активність на місці. Complex - повний сетап участі: стенд, монтаж/демонтаж, логістика, активності, підрядники й багато айтемів.'
-const giftsCustomComplexityHint =
-  'Simple - готове рішення з мінімальною персоналізацією. Medium - індивідуальний набір, дизайн або кілька позицій. Complex - кастомне виробництво, складні матеріали, погодження макетів або довгий цикл виготовлення.'
+
+const eventComplexityLevels = [
+  { value: 'simple', suffix: 'simple', label: 'Simple', propertyValue: 'Simple' },
+  { value: 'medium', suffix: 'medium', label: 'Medium', propertyValue: 'Medium' },
+  { value: 'complex', suffix: 'complex', label: 'Complex', propertyValue: 'Complex' },
+]
+
+function buildEventComplexityOptions(taskType, descriptionsByValue) {
+  return eventComplexityLevels.map((level) => ({
+    value: level.value,
+    label: level.label,
+    taskType: `${taskType}_${level.suffix}`,
+    description: descriptionsByValue[level.value],
+  }))
+}
+
+function eventComplexityTaskTypesFor(taskType) {
+  return eventComplexityLevels.map((level) => `${taskType}_${level.suffix}`)
+}
+
+function buildEventComplexityTaskTypeConfigs({
+  taskType,
+  label,
+  nameLabel,
+  namePlaceholder,
+  shortTitle,
+  activityType,
+  leadTimesByValue,
+}) {
+  return Object.fromEntries(eventComplexityLevels.map((level) => {
+    const leadTimeConfig = leadTimesByValue[level.value] || {}
+
+    return [
+      `${taskType}_${level.suffix}`,
+      {
+        label: `${label} — ${level.label}`,
+        nameLabel,
+        namePlaceholder,
+        shortTitle,
+        category: '🎪 Event',
+        minLeadDays: leadTimeConfig.minLeadDays,
+        minLeadLabel: leadTimeConfig.minLeadLabel,
+        recommendedLeadLabel: leadTimeConfig.recommendedLeadLabel,
+        defaultProperties: {
+          'EB Activity Type': activityType,
+          Complexity: level.propertyValue,
+        },
+      },
+    ]
+  }))
+}
+
+const eventInternalComplexityDescriptions = {
+  simple: 'невелика подія в офісі без складного сетапу.',
+  medium: 'потрібні кейтеринг, декор, подарунки або техніка.',
+  complex: 'велика подія з кількома зонами, підрядниками, записом або повною координацією.',
+}
+const eventExternalComplexityDescriptions = {
+  simple: 'локація вже зрозуміла, потрібна базова координація.',
+  medium: 'треба допомогти з локацією, підрядниками, кейтерингом або логістикою.',
+  complex: 'масштабна подія з бронюванням, кількома підрядниками, технікою, декором і повним супроводом.',
+}
+const conferenceComplexityDescriptions = {
+  simple: 'базова підготовка команди та матеріалів.',
+  medium: 'стенд, мерч, логістика або активність на місці.',
+  complex: 'повний сетап участі: стенд, монтаж/демонтаж, логістика, активності, підрядники й багато айтемів.',
+}
+const giftsCustomComplexityDescriptions = {
+  simple: 'готове рішення з мінімальною персоналізацією.',
+  medium: 'індивідуальний набір, дизайн або кілька позицій.',
+  complex: 'кастомне виробництво, складні матеріали, погодження макетів або довгий цикл виготовлення.',
+}
 
 const eventCommonFields = [
   field('event_date', 'date', 'Дата івенту *', {
@@ -671,10 +734,6 @@ const eventTaskFields = {
       placeholder: budgetPlaceholder,
       notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
     }),
-    field('complexity', 'select', 'Рівень складності *', {
-      options: eventComplexityOptions,
-      hint: eventInternalComplexityHint,
-    }),
     field('concept', 'textarea', 'Концепція заходу *'),
     field('design_concept', 'text', 'Дизайн-концепт', { optional: true }),
     field('audience', 'text', 'Аудиторія *'),
@@ -708,10 +767,6 @@ const eventTaskFields = {
     field('budget', 'text', 'Бюджет, $ *', {
       placeholder: budgetPlaceholder,
       notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
-    }),
-    field('complexity', 'select', 'Рівень складності *', {
-      options: eventComplexityOptions,
-      hint: eventExternalComplexityHint,
     }),
     field('concept', 'textarea', 'Концепція заходу *', {
       placeholder: 'Опишіть ідею, формат і ключові активності',
@@ -758,10 +813,6 @@ const eventTaskFields = {
       placeholder: budgetPlaceholder,
       notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
     }),
-    field('complexity', 'select', 'Рівень складності *', {
-      options: eventComplexityOptions,
-      hint: conferenceComplexityHint,
-    }),
     field('team_look', 'text', 'Зовнішній вигляд команди *'),
     field('context', 'textarea', 'Загальний контекст *', { role: 'context' }),
     field('stand_logistics', 'checkbox', 'Потрібна логістика стенду?', { optional: true }),
@@ -785,10 +836,6 @@ const eventTaskFields = {
       notionProperties: ['$ EB Budget', 'EB Budget', 'Budget'],
     }),
     field('references', 'textarea', 'Референси *'),
-    field('complexity', 'select', 'Рівень складності *', {
-      options: eventComplexityOptions,
-      hint: giftsCustomComplexityHint,
-    }),
     field('context', 'textarea', 'Загальний контекст *', { role: 'context' }),
     field('deadline_receive', 'date', 'Дедлайн отримання *', {
       role: 'deadline',
@@ -973,6 +1020,20 @@ const eventTaskFields = {
   ],
 }
 
+const eventComplexityTaskFieldAliases = {
+  event_internal: eventComplexityTaskTypesFor('event_internal'),
+  event_external: eventComplexityTaskTypesFor('event_external'),
+  conference: eventComplexityTaskTypesFor('conference'),
+  gifts_custom: eventComplexityTaskTypesFor('gifts_custom'),
+}
+const eventComplexityTaskTypes = Object.values(eventComplexityTaskFieldAliases).flat()
+
+for (const [sourceTaskType, derivedTaskTypes] of Object.entries(eventComplexityTaskFieldAliases)) {
+  for (const derivedTaskType of derivedTaskTypes) {
+    eventTaskFields[derivedTaskType] = eventTaskFields[sourceTaskType]
+  }
+}
+
 const eventTaskFieldsWithoutCommon = new Set([
   'merch',
   'event_internal',
@@ -981,6 +1042,7 @@ const eventTaskFieldsWithoutCommon = new Set([
   'gifts_ready',
   'gifts_custom',
   'activity',
+  ...eventComplexityTaskTypes,
   'stand_concept_simple',
   'stand_concept_complex',
   'field_conference',
@@ -993,6 +1055,7 @@ const eventTaskFieldsWithoutNote = new Set([
   'gifts_ready',
   'gifts_custom',
   'activity',
+  ...eventComplexityTaskTypes,
   'stand_concept_simple',
   'stand_concept_complex',
   'field_conference',
@@ -1015,6 +1078,27 @@ const eventTaskTypeGroups = [
   },
 ]
 
+const eventInternalLeadTimes = {
+  simple: { minLeadDays: 7, minLeadLabel: '1 тиждень' },
+  medium: { minLeadDays: 14, minLeadLabel: '2 тижні' },
+  complex: { minLeadDays: 21, minLeadLabel: '3 тижні' },
+}
+const eventExternalLeadTimes = {
+  simple: { minLeadDays: 14, minLeadLabel: '2 тижні' },
+  medium: { minLeadDays: 21, minLeadLabel: '3 тижні' },
+  complex: { minLeadDays: 28, minLeadLabel: '4 тижні' },
+}
+const conferenceLeadTimes = {
+  simple: { minLeadDays: 14, minLeadLabel: '2 тижні' },
+  medium: { minLeadDays: 30, minLeadLabel: '1 місяць' },
+  complex: { minLeadDays: 60, minLeadLabel: '2 місяці' },
+}
+const giftsCustomLeadTimes = {
+  simple: { minLeadDays: 2, minLeadLabel: '2 дні' },
+  medium: { minLeadDays: 10, minLeadLabel: '1,5 тижні' },
+  complex: { minLeadDays: 60, minLeadLabel: '2 місяці' },
+}
+
 const eventTaskTypeConfig = {
   merch: {
     label: 'Виготовлення мерчу',
@@ -1032,40 +1116,52 @@ const eventTaskTypeConfig = {
     nameLabel: 'Назва події *',
     namePlaceholder: 'Вкажіть назву події',
     shortTitle: 'Подія в офісі',
-    leadTimeFieldKey: 'complexity',
-    minLeadDaysByValue: {
-      Simple: { minLeadDays: 7, minLeadLabel: '1 тиждень' },
-      Medium: { minLeadDays: 14, minLeadLabel: '2 тижні' },
-      Complex: { minLeadDays: 21, minLeadLabel: '3 тижні' },
-    },
+    complexityOptions: buildEventComplexityOptions('event_internal', eventInternalComplexityDescriptions),
     defaultProperties: { 'EB Activity Type': 'Event Internal' },
   },
+  ...buildEventComplexityTaskTypeConfigs({
+    taskType: 'event_internal',
+    label: 'Організація події (внутрішня локація)',
+    nameLabel: 'Назва події *',
+    namePlaceholder: 'Вкажіть назву події',
+    shortTitle: 'Подія в офісі',
+    activityType: 'Event Internal',
+    leadTimesByValue: eventInternalLeadTimes,
+  }),
   event_external: {
     label: 'Організація події (зовнішня локація)',
     nameLabel: 'Назва події *',
     namePlaceholder: 'Наприклад: Team meetup',
     shortTitle: 'Зовнішня подія',
-    leadTimeFieldKey: 'complexity',
-    minLeadDaysByValue: {
-      Simple: { minLeadDays: 14, minLeadLabel: '2 тижні' },
-      Medium: { minLeadDays: 21, minLeadLabel: '3 тижні' },
-      Complex: { minLeadDays: 28, minLeadLabel: '4 тижні' },
-    },
+    complexityOptions: buildEventComplexityOptions('event_external', eventExternalComplexityDescriptions),
     defaultProperties: { 'EB Activity Type': 'Event External' },
   },
+  ...buildEventComplexityTaskTypeConfigs({
+    taskType: 'event_external',
+    label: 'Організація події (зовнішня локація)',
+    nameLabel: 'Назва події *',
+    namePlaceholder: 'Наприклад: Team meetup',
+    shortTitle: 'Зовнішня подія',
+    activityType: 'Event External',
+    leadTimesByValue: eventExternalLeadTimes,
+  }),
   conference: {
     label: 'Підготовка до виїзної конференції / ярмарку',
     nameLabel: 'Назва проєкту / конференції *',
     namePlaceholder: 'Вкажіть назву проєкту або конференції',
     shortTitle: 'Конференція',
-    leadTimeFieldKey: 'complexity',
-    minLeadDaysByValue: {
-      Simple: { minLeadDays: 14, minLeadLabel: '2 тижні' },
-      Medium: { minLeadDays: 30, minLeadLabel: '1 місяць' },
-      Complex: { minLeadDays: 60, minLeadLabel: '2 місяці' },
-    },
+    complexityOptions: buildEventComplexityOptions('conference', conferenceComplexityDescriptions),
     defaultProperties: { 'EB Activity Type': 'Conference' },
   },
+  ...buildEventComplexityTaskTypeConfigs({
+    taskType: 'conference',
+    label: 'Підготовка до виїзної конференції / ярмарку',
+    nameLabel: 'Назва проєкту / конференції *',
+    namePlaceholder: 'Вкажіть назву проєкту або конференції',
+    shortTitle: 'Конференція',
+    activityType: 'Conference',
+    leadTimesByValue: conferenceLeadTimes,
+  }),
   gifts_ready: {
     label: 'Підготовка та відправка подарунків (готова продукція)',
     nameLabel: 'Назва проєкту *',
@@ -1081,14 +1177,18 @@ const eventTaskTypeConfig = {
     nameLabel: 'Для кого подарунок *',
     namePlaceholder: 'Вкажіть отримувача або групу отримувачів',
     shortTitle: 'Інд. подарунки',
-    leadTimeFieldKey: 'complexity',
-    minLeadDaysByValue: {
-      Simple: { minLeadDays: 2, minLeadLabel: '2 дні' },
-      Medium: { minLeadDays: 10, minLeadLabel: '1,5 тижні' },
-      Complex: { minLeadDays: 60, minLeadLabel: '2 місяці' },
-    },
+    complexityOptions: buildEventComplexityOptions('gifts_custom', giftsCustomComplexityDescriptions),
     defaultProperties: { 'EB Activity Type': 'Custom Gifts' },
   },
+  ...buildEventComplexityTaskTypeConfigs({
+    taskType: 'gifts_custom',
+    label: 'Підготовка та відправка подарунків (індивідуальне виготовлення)',
+    nameLabel: 'Для кого подарунок *',
+    namePlaceholder: 'Вкажіть отримувача або групу отримувачів',
+    shortTitle: 'Інд. подарунки',
+    activityType: 'Custom Gifts',
+    leadTimesByValue: giftsCustomLeadTimes,
+  }),
   activity: {
     label: 'Організація активності на зовнішній локації',
     nameLabel: 'Назва проєкту *',
