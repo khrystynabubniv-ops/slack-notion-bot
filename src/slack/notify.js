@@ -514,6 +514,7 @@ export async function sendQualitySurvey({
 export async function sendCommentUpdate({
   slackClient,
   slackUserId,
+  departmentKey = 'design',
   taskName,
   commentAuthor,
   commentText,
@@ -524,6 +525,12 @@ export async function sendCommentUpdate({
   if (!slackChannelId && !slackUserId) return
 
   const preview = formatCommentPreview(commentText)
+  const department = getDepartment(departmentKey)
+  const botLabel = department.key === 'event'
+    ? 'Event Bot'
+    : department.key === 'smm'
+      ? 'SMM Bot'
+      : 'Design Bot'
 
   await postNotification(slackClient, slackUserId, {
     text: `💬 Новий коментар у задачі ${taskName}.`,
@@ -533,7 +540,7 @@ export async function sendCommentUpdate({
         elements: [
           {
             type: 'mrkdwn',
-            text: '*Design Bot*',
+            text: `*${botLabel}*`,
           },
           {
             type: 'mrkdwn',
