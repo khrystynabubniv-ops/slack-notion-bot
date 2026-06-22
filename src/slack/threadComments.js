@@ -3,7 +3,6 @@ import {
   claimSlackThreadCommentSync,
   getTaskBySlackThread,
   releaseSlackThreadCommentSync,
-  updateLastComment,
 } from '../redis/store.js'
 
 function normalizeText(value) {
@@ -88,7 +87,6 @@ export async function handleSlackThreadCommentEvent({
   client,
   findTaskBySlackThread = getTaskBySlackThread,
   createComment = createSlackThreadComment,
-  checkpointComment = updateLastComment,
   claimSync = claimSlackThreadCommentSync,
   releaseSync = releaseSlackThreadCommentSync,
 }) {
@@ -111,15 +109,10 @@ export async function handleSlackThreadCommentEvent({
 
   try {
     const authorName = await resolveSlackAuthorName(client, event.user)
-    const comment = await createComment({
+    await createComment({
       pageId: task.pageId,
       authorName,
       text,
-    })
-
-    await checkpointComment(task.pageId, {
-      id: comment?.id || syncId,
-      createdTime: comment?.created_time || new Date().toISOString(),
     })
 
     console.log(`💬 Synced Slack thread comment ${event.channel}/${event.ts} to Notion page ${task.pageId}`)
