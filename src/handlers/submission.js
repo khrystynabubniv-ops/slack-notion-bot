@@ -327,6 +327,13 @@ function parsePrivateMetadata(privateMetadata) {
   }
 }
 
+function logModalStepError(step, error, details = {}) {
+  console.error(`${step} modal step failed: ${JSON.stringify({
+    ...details,
+    error: error?.message || String(error),
+  })}`)
+}
+
 function extractElementValue(element) {
   if (!element) return null
   if (element.value) return element.value
@@ -830,52 +837,124 @@ export function registerSubmissionHandlers(app) {
   }
 
   app.view('select_department', async ({ ack, view }) => {
-    const departmentKey = resolveDepartmentKey(
-      view.state.values.department_block.department.selected_option.value
-    )
+    try {
+      const selectedDepartment = view.state.values.department_block?.department?.selected_option
+      if (!selectedDepartment?.value) {
+        await ack({
+          response_action: 'errors',
+          errors: {
+            department_block: 'Обери команду.',
+          },
+        })
+        return
+      }
 
-    await ack({
-      response_action: 'update',
-      view: buildTaskTypePickerView(departmentKey),
-    })
+      const departmentKey = resolveDepartmentKey(selectedDepartment.value)
+
+      await ack({
+        response_action: 'update',
+        view: buildTaskTypePickerView(departmentKey),
+      })
+    } catch (error) {
+      logModalStepError('select_department', error, {
+        viewId: view?.id || null,
+        callbackId: view?.callback_id || null,
+      })
+
+      await ack({
+        response_action: 'errors',
+        errors: {
+          department_block: 'Не вдалося перейти далі. Спробуй ще раз або напиши адміну.',
+        },
+      })
+    }
   })
 
   // Крок 1 — юзер вибрав тип задачі, відкриваємо форму з полями
   app.view('select_task_type', async ({ ack, body, client, view }) => {
-    const metadata = parsePrivateMetadata(view.private_metadata)
-    const departmentKey = resolveDepartmentKey(metadata.departmentKey)
-    const taskType = view.state.values.task_type_block.task_type.selected_option.value
-    const taskTypeLabel = view.state.values.task_type_block.task_type.selected_option.text.text
-    const complexityOptions = getTaskTypeComplexityOptions(departmentKey, taskType)
+    try {
+      const metadata = parsePrivateMetadata(view.private_metadata)
+      const departmentKey = resolveDepartmentKey(metadata.departmentKey)
+      const selectedTaskType = view.state.values.task_type_block?.task_type?.selected_option
+      if (!selectedTaskType?.value) {
+        await ack({
+          response_action: 'errors',
+          errors: {
+            task_type_block: 'Обери тип запиту.',
+          },
+        })
+        return
+      }
 
-    if (complexityOptions.length > 0) {
+      const taskType = selectedTaskType.value
+      const taskTypeLabel = selectedTaskType.text.text
+      const complexityOptions = getTaskTypeComplexityOptions(departmentKey, taskType)
+
+      if (complexityOptions.length > 0) {
+        await ack({
+          response_action: 'update',
+          view: buildTaskComplexityPickerView({ departmentKey, taskType, taskTypeLabel }),
+        })
+        return
+      }
+
       await ack({
         response_action: 'update',
-        view: buildTaskComplexityPickerView({ departmentKey, taskType, taskTypeLabel }),
+        view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel }),
       })
-      return
-    }
+    } catch (error) {
+      logModalStepError('select_task_type', error, {
+        viewId: view?.id || null,
+        callbackId: view?.callback_id || null,
+      })
 
-    await ack({
-      response_action: 'update',
-      view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel }),
-    })
+      await ack({
+        response_action: 'errors',
+        errors: {
+          task_type_block: 'Не вдалося відкрити бриф. Спробуй ще раз або напиши адміну.',
+        },
+      })
+    }
   })
 
   app.view('select_task_complexity', async ({ ack, view }) => {
-    const metadata = parsePrivateMetadata(view.private_metadata)
-    const departmentKey = resolveDepartmentKey(metadata.departmentKey)
-    const categoryTaskType = metadata.taskType
-    const categoryTaskTypeLabel = metadata.taskTypeLabel
-    const selectedComplexity = view.state.values.complexity_block.complexity.selected_option
-    const taskType = resolveTaskTypeComplexity(departmentKey, categoryTaskType, selectedComplexity.value)
-    const taskConfig = getDepartmentTaskType(departmentKey, taskType)
-    const taskTypeLabel = taskConfig?.label || `${categoryTaskTypeLabel} — ${selectedComplexity.text.text}`
+    try {
+      const metadata = parsePrivateMetadata(view.private_metadata)
+      const departmentKey = resolveDepartmentKey(metadata.departmentKey)
+      const categoryTaskType = metadata.taskType
+      const categoryTaskTypeLabel = metadata.taskTypeLabel
+      const selectedComplexity = view.state.values.complexity_block?.complexity?.selected_option
+      if (!selectedComplexity?.value) {
+        await ack({
+          response_action: 'errors',
+          errors: {
+            complexity_block: 'Обери рівень складності.',
+          },
+        })
+        return
+      }
 
-    await ack({
-      response_action: 'update',
-      view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel }),
-    })
+      const taskType = resolveTaskTypeComplexity(departmentKey, categoryTaskType, selectedComplexity.value)
+      const taskConfig = getDepartmentTaskType(departmentKey, taskType)
+      const taskTypeLabel = taskConfig?.label || `${categoryTaskTypeLabel} — ${selectedComplexity.text.text}`
+
+      await ack({
+        response_action: 'update',
+        view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel }),
+      })
+    } catch (error) {
+      logModalStepError('select_task_complexity', error, {
+        viewId: view?.id || null,
+        callbackId: view?.callback_id || null,
+      })
+
+      await ack({
+        response_action: 'errors',
+        errors: {
+          complexity_block: 'Не вдалося відкрити бриф. Спробуй ще раз або напиши адміну.',
+        },
+      })
+    }
   })
 
   app.action('platform', async ({ ack, body, client }) => {

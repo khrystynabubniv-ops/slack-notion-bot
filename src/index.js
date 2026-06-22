@@ -45,10 +45,10 @@ function logSlackReceiverIssue(message, req, error) {
     context = { url: req?.url || null, contextError: contextError?.message || String(contextError) }
   }
 
-  console.error(message, {
+  console.error(`${message} ${JSON.stringify({
     ...context,
     error: error?.message || String(error || ''),
-  })
+  })}`)
 }
 
 function parseFeedbackActionValue(value) {
