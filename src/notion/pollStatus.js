@@ -275,7 +275,12 @@ async function getTrackedTaskSnapshot(department, pageId) {
     return await extractTaskSnapshotFromPage(page, department)
   } catch (error) {
     if (isUnavailableNotionPageError(error)) {
-      console.warn(`Skipping unavailable tracked page ${pageId} for ${department.key}: ${error.code || error.status}`)
+      console.warn(`Removing unavailable tracked page ${pageId} for ${department.key}: ${error.code || error.status}`)
+      try {
+        await deleteTask(pageId)
+      } catch (deleteError) {
+        console.error(`Failed to remove unavailable tracked page ${pageId} from polling:`, deleteError)
+      }
       return null
     }
 
