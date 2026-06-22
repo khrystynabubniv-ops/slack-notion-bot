@@ -28,13 +28,12 @@ export function resolvePlatform(platform) {
 export function getStatusPropertyNames(departmentKey = 'design') {
   const department = getDepartment(departmentKey)
   const configuredStatusProperty = department.statusProperty || process.env.NOTION_STATUS_PROPERTY?.trim()
+  const fallbackStatusPropertyNames = department.key === 'design'
+    ? [DEFAULT_STATUS_PROPERTY, LEGACY_STATUS_PROPERTY]
+    : [LEGACY_STATUS_PROPERTY, DEFAULT_STATUS_PROPERTY]
   const preferredStatusPropertyNames = [
-    configuredStatusProperty && configuredStatusProperty !== LEGACY_STATUS_PROPERTY
-      ? configuredStatusProperty
-      : null,
-    DEFAULT_STATUS_PROPERTY,
-    LEGACY_STATUS_PROPERTY,
     configuredStatusProperty,
+    ...fallbackStatusPropertyNames,
   ]
 
   return preferredStatusPropertyNames.filter((propertyName, index, propertyNames) => {
