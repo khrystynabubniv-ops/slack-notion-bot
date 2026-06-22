@@ -2,6 +2,7 @@ export const DEFAULT_DEPARTMENT_KEY = 'design'
 export const DEFAULT_STATUS = 'To do'
 export const DEFAULT_DESIGN_TEAM = 'Brand Design'
 export const DEFAULT_DESIGN_OWNER_ID = 'f342c30b-c5c1-4a52-8cdf-c8b636928364'
+export const DEFAULT_DESIGN_HUB_URL = 'https://www.notion.so/Brand-Design-Hub-33cce9899cb7814488c0f439326aaf2a?source=copy_link'
 export const DEFAULT_ACTIVITIES_DATABASE_ID = 'b1ff9daa012c41c597e1d5ad5dd91917'
 export const DEFAULT_SMM_TEAM = 'SMM'
 export const DEFAULT_SMM_OWNER_ID = '77a3e7fe-a555-4c14-b794-d63a6e42a324'
@@ -10,6 +11,7 @@ export const DEFAULT_SMM_FEEDBACK_DATABASE_ID = '025dce2c634e4a079ee7600ea8c6325
 export const DEFAULT_EVENT_TEAM = 'Event'
 export const DEFAULT_EVENT_OWNER_ID = '2cdd872b-594c-815b-acd7-000259d98a51'
 export const DEFAULT_EVENT_OWNER_LABEL = 'Mariia Tarasiuk'
+export const DEFAULT_EVENT_HUB_URL = 'https://www.notion.so/Event-Manager-Hub-366ce9899cb7817580bccd4a2651f925?source=copy_link'
 export const LEGACY_STATUS_PROPERTY = 'Status'
 
 function env(name, fallback = null) {
@@ -1307,7 +1309,7 @@ export const departments = {
     emoji: '🎨',
     notionDataSourceId: env('NOTION_DESIGN_DATABASE_ID', env('NOTION_DATABASE_ID')),
     notionTemplateId: env('NOTION_DESIGN_TEMPLATE_ID', env('NOTION_TEMPLATE_ID')),
-    hubUrl: env('NOTION_DESIGN_HUB_URL', env('NOTION_BRAND_DESIGN_HUB_URL', null)),
+    hubUrl: env('NOTION_DESIGN_HUB_URL', env('NOTION_BRAND_DESIGN_HUB_URL', DEFAULT_DESIGN_HUB_URL)),
     feedbackDatabaseId: env('NOTION_DESIGN_FEEDBACK_DATABASE_ID', env('NOTION_FEEDBACK_DATABASE_ID', null)),
     statusProperty: env('NOTION_DESIGN_STATUS_PROPERTY', env('NOTION_STATUS_PROPERTY', 'Design Status')),
     initialStatus: env('NOTION_DESIGN_INITIAL_STATUS', DEFAULT_STATUS),
@@ -1361,7 +1363,7 @@ export const departments = {
       env('NOTION_ACTIVITIES_DATABASE_ID', env('NOTION_DATABASE_ID', DEFAULT_ACTIVITIES_DATABASE_ID))
     ),
     notionTemplateId: env('NOTION_EVENT_TEMPLATE_ID', env('NOTION_EVENT_TASK_TEMPLATE_ID', null)),
-    hubUrl: env('NOTION_EVENT_HUB_URL', null),
+    hubUrl: env('NOTION_EVENT_HUB_URL', DEFAULT_EVENT_HUB_URL),
     feedbackDatabaseId: env('NOTION_EVENT_FEEDBACK_DATABASE_ID', null),
     statusProperty: env('NOTION_EVENT_STATUS_PROPERTY', 'Status'),
     initialStatus: env('NOTION_EVENT_INITIAL_STATUS', 'Backlog'),
