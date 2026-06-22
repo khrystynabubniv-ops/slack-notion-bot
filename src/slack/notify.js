@@ -524,8 +524,7 @@ export async function sendCommentUpdate({
   if (!slackChannelId && !slackUserId) return
 
   const preview = formatCommentPreview(commentText)
-
-  await postNotification(slackClient, slackUserId, {
+  const message = {
     text: `💬 Новий коментар у задачі ${taskName}.`,
     blocks: [
       {
@@ -568,10 +567,27 @@ export async function sendCommentUpdate({
         ],
       },
     ],
-  }, {
-    channelId: slackChannelId,
-    threadTs: slackThreadTs,
-  })
+  }
+
+  try {
+    await postNotification(slackClient, slackUserId, message, {
+      channelId: slackChannelId,
+      threadTs: slackThreadTs,
+    })
+  } catch (error) {
+    if (!slackUserId || !slackThreadTs || !shouldPostUnthreadedDmFallback(error)) {
+      throw error
+    }
+
+    console.warn(
+      `Failed to post threaded comment update ${slackChannelId || slackUserId}/${slackThreadTs}; ` +
+        'posting unthreaded DM fallback:',
+      error
+    )
+    await postNotification(slackClient, slackUserId, message, {
+      channelId: slackUserId,
+    })
+  }
 }
 
 async function postThreadStatusMovement(slackClient, {
@@ -804,6 +820,16 @@ function uniqueChannels(channels) {
 function shouldTryNextChannel(error) {
   const slackError = error?.data?.error || error?.message
   return ['channel_not_found', 'not_in_channel', 'is_archived'].includes(slackError)
+}
+
+function shouldPostUnthreadedDmFallback(error) {
+  const slackError = error?.data?.error || error?.message
+  return [
+    'channel_not_found',
+    'not_in_channel',
+    'is_archived',
+    'thread_not_found',
+  ].includes(slackError)
 }
 
 function normalizeUrl(value) {
