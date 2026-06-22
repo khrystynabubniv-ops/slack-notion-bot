@@ -1075,6 +1075,7 @@ async function runPollingCycle(slackClient, department) {
           await sendCommentUpdate({
             slackClient,
             slackUserId: task.slackUserId,
+            departmentKey: task.departmentKey,
             taskName: task.taskName,
             commentAuthor: comment.author,
             commentText: comment.text,

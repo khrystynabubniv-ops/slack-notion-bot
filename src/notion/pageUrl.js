@@ -1,8 +1,4 @@
-import { getDepartment } from '../config/departments.js'
-
-const BRAND_DESIGN_HUB_URL =
-  process.env.NOTION_BRAND_DESIGN_HUB_URL?.trim() ||
-  'https://www.notion.so/Brand-Design-Hub-33cce9899cb7814488c0f439326aaf2a?source=copy_link'
+import { DEFAULT_DESIGN_HUB_URL, getDepartment } from '../config/departments.js'
 
 function normalizePageId(pageId) {
   return pageId?.replace(/-/g, '') || ''
@@ -22,7 +18,7 @@ export function buildTaskPageUrl(pageId, fallbackUrl, departmentKey = 'design') 
   if (!normalizedPageId) return fallbackUrl || null
 
   const department = getDepartment(departmentKey)
-  const hubUrl = department.hubUrl || BRAND_DESIGN_HUB_URL
+  const hubUrl = department.hubUrl || DEFAULT_DESIGN_HUB_URL
 
   if (!hubUrl) {
     return buildDirectPageUrl(pageId, fallbackUrl)
