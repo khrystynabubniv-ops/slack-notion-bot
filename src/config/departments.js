@@ -12,6 +12,7 @@ export const DEFAULT_EVENT_TEAM = 'Event'
 export const DEFAULT_EVENT_OWNER_ID = '2cdd872b-594c-815b-acd7-000259d98a51'
 export const DEFAULT_EVENT_OWNER_LABEL = 'Mariia Tarasiuk'
 export const DEFAULT_EVENT_HUB_URL = 'https://www.notion.so/Event-Manager-Hub-366ce9899cb7817580bccd4a2651f925?source=copy_link'
+export const DEFAULT_EVENT_TEMPLATE_ID = '34ace9899cb780afb5b5e4ba36e1c2e2'
 export const LEGACY_STATUS_PROPERTY = 'Status'
 
 function env(name, fallback = null) {
@@ -1362,7 +1363,7 @@ export const departments = {
       'NOTION_EVENT_DATABASE_ID',
       env('NOTION_ACTIVITIES_DATABASE_ID', env('NOTION_DATABASE_ID', DEFAULT_ACTIVITIES_DATABASE_ID))
     ),
-    notionTemplateId: env('NOTION_EVENT_TEMPLATE_ID', env('NOTION_EVENT_TASK_TEMPLATE_ID', null)),
+    notionTemplateId: env('NOTION_EVENT_TEMPLATE_ID', env('NOTION_EVENT_TASK_TEMPLATE_ID', DEFAULT_EVENT_TEMPLATE_ID)),
     hubUrl: env('NOTION_EVENT_HUB_URL', DEFAULT_EVENT_HUB_URL),
     feedbackDatabaseId: env('NOTION_EVENT_FEEDBACK_DATABASE_ID', null),
     statusProperty: env('NOTION_EVENT_STATUS_PROPERTY', 'Status'),
