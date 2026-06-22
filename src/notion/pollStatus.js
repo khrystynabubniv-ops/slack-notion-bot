@@ -538,11 +538,14 @@ function hasSlackThread(task) {
   return Boolean(task.slackChannelId && (task.slackThreadTs || task.slackMessageTs))
 }
 
-function isInitialStatus(status) {
+function isInitialStatus(status, department) {
   const normalizedStatus = normalizeStatusName(status)
+  const initialStatus = normalizeStatusName(department?.initialStatus)
+
   return normalizedStatus === 'to do' ||
     normalizedStatus === 'todo' ||
-    normalizedStatus.includes('ту ду')
+    normalizedStatus.includes('ту ду') ||
+    (initialStatus && normalizedStatus === initialStatus)
 }
 
 function getFallbackStatusNotificationKey(status) {
@@ -562,7 +565,7 @@ function shouldSendMissingThreadStatusRecovery(task, currentTask) {
     task.slackUserId &&
       !hasSlackThread(task) &&
       notificationKey &&
-      !isInitialStatus(currentTask.status) &&
+      !isInitialStatus(currentTask.status, department) &&
       !isCompletedStatus(currentTask.status, department) &&
       (task.fallbackStatusNotifiedFor !== notificationKey ||
         task.missingThreadRestoreAttemptedFor !== restoreKey)
