@@ -4,7 +4,7 @@ import { notionRequest } from './request.js'
 import { getDepartment } from '../config/departments.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
-const PARENT_ITEM_PROPERTY = process.env.NOTION_PARENT_ITEM_PROPERTY?.trim() || 'Parent item'
+export const PARENT_ITEM_PROPERTY = process.env.NOTION_PARENT_ITEM_PROPERTY?.trim() || 'Parent item'
 
 export function normalizePageId(pageId) {
   return String(pageId || '').replace(/-/g, '').toLowerCase()

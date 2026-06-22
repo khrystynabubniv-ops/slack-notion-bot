@@ -15,6 +15,7 @@ import {
   isCommentsStatus,
   extractStatus,
   normalizePageId,
+  PARENT_ITEM_PROPERTY,
 } from './taskAcceptanceReadiness.js'
 import {
   sendCommentUpdate,
@@ -36,8 +37,19 @@ const POLLING_RATE_LIMIT_COOLDOWN_MS = Number.parseInt(
 )
 let commentPollingEnabled = true
 const pollingInProgressByDepartment = new Set()
+const pollingQueue = []
+const queuedPollingDepartmentKeys = new Set()
+let pollingQueueRunning = false
 let pollingPausedUntil = 0
 const notionUserNameCache = new Map()
+const configuredPollingStartupStaggerMs = Number.parseInt(
+  process.env.NOTION_POLL_STARTUP_STAGGER_MS || '',
+  10
+)
+const POLLING_STARTUP_STAGGER_MS =
+  Number.isFinite(configuredPollingStartupStaggerMs) && configuredPollingStartupStaggerMs >= 0
+    ? configuredPollingStartupStaggerMs
+    : 10 * 1000
 
 function normalizeStatusName(status) {
   return String(status || '').trim().toLowerCase()
@@ -229,11 +241,52 @@ function extractUrlProperty(page, propertyName) {
   return null
 }
 
-async function getCurrentTaskSnapshots(department) {
-  if (!department.notionDataSourceId) return {}
+async function extractTaskSnapshotFromPage(page, department) {
+  const status = extractStatus(page, department.key)
+  if (!status) return null
 
-  const tasks = {}
+  return {
+    pageId: page.id,
+    status,
+    assignee: extractAssignee(page),
+    designer: await extractDesignerFromProperties(page.properties, notion),
+    deadline: page.properties.Deadline?.date?.start || null,
+    finalProjectUrl: extractUrlProperty(page, 'Final project'),
+    parentPageIds: extractParentPageIds(page),
+  }
+}
 
+function isUnavailableNotionPageError(error) {
+  return error?.code === 'object_not_found' ||
+    error?.code === 'restricted_resource' ||
+    error?.status === 403 ||
+    error?.status === 404
+}
+
+async function getTrackedTaskSnapshot(department, pageId) {
+  if (!pageId) return null
+
+  try {
+    const page = await notionRequest(
+      () => notion.pages.retrieve({ page_id: pageId }),
+      `page retrieve (${department.key})`
+    )
+
+    return await extractTaskSnapshotFromPage(page, department)
+  } catch (error) {
+    if (isUnavailableNotionPageError(error)) {
+      console.warn(`Skipping unavailable tracked page ${pageId} for ${department.key}: ${error.code || error.status}`)
+      return null
+    }
+
+    throw error
+  }
+}
+
+async function getChildTaskSnapshots(department, parentPageId) {
+  if (!department.supportsFeedbackRounds || !department.notionDataSourceId || !parentPageId) return []
+
+  const childSnapshots = []
   let hasMore = true
   let startCursor
 
@@ -242,26 +295,53 @@ async function getCurrentTaskSnapshots(department) {
       () => notion.databases.query({
         database_id: department.notionDataSourceId,
         start_cursor: startCursor,
+        filter: {
+          property: PARENT_ITEM_PROPERTY,
+          relation: {
+            contains: parentPageId,
+          },
+        },
       }),
-      `database query (${department.key})`
+      `child tasks query (${department.key})`
     )
 
     for (const page of response.results) {
-      const status = extractStatus(page, department.key)
-      if (!status) continue
-
-      tasks[page.id] = {
-        status,
-        assignee: extractAssignee(page),
-        designer: await extractDesignerFromProperties(page.properties, notion),
-        deadline: page.properties.Deadline?.date?.start || null,
-        finalProjectUrl: extractUrlProperty(page, 'Final project'),
-        parentPageIds: extractParentPageIds(page),
-      }
+      const snapshot = await extractTaskSnapshotFromPage(page, department)
+      if (snapshot) childSnapshots.push(snapshot)
     }
 
     hasMore = response.has_more
     startCursor = response.next_cursor ?? undefined
+  }
+
+  return childSnapshots
+}
+
+async function getCurrentTaskSnapshots(department, trackedTasks = []) {
+  const tasks = {}
+  const trackedPageIds = [...new Set(
+    trackedTasks
+      .map((task) => task.pageId)
+      .filter(Boolean)
+  )]
+
+  for (const pageId of trackedPageIds) {
+    const snapshot = await getTrackedTaskSnapshot(department, pageId)
+    if (snapshot) tasks[snapshot.pageId] = snapshot
+  }
+
+  if (department.supportsFeedbackRounds) {
+    const parentPageIds = trackedTasks
+      .filter((task) => task.taskKind !== 'feedback')
+      .map((task) => task.pageId)
+      .filter(Boolean)
+
+    for (const parentPageId of parentPageIds) {
+      const childSnapshots = await getChildTaskSnapshots(department, parentPageId)
+      for (const snapshot of childSnapshots) {
+        tasks[snapshot.pageId] = snapshot
+      }
+    }
   }
 
   return tasks
@@ -763,7 +843,7 @@ async function runPollingCycle(slackClient, department) {
 
     if (!activeTrackedTasks.length) return
 
-    const currentTasks = await getCurrentTaskSnapshots(department)
+    const currentTasks = await getCurrentTaskSnapshots(department, activeTrackedTasks)
 
     for (const task of activeTrackedTasks) {
       const currentTask = getCurrentTaskSnapshot(currentTasks, task.pageId)
@@ -1030,10 +1110,49 @@ async function runPollingCycle(slackClient, department) {
 }
 
 export async function startPolling(slackClient) {
-  for (const department of getAllDepartments()) {
+  getAllDepartments().forEach((department, index) => {
     const intervalMs = Math.max(Number(department.pollIntervalSec || 180), 1) * 1000
+    const firstRunDelayMs = intervalMs + (index * POLLING_STARTUP_STAGGER_MS)
 
-    console.log(`🔄 Polling started for ${department.key} — every ${Math.round(intervalMs / 1000)}s`)
-    setInterval(() => runPollingCycle(slackClient, department), intervalMs)
+    console.log(
+      `🔄 Polling scheduled for ${department.key} — every ${Math.round(intervalMs / 1000)}s ` +
+        `(first run in ${Math.round(firstRunDelayMs / 1000)}s)`
+    )
+    setTimeout(() => {
+      enqueuePollingCycle(slackClient, department)
+      setInterval(() => enqueuePollingCycle(slackClient, department), intervalMs)
+    }, firstRunDelayMs)
+  })
+}
+
+async function drainPollingQueue(slackClient) {
+  if (pollingQueueRunning) return
+
+  pollingQueueRunning = true
+  try {
+    while (pollingQueue.length) {
+      const department = pollingQueue.shift()
+      queuedPollingDepartmentKeys.delete(department.key)
+      await runPollingCycle(slackClient, department)
+    }
+  } finally {
+    pollingQueueRunning = false
+    if (pollingQueue.length) {
+      void drainPollingQueue(slackClient)
+    }
   }
+}
+
+function enqueuePollingCycle(slackClient, department) {
+  if (
+    queuedPollingDepartmentKeys.has(department.key) ||
+    pollingInProgressByDepartment.has(department.key)
+  ) {
+    console.warn(`Notion polling skipped for ${department.key} because a cycle is already queued or running.`)
+    return
+  }
+
+  queuedPollingDepartmentKeys.add(department.key)
+  pollingQueue.push(department)
+  void drainPollingQueue(slackClient)
 }
