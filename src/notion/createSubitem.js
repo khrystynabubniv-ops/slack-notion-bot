@@ -4,6 +4,7 @@ import { notionRequest } from './request.js'
 import { DEFAULT_STATUS, resolveStatusPropertyName } from './taskConfig.js'
 import { extractDesignerFromProperties } from './designer.js'
 import { getDepartment } from '../config/departments.js'
+import { buildRichText, RICH_TEXT_CONTENT_LIMIT } from './richText.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const PARENT_ITEM_PROPERTY = process.env.NOTION_PARENT_ITEM_PROPERTY?.trim() || 'Parent item'
@@ -11,9 +12,6 @@ const SUB_TYPE_PROPERTY = process.env.NOTION_SUB_TYPE_PROPERTY?.trim() || 'Sub-t
 const FEEDBACK_SUB_TYPE = process.env.NOTION_FEEDBACK_SUB_TYPE?.trim() || 'правка'
 const DESCRIPTION_PROPERTY = process.env.NOTION_DESCRIPTION_PROPERTY?.trim() || 'Description'
 const FEEDBACK_TYPE_PROPERTY = process.env.NOTION_FEEDBACK_TYPE_PROPERTY?.trim() || 'Тип правки'
-const RICH_TEXT_CONTENT_LIMIT = 2000
-const RICH_TEXT_OBJECT_LIMIT = 100
-const RICH_TEXT_TRUNCATED_NOTICE = '\n\n[Обрізано: Notion має ліміт на довжину rich text поля.]'
 const COPIED_PARENT_PROPERTIES = [
   'Team',
   'Priority',
@@ -27,26 +25,6 @@ const databasePropertiesPromises = new Map()
 
 function clampText(value, limit = RICH_TEXT_CONTENT_LIMIT) {
   return value?.slice(0, limit) || ''
-}
-
-function buildRichText(value) {
-  const text = value || ''
-  const maxLength = RICH_TEXT_CONTENT_LIMIT * RICH_TEXT_OBJECT_LIMIT
-  const source = text.length > maxLength
-    ? `${text.slice(0, maxLength - RICH_TEXT_TRUNCATED_NOTICE.length)}${RICH_TEXT_TRUNCATED_NOTICE}`
-    : text
-  const chunks = []
-
-  for (let index = 0; index < source.length && chunks.length < RICH_TEXT_OBJECT_LIMIT; index += RICH_TEXT_CONTENT_LIMIT) {
-    chunks.push({
-      type: 'text',
-      text: {
-        content: source.slice(index, index + RICH_TEXT_CONTENT_LIMIT),
-      },
-    })
-  }
-
-  return chunks.length ? chunks : [{ type: 'text', text: { content: ' ' } }]
 }
 
 async function getDatabaseProperties(department) {
@@ -238,7 +216,7 @@ export async function createFeedbackSubitem({
 
   if (hasPropertyType(databaseProperties, DESCRIPTION_PROPERTY, ['rich_text'])) {
     properties[DESCRIPTION_PROPERTY] = {
-      rich_text: buildRichText(feedbackText),
+      rich_text: buildRichText(feedbackText, { emptyText: ' ' }),
     }
   }
 

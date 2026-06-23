@@ -8,6 +8,7 @@ import {
 import { getDepartment, getTestTaskPrefix } from '../config/departments.js'
 import { buildTaskPageUrl } from './pageUrl.js'
 import { notionRequest } from './request.js'
+import { buildRichText } from './richText.js'
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN })
 const notionTemplateApi = new Client({
@@ -15,42 +16,10 @@ const notionTemplateApi = new Client({
   notionVersion: '2026-03-11',
 })
 const TEMPLATE_TIMEZONE = process.env.NOTION_TEMPLATE_TIMEZONE?.trim() || 'Europe/Kiev'
-const RICH_TEXT_CONTENT_LIMIT = 2000
-const RICH_TEXT_OBJECT_LIMIT = 100
-const RICH_TEXT_TRUNCATED_NOTICE = '\n\n[Обрізано: Notion має ліміт на довжину rich text поля.]'
 const databaseSchemaPromises = new Map()
 
 function clampText(value, limit = 2000) {
   return value?.slice(0, limit) || ''
-}
-
-function buildRichText(value, limit = RICH_TEXT_CONTENT_LIMIT, maxObjects = RICH_TEXT_OBJECT_LIMIT) {
-  if (!value) return []
-
-  const maxLength = limit * maxObjects
-  const source = value.length > maxLength
-    ? `${value.slice(0, maxLength - RICH_TEXT_TRUNCATED_NOTICE.length)}${RICH_TEXT_TRUNCATED_NOTICE}`
-    : value
-  const chunks = []
-  for (let index = 0; index < source.length && chunks.length < maxObjects; index += limit) {
-    chunks.push({
-      text: {
-        content: source.slice(index, index + limit),
-      },
-    })
-  }
-
-  return chunks
-}
-
-function buildRichTextLink(content, url) {
-  return {
-    type: 'text',
-    text: {
-      content: clampText(content),
-      link: { url },
-    },
-  }
 }
 
 async function applyTemplateToPage(pageId, department) {
@@ -282,15 +251,10 @@ function buildDescription({
 }
 
 function buildBlockRichText(value) {
-  const text = String(value || '').slice(0, RICH_TEXT_CONTENT_LIMIT)
+  const text = String(value || '')
   if (!text) return []
 
-  return [
-    {
-      type: 'text',
-      text: { content: text },
-    },
-  ]
+  return buildRichText(text)
 }
 
 function buildHeadingBlock(text, level = 2) {
