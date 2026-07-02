@@ -1314,7 +1314,7 @@ export const departments = {
     feedbackDatabaseId: env('NOTION_DESIGN_FEEDBACK_DATABASE_ID', env('NOTION_FEEDBACK_DATABASE_ID', null)),
     statusProperty: env('NOTION_DESIGN_STATUS_PROPERTY', env('NOTION_STATUS_PROPERTY', 'Design Status')),
     initialStatus: env('NOTION_DESIGN_INITIAL_STATUS', DEFAULT_STATUS),
-    completedStatuses: csvEnv('NOTION_DESIGN_COMPLETED_STATUSES', env('NOTION_POLL_COMPLETED_STATUSES', 'Ready')),
+    completedStatuses: csvEnv('NOTION_DESIGN_COMPLETED_STATUSES', env('NOTION_POLL_COMPLETED_STATUSES', 'Ready,Cancelled,Canceled')),
     qualitySurveyStatuses: csvEnv('NOTION_DESIGN_QUALITY_SURVEY_STATUSES', 'Ready'),
     supportsFeedbackRounds: true,
     pollIntervalSec: intEnv('NOTION_DESIGN_POLL_INTERVAL_SEC', 180),

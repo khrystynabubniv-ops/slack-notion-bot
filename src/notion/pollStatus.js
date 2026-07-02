@@ -50,9 +50,38 @@ const POLLING_STARTUP_STAGGER_MS =
   Number.isFinite(configuredPollingStartupStaggerMs) && configuredPollingStartupStaggerMs >= 0
     ? configuredPollingStartupStaggerMs
     : 10 * 1000
+const configuredPollingTaskBatchSize = Number.parseInt(
+  process.env.NOTION_POLL_TASK_BATCH_SIZE || '',
+  10
+)
+const POLLING_TASK_BATCH_SIZE =
+  Number.isFinite(configuredPollingTaskBatchSize) && configuredPollingTaskBatchSize >= 0
+    ? configuredPollingTaskBatchSize
+    : 25
+const configuredCommentPollIntervalMs = Number.parseInt(
+  process.env.NOTION_COMMENT_POLL_INTERVAL_MS || '',
+  10
+)
+const COMMENT_POLL_INTERVAL_MS =
+  Number.isFinite(configuredCommentPollIntervalMs) && configuredCommentPollIntervalMs >= 0
+    ? configuredCommentPollIntervalMs
+    : 15 * 60 * 1000
+const configuredMaxCommentPollsPerCycle = Number.parseInt(
+  process.env.NOTION_MAX_COMMENT_POLLS_PER_CYCLE || '',
+  10
+)
+const MAX_COMMENT_POLLS_PER_CYCLE =
+  Number.isFinite(configuredMaxCommentPollsPerCycle) && configuredMaxCommentPollsPerCycle >= 0
+    ? configuredMaxCommentPollsPerCycle
+    : 8
 
 function normalizeStatusName(status) {
   return String(status || '').trim().toLowerCase()
+}
+
+function parseTimestamp(value) {
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) ? timestamp : 0
 }
 
 function isRateLimited(error) {
@@ -111,6 +140,8 @@ function isCompletedStatus(status, department) {
   return Boolean(
     normalizedStatus &&
       (completedStatusNames.includes(normalizedStatus) ||
+        normalizedStatus.includes('cancel') ||
+        normalizedStatus.includes('скас') ||
         normalizedStatus.includes('done'))
   )
 }
@@ -338,6 +369,10 @@ async function getCurrentTaskSnapshots(department, trackedTasks = []) {
   if (department.supportsFeedbackRounds) {
     const parentPageIds = trackedTasks
       .filter((task) => task.taskKind !== 'feedback')
+      .filter((task) => {
+        const snapshot = getCurrentTaskSnapshot(tasks, task.pageId)
+        return snapshot && isCommentsStatus(snapshot.status)
+      })
       .map((task) => task.pageId)
       .filter(Boolean)
 
@@ -543,6 +578,35 @@ function hasSlackThread(task) {
   return Boolean(task.slackChannelId && (task.slackThreadTs || task.slackMessageTs))
 }
 
+function getTaskPollSortTime(task) {
+  return parseTimestamp(task.lastSnapshotPollAt)
+}
+
+function getTaskTrackedSortTime(task) {
+  return parseTimestamp(task.trackedAt)
+}
+
+function selectTasksForPolling(tasks) {
+  if (!POLLING_TASK_BATCH_SIZE || tasks.length <= POLLING_TASK_BATCH_SIZE) return tasks
+
+  return [...tasks]
+    .sort((left, right) => {
+      return getTaskPollSortTime(left) - getTaskPollSortTime(right) ||
+        getTaskTrackedSortTime(left) - getTaskTrackedSortTime(right) ||
+        String(left.pageId || '').localeCompare(String(right.pageId || ''))
+    })
+    .slice(0, POLLING_TASK_BATCH_SIZE)
+}
+
+function shouldPollComments(task, commentPollsThisCycle, now = Date.now()) {
+  if (!commentPollingEnabled) return false
+  if (MAX_COMMENT_POLLS_PER_CYCLE && commentPollsThisCycle >= MAX_COMMENT_POLLS_PER_CYCLE) return false
+  if (!COMMENT_POLL_INTERVAL_MS) return true
+
+  const lastCommentPollAt = parseTimestamp(task.lastCommentPollAt)
+  return !lastCommentPollAt || now - lastCommentPollAt >= COMMENT_POLL_INTERVAL_MS
+}
+
 function isInitialStatus(status, department) {
   const normalizedStatus = normalizeStatusName(status)
   const initialStatus = normalizeStatusName(department?.initialStatus)
@@ -683,6 +747,7 @@ function getTaskSnapshotPatch(currentTask) {
     lastDesignerUserId: currentTask.designer?.userId || null,
     lastDeadline: currentTask.deadline || null,
     lastFinalProjectUrl: currentTask.finalProjectUrl || null,
+    lastSnapshotPollAt: new Date().toISOString(),
     snapshotInitialized: true,
   }
 }
@@ -731,6 +796,18 @@ function getTrackedFieldChanges(task, currentTask) {
 
 async function checkpointTaskSnapshot(pageId, currentTask) {
   await updateTaskSnapshot(pageId, getTaskSnapshotPatch(currentTask))
+}
+
+async function checkpointTaskPolled(pageId) {
+  await updateTaskSnapshot(pageId, {
+    lastSnapshotPollAt: new Date().toISOString(),
+  })
+}
+
+async function checkpointCommentPoll(pageId) {
+  await updateTaskSnapshot(pageId, {
+    lastCommentPollAt: new Date().toISOString(),
+  })
 }
 
 async function checkpointMissingThreadStatusNotification(pageId, status) {
@@ -851,14 +928,24 @@ async function runPollingCycle(slackClient, department) {
 
     if (!activeTrackedTasks.length) return
 
-    const currentTasks = await getCurrentTaskSnapshots(department, activeTrackedTasks)
+    const tasksToPoll = selectTasksForPolling(activeTrackedTasks)
 
-    for (const task of activeTrackedTasks) {
+    if (tasksToPoll.length < activeTrackedTasks.length) {
+      console.log(
+        `Polling ${tasksToPoll.length}/${activeTrackedTasks.length} active ${department.key} task(s) this cycle.`
+      )
+    }
+
+    const currentTasks = await getCurrentTaskSnapshots(department, tasksToPoll)
+    let commentPollsThisCycle = 0
+
+    for (const task of tasksToPoll) {
       const currentTask = getCurrentTaskSnapshot(currentTasks, task.pageId)
       if (!currentTask?.status) continue
       const pageUrl = task.pageUrl || buildTaskPageUrl(task.pageId, null, task.departmentKey)
       const completed = isCompletedStatus(currentTask.status, department)
       let rootMessageRefreshed = false
+      let taskSnapshotCheckpointed = false
 
       if (!task.lastStatus) {
         if (completed) {
@@ -873,11 +960,13 @@ async function runPollingCycle(slackClient, department) {
           await refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, currentTasks)
           rootMessageRefreshed = true
           await checkpointTaskSnapshot(task.pageId, currentTask)
+          taskSnapshotCheckpointed = true
           console.log(`ℹ️ Task snapshot initialized: ${task.taskName} → ${currentTask.status}`)
         }
       } else if (currentTask.status !== task.lastStatus) {
         if (normalizeStatusName(currentTask.status) === normalizeStatusName(task.lastStatus)) {
           await checkpointTaskSnapshot(task.pageId, currentTask)
+          taskSnapshotCheckpointed = true
           console.log(`ℹ️ Status casing normalized without notification: ${task.taskName} → ${currentTask.status}`)
         } else {
           try {
@@ -925,6 +1014,7 @@ async function runPollingCycle(slackClient, department) {
               continue
             } else {
               await checkpointTaskSnapshot(task.pageId, currentTask)
+              taskSnapshotCheckpointed = true
               console.log(`✅ Status snapshot updated: ${task.taskName} → ${currentTask.status}`)
             }
           } catch (error) {
@@ -948,6 +1038,7 @@ async function runPollingCycle(slackClient, department) {
         await refreshRootTaskMessage(slackClient, task, currentTask, pageUrl, currentTasks)
         rootMessageRefreshed = true
         await checkpointTaskSnapshot(task.pageId, currentTask)
+        taskSnapshotCheckpointed = true
         console.log(`ℹ️ Task field snapshot initialized: ${task.taskName}`)
       } else {
         const fieldChanges = getTrackedFieldChanges(task, currentTask)
@@ -1016,6 +1107,7 @@ async function runPollingCycle(slackClient, department) {
             }
 
             await checkpointTaskSnapshot(task.pageId, currentTask)
+            taskSnapshotCheckpointed = true
             console.log(`✅ Field snapshot updated: ${task.taskName}`)
           } catch (error) {
             console.error(
@@ -1057,8 +1149,19 @@ async function runPollingCycle(slackClient, department) {
         continue
       }
 
+      if (!taskSnapshotCheckpointed) {
+        await checkpointTaskPolled(task.pageId)
+      }
+
+      if (!shouldPollComments(task, commentPollsThisCycle)) {
+        continue
+      }
+
+      commentPollsThisCycle += 1
+
       try {
         const comments = await getOpenComments(task.pageId)
+        await checkpointCommentPoll(task.pageId)
         if (!comments.length) continue
 
         if (!task.lastCommentId && !task.lastCommentCreatedTime) {
