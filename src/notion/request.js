@@ -1,4 +1,4 @@
-const DEFAULT_MIN_INTERVAL_MS = 500
+const DEFAULT_MIN_INTERVAL_MS = 1000
 const DEFAULT_MAX_RETRIES = 4
 const DEFAULT_RETRY_DELAY_MS = 1500
 const MAX_RETRY_DELAY_MS = 30000
@@ -47,7 +47,7 @@ function getRetryDelayMs(error, attempt) {
   const retryAfterSeconds = Number.parseFloat(Array.isArray(retryAfter) ? retryAfter[0] : retryAfter)
 
   if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
-    return Math.min(Math.ceil(retryAfterSeconds * 1000), MAX_RETRY_DELAY_MS)
+    return Math.ceil(retryAfterSeconds * 1000)
   }
 
   return Math.min(DEFAULT_RETRY_DELAY_MS * 2 ** attempt, MAX_RETRY_DELAY_MS)
