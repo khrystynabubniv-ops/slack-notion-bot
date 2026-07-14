@@ -1,6 +1,6 @@
-# Slack → Notion Design Tasks Bot
+# Slack → Notion Tasks Bot
 
-Slack-бот, який дозволяє командам Design і SMM швидко приймати задачі через короткі брифи у Slack і автоматично створює сторінки в Notion. Коли статус задачі змінюється або в задачі з'являється новий відкритий коментар у Notion — автор отримує сповіщення назад у Slack.
+Slack-бот, який дозволяє командам швидко приймати задачі через короткі брифи у Slack і автоматично створює сторінки в Notion. Коли статус задачі змінюється або в задачі з'являється новий відкритий коментар у Notion — автор отримує сповіщення назад у Slack.
 
 У Phase 2 всередині коду активні два відділи: `design` і `smm`. Design лишається поведінково сумісним зі старим ботом після вибору відділу: ті самі типи задач, ті самі форми й та сама Notion-база. SMM є greenfield-гілкою, що пише в Activities через `Team=SMM`.
 
@@ -56,7 +56,7 @@ src/
 
 Legacy Design змінні лишаються сумісними: якщо `NOTION_DESIGN_DATABASE_ID` не заданий, бот використовує `NOTION_DATABASE_ID`; якщо `NOTION_DESIGN_TEMPLATE_ID` не заданий, використовує `NOTION_TEMPLATE_ID`.
 
-Phase 2 додає SMM-змінні поверх Design aliases і тестових safety-змінних:
+Phase 2 додає SMM-змінні поверх Design aliases і тестових safety-змінних. Event route для sandbox вмикається окремо, щоб production picker не показував його випадково:
 
 - `NOTION_DESIGN_DATABASE_ID`, `NOTION_DESIGN_TEMPLATE_ID`, `NOTION_DESIGN_STATUS_PROPERTY`
 - `NOTION_DESIGN_COMPLETED_STATUSES`, `NOTION_DESIGN_POLL_INTERVAL_SEC`
@@ -68,7 +68,16 @@ Phase 2 додає SMM-змінні поверх Design aliases і тестов�
 - `NOTION_SMM_QUALITY_SURVEY_STATUSES=Published`
 - `NOTION_SMM_FEEDBACK_DATABASE_ID=025dce2c634e4a079ee7600ea8c63253`
 - `NOTION_SMM_OWNER_ID`, `NOTION_SMM_OWNER_LABEL`, `NOTION_SMM_TEAM=SMM`
+- `EVENT_DEPARTMENT_ENABLED=true` або `NOTION_EVENT_DATABASE_ID` — показати `Event` у Slack picker
+- `NOTION_EVENT_DATABASE_ID` або `NOTION_ACTIVITIES_DATABASE_ID`
+- `NOTION_EVENT_STATUS_PROPERTY`, default `SMM статус` для shared Activities sandbox
+- `NOTION_EVENT_INITIAL_STATUS=To do`
+- `NOTION_EVENT_COMPLETED_STATUSES=Done,Completed,Canceled,Cancelled`
+- `NOTION_EVENT_HUB_URL`, `NOTION_EVENT_TASK_TEMPLATE_ID` / `NOTION_EVENT_TEMPLATE_ID`
+- `NOTION_EVENT_OWNER_ID`, `NOTION_EVENT_OWNER_LABEL`, `NOTION_EVENT_TEAM=Event`
+- `EVENT_CHANNEL_ID` або `SLACK_EVENT_NOTIFY_CHANNEL`
 - `DESIGN_*_MIN_LEAD_DAYS` і `SMM_*_MIN_LEAD_DAYS` для SLA/late-перевірки дедлайнів
+- `EVENT_*_MIN_LEAD_DAYS` для sandbox Event SLA/late-перевірки
 - `REDIS_KEY_PREFIX` для тестового Redis namespace
 - `TEST_TASK_PREFIX` для sandbox задач, наприклад `[ТЕСТ]`
 
@@ -93,6 +102,30 @@ npm start
 - `POST https://<host>/notion/design-task-launch`
 
 Webhook приймає payload із Notion, шукає ID батьківської задачі (`№ ID`, `No ID`, `ID`, `parentTaskId` або схожі вкладені поля) і зберігає launch context у Redis.
+
+## Railway сервери
+
+У цього репозиторію є два Railway-сервери: основний production bot і тестовий sandbox. Перед будь-якими логами, env-змінами або деплоєм завжди перевір `railway status`, щоб не оновити не той сервіс.
+
+Основний сервер:
+
+- Railway project: `responsible-healing`
+- Railway service: `slack-notion-bot`
+- Environment: `production`
+- Public URL: `https://slack-notion-bot-production-9fff.up.railway.app`
+- Slack Request URL для `Event Subscriptions`, `Interactivity & Shortcuts` і `/new-task`: `https://slack-notion-bot-production-9fff.up.railway.app/slack/events`
+- CLI link: `railway link --project de592e69-4110-49c8-ba64-bc6304f00b88 --environment production --service 0583990d-380b-48ea-8748-21d1ef14942e`
+
+Тестовий сервер:
+
+- Railway project: `design-tasks-bot-phase1-test`
+- Railway service: `design-tasks-bot-phase1-test`
+- Environment: `production`
+- Public URL: `https://design-tasks-bot-phase1-test-production.up.railway.app`
+- Slack Request URL для тестового Slack app: `https://design-tasks-bot-phase1-test-production.up.railway.app/slack/events`
+- CLI link: `railway link --project 100ff942-cd33-4cc8-8fe9-dfc27fe426ca --environment production --service e9a90e6b-10da-4e61-9945-3abaac66abdd`
+
+Не записуй у README `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `NOTION_TOKEN` або Redis token. Для діагностики Slack `401` памʼятай: `xoxb` token перевіряє Slack API calls, а `401` на `/slack/events` зазвичай означає mismatch `SLACK_SIGNING_SECRET` між Slack app і Railway.
 
 ## Departments
 
@@ -124,22 +157,32 @@ Webhook приймає payload із Notion, шукає ID батьківсько
 - `Description`: для SMM пишеться коротке `Опис нижче в тілі задачі.`, а сам бриф додається у body сторінки з секціями `Базові поля` і `Специфічні поля`
 - `Late`: ставиться тільки коли користувач підтвердив запізний дедлайн у модалці
 
+`event` є sandbox route для Phase 3 і прихований, поки не задано `EVENT_DEPARTMENT_ENABLED=true` або `NOTION_EVENT_DATABASE_ID`:
+
+- `notionDataSourceId`: `NOTION_EVENT_DATABASE_ID`, або `NOTION_ACTIVITIES_DATABASE_ID`, або legacy `NOTION_DATABASE_ID`
+- `statusProperty`: `NOTION_EVENT_STATUS_PROPERTY`, default `SMM статус` для тестів у shared Activities
+- `initialStatus`: `NOTION_EVENT_INITIAL_STATUS`, default `To do`
+- `completedStatuses`: `NOTION_EVENT_COMPLETED_STATUSES`, default `Done,Completed,Canceled,Cancelled`
+- `team`: `Event`
+- `useBodyBrief`: Event бриф пишеться в body сторінки, а `Description` лишається коротким
+- `Event date`, `$ EB Budget` і `EB Activity Type` заповнюються, якщо такі properties є у Notion database
+
 Redis tracking records now include `departmentKey`. Old records without this field are treated as `design`, so in-flight Design tasks do not need migration.
 
 ## Налаштування Slack App
 
-Потрібні OAuth-скоупи: `commands`, `chat:write`, `im:write`, `im:history`, `users:read`.
+Потрібні OAuth-скоупи: `commands`, `chat:write`, `im:write`, `im:history`, `users:read`, `users:read.email`.
 Events: `app_home_opened`, `message.im`.
 Slash command: `/new-task`.
 
-SMM не потребує нових OAuth scopes. Якщо `SMM_CHANNEL_ID` не заданий, бот працює тільки через DM-тред requester-а.
+SMM не потребує окремих department-specific OAuth scopes. `users:read.email` потрібен глобально, щоб бот міг зіставити Slack requester-а з Notion user і поставити його в `Owner`. Якщо `SMM_CHANNEL_ID` не заданий, бот працює тільки через DM-тред requester-а.
 
 Не запитуються і не потрібні для поточної логіки: `im:read`, `mpim:history`, `files:read`, `app_mentions:read`.
 
 ### Long description для Slack App
 
 ```text
-Design Tasks Bot допомагає командам швидко створювати Design/SMM-задачі зі Slack без ручного перенесення брифів у Notion.
+Tasks Bot допомагає командам швидко створювати запити зі Slack без ручного перенесення брифів у Notion.
 
 Користувач відкриває App Home або викликає slash command /new-task, обирає відділ і тип задачі, заповнює короткий бриф у Slack modal, а бот створює відповідну сторінку в Notion database. Після створення задачі бот надсилає користувачу повідомлення в DM-треді з посиланням на Notion. Коли статус задачі або результат у Notion змінюється, бот оновлює Slack-тред і повідомляє автора задачі. Якщо користувач відповідає текстом у треді повідомлення бота, ця відповідь переноситься як коментар до відповідної Notion-сторінки.
 
@@ -151,9 +194,11 @@ Permissions:
 - im:write: потрібен, щоб бот міг створити або знайти DM-канал з користувачем і доставити персональні повідомлення про його задачу.
 - im:history: потрібен тільки для читання текстових відповідей користувача в DM-треді повідомлення бота, щоб перенести ці відповіді в Notion як коментарі до конкретної задачі.
 - users:read: потрібен, щоб отримати ім'я/display name користувача, який створив задачу або написав коментар у треді, і записати це ім'я в Notion замість технічного Slack ID.
+- users:read.email: потрібен, щоб отримати email requester-а і знайти відповідного Notion user для поля Owner.
 
 User whitelist / data boundary:
 - users:read використовується тільки для користувача, який сам взаємодіє з ботом: створює задачу через /new-task або App Home, натискає кнопку в повідомленні бота, залишає текстову відповідь у DM-треді задачі.
+- users:read.email використовується тільки для requester-а задачі під час створення Notion page; email не зберігається в Redis і потрібен лише для зіставлення з Notion user.
 - im:history використовується тільки для DM-тредів повідомлень, які бот сам створив для конкретної задачі й зберіг у Redis як зв'язку Slack thread ↔ Notion page.
 - chat:write та im:write використовуються тільки для повідомлень, пов'язаних із задачами цього бота.
 ```
@@ -169,6 +214,8 @@ User whitelist / data boundary:
 `im:history` — дозволяє отримувати event `message.im` для текстових відповідей у DM-треді бота. Це потрібно, щоб користувач міг написати уточнення або коментар у треді задачі, а бот переніс цей текст у Notion-коментар. Бот ігнорує повідомлення поза DM і не читає group DM.
 
 `users:read` — дозволяє отримати `real_name` / `display_name` користувача через `users.info`. Це потрібно, щоб у Notion було людське ім'я requester-а або автора коментаря, а не тільки Slack ID. Whitelist за поведінкою: тільки користувачі, які самі взаємодіють із ботом у межах створення або ведення задачі.
+
+`users:read.email` — дозволяє отримати email requester-а через `users.info`. Бот використовує email лише під час створення задачі, щоб знайти Notion user з таким самим email і проставити його в people-property `Owner`; якщо збіг не знайдено, лишається дефолтний owner відділу.
 
 Щоб користувачі могли писати в треді повідомлення від бота в App Home / DM:
 
@@ -229,9 +276,11 @@ User whitelist / data boundary:
 - тестовий Slack app/workspace token
 - `REDIS_KEY_PREFIX=test:`
 - `TEST_TASK_PREFIX=[ТЕСТ]`
+- для Event sandbox: `EVENT_DEPARTMENT_ENABLED=true`
 - живі Notion database IDs
 - для Design і SMM: у відповідній Notion database є `Late` checkbox для late-флоу
 - для SMM: Activities database, `Team=SMM`, `SMM статус`
+- для Event: Activities/Event database, `Team=Event`, `Event date`, `$ EB Budget`, `EB Activity Type`
 
 Усі тестові задачі мають починатися з `[ТЕСТ]`; бот додає цей префікс до title, якщо `TEST_TASK_PREFIX` заданий. Якщо в Notion-базі є checkbox або tag `Test`, бот спробує виставити його автоматично, але для SMM зараз достатньо тільки title-префікса. Після тесту знайди записи через `Name contains [ТЕСТ]` і видали вручну.
 

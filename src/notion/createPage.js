@@ -17,9 +17,57 @@ const notionTemplateApi = new Client({
 })
 const TEMPLATE_TIMEZONE = process.env.NOTION_TEMPLATE_TIMEZONE?.trim() || 'Europe/Kiev'
 const databaseSchemaPromises = new Map()
+const notionUserIdByEmailPromises = new Map()
 
 function clampText(value, limit = 2000) {
   return value?.slice(0, limit) || ''
+}
+
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase() || null
+}
+
+async function resolveNotionUserIdByEmail(email) {
+  const normalizedEmail = normalizeEmail(email)
+  if (!normalizedEmail) return null
+
+  if (!notionUserIdByEmailPromises.has(normalizedEmail)) {
+    const userPromise = findNotionUserIdByEmail(normalizedEmail)
+    notionUserIdByEmailPromises.set(normalizedEmail, userPromise)
+  }
+
+  try {
+    const notionUserId = await notionUserIdByEmailPromises.get(normalizedEmail)
+    if (!notionUserId) notionUserIdByEmailPromises.delete(normalizedEmail)
+    return notionUserId
+  } catch (error) {
+    notionUserIdByEmailPromises.delete(normalizedEmail)
+    console.warn(`Failed to resolve Notion user by email ${normalizedEmail}:`, error)
+    return null
+  }
+}
+
+async function findNotionUserIdByEmail(email) {
+  let startCursor
+
+  do {
+    const response = await notionRequest(
+      () => notion.users.list({
+        start_cursor: startCursor,
+        page_size: 100,
+      }),
+      'notion users list'
+    )
+    const matchingUser = (response.results || []).find((user) => {
+      return user?.type === 'person' && normalizeEmail(user.person?.email) === email
+    })
+
+    if (matchingUser?.id) return matchingUser.id
+
+    startCursor = response.has_more ? response.next_cursor : null
+  } while (startCursor)
+
+  return null
 }
 
 async function applyTemplateToPage(pageId, department) {
@@ -67,19 +115,26 @@ async function getDatabaseProperties(department) {
   return databaseSchemaPromises.get(databaseId)
 }
 
-function buildSlackPersonProperty(propertyConfig, slackPersonName) {
-  if (!propertyConfig || !slackPersonName) return null
+function buildSlackPersonProperty(propertyConfig, { slackPersonName, notionUserId } = {}) {
+  if (!propertyConfig) return null
 
   switch (propertyConfig.type) {
+    case 'people':
+      return notionUserId
+        ? { people: [{ id: notionUserId }] }
+        : null
     case 'title':
+      if (!slackPersonName) return null
       return {
         title: [{ text: { content: slackPersonName.slice(0, 2000) } }],
       }
     case 'rich_text':
+      if (!slackPersonName) return null
       return {
         rich_text: [{ text: { content: slackPersonName.slice(0, 2000) } }],
       }
     case 'select':
+      if (!slackPersonName) return null
       return {
         select: { name: slackPersonName.slice(0, 100) },
       }
@@ -362,6 +417,7 @@ export async function createNotionPage({
   artifacts = {},
   isLate = false,
   slackPersonName,
+  slackPersonEmail,
 }) {
   const department = getDepartment(departmentKey)
   const truncatedTitle = clampText(name)
@@ -424,9 +480,11 @@ export async function createNotionPage({
   addPropertyIfType(properties, databaseProperties, 'Team', ['select'], {
     select: { name: department.team },
   })
-  if (department.ownerId) {
+  const requesterNotionUserId = await resolveNotionUserIdByEmail(slackPersonEmail)
+  const ownerId = requesterNotionUserId || department.ownerId
+  if (ownerId) {
     addPropertyIfType(properties, databaseProperties, 'Owner', ['people'], {
-      people: [{ id: department.ownerId }],
+      people: [{ id: ownerId }],
     })
   }
 
@@ -491,7 +549,10 @@ export async function createNotionPage({
     addPropertyByDatabaseType(properties, databaseProperties, ['Tags', 'Tag'], 'Test')
   }
 
-  const slackPersonProperty = buildSlackPersonProperty(databaseProperties['Slack Person'], slackPersonName)
+  const slackPersonProperty = buildSlackPersonProperty(databaseProperties['Slack Person'], {
+    slackPersonName,
+    notionUserId: requesterNotionUserId,
+  })
   if (slackPersonProperty) properties['Slack Person'] = slackPersonProperty
 
   if (description) {

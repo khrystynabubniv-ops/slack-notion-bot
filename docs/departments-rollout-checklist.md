@@ -63,9 +63,11 @@
 ## Phase 3: Event cutover by "live out"
 
 - [ ] Provide the old Event-bot repository as read-only reference and replace the TODO Event forms with exact old forms.
+- [ ] Enable sandbox route with `EVENT_DEPARTMENT_ENABLED=true`.
 - [ ] Configure `NOTION_EVENT_DATABASE_ID` or `NOTION_ACTIVITIES_DATABASE_ID`.
 - [ ] Configure `EVENT_CHANNEL_ID`.
 - [ ] Set `TEST_TASK_PREFIX=[ТЕСТ]` for sandbox testing.
+- [ ] Verify Event appears in the test Slack picker only after the sandbox flag or `NOTION_EVENT_DATABASE_ID` is set.
 - [ ] Create the minimum needed Event `[ТЕСТ]` tasks in the live Activities database.
 - [ ] Verify `$ EB Budget`, `Event date`, and `EB Activity Type` write correctly where those properties exist.
 - [ ] Delete Event `[ТЕСТ]` tasks immediately after validation.
@@ -78,7 +80,7 @@
 
 - [ ] Remove or hide legacy Design task types that duplicate the new SMM department.
 - [ ] Rename Slack app display name to a neutral name.
-- [ ] Confirm no new OAuth scopes were added.
+- [ ] Confirm `users:read.email` is approved and the Slack app is reinstalled after the scope change.
 - [ ] Confirm production `TEST_TASK_PREFIX` is empty.
 - [ ] Confirm production `REDIS_KEY_PREFIX` is empty or intentionally set.
 - [ ] Keep `departments` ready for future `pr` and `employer_brand` additions.

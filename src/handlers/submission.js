@@ -282,15 +282,25 @@ function buildSubmittedTaskName({
     : `[${taskConfig.shortTitle}] ${primaryName}`
 }
 
-async function resolveSlackPersonName(client, { userId, userName }) {
+async function resolveSlackPerson(client, { userId, userName }) {
   try {
     const userInfo = await client.users.info({ user: userId })
 
-    return getSlackUserDisplayName(userInfo.user, userName || userId)
+    return {
+      name: getSlackUserDisplayName(userInfo.user, userName || userId),
+      email: normalizeEmail(userInfo.user?.profile?.email),
+    }
   } catch (slackUserErr) {
     console.error('Slack users.info failed, fallback to body.user.name:', slackUserErr)
-    return userName || userId
+    return {
+      name: userName || userId,
+      email: null,
+    }
   }
+}
+
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase() || null
 }
 
 function getSlackUserDisplayName(user, fallback) {
@@ -540,7 +550,7 @@ async function createTaskFromSubmissionPayload(client, payload) {
   const departmentKey = resolveDepartmentKey(rawDepartmentKey)
   const department = getDepartment(departmentKey)
   const taskConfig = getDepartmentTaskType(departmentKey, taskType)
-  const slackPersonName = await resolveSlackPersonName(client, { userId, userName })
+  const slackPerson = await resolveSlackPerson(client, { userId, userName })
   let notificationTrackingEnabled = true
   const taskName = applyTestTaskPrefix(buildSubmittedTaskName({
     department,
@@ -568,7 +578,8 @@ async function createTaskFromSubmissionPayload(client, payload) {
     fieldAnswers,
     artifacts,
     isLate,
-    slackPersonName,
+    slackPersonName: slackPerson.name,
+    slackPersonEmail: slackPerson.email,
   })
 
   const requesterNotificationText = buildTaskThreadText({
@@ -623,7 +634,7 @@ async function createTaskFromSubmissionPayload(client, payload) {
       slackMessageTs: requesterMessage?.ts || null,
       slackThreadTs: requesterMessage?.ts || null,
       taskName,
-      requesterName: slackPersonName,
+      requesterName: slackPerson.name,
       pageUrl,
       departmentKey,
       team: department.team,
