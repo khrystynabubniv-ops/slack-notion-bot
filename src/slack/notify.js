@@ -891,6 +891,14 @@ function getStatusActionElements({
       })
     }
 
+    if (pageUrl) {
+      elements.push({
+        type: 'button',
+        text: { type: 'plain_text', text: '📋 Відкрити правку' },
+        url: pageUrl,
+      })
+    }
+
     if (resultUrl) {
       elements.push({
         type: 'button',
@@ -942,6 +950,14 @@ function getStatusActionElements({
         action_id: 'open_feedback_modal',
         style: 'primary',
         value: buildFeedbackActionValue({ pageId, taskName, roundNumber }),
+      })
+    }
+
+    if (pageUrl) {
+      elements.push({
+        type: 'button',
+        text: { type: 'plain_text', text: '📋 Відкрити задачу' },
+        url: pageUrl,
       })
     }
 

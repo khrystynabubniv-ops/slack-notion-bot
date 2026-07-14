@@ -54,7 +54,7 @@ function getAcceptanceText(taskName, roundsCount, taskKind, acceptedStatus) {
 
 function getBlockedAcceptanceText(readiness) {
   if (readiness.hasBlockingSubtasks) {
-    return '⚠️ Поки не можна прийняти результат: спершу всі сабтаски мають бути у статусі «Ready» або «Правка Done».'
+    return '⚠️ Поки не можна прийняти результат: спершу всі сабтаски мають бути у статусі «Ready», «Done» або «Правка Done».'
   }
 
   const statusText = readiness.status ? ` Зараз статус задачі: «${readiness.status}».` : ''
@@ -161,6 +161,48 @@ async function updateAcceptedTaskRootMessage(client, body, payload, taskName, ac
     resultUrl: payload.resultUrl,
     taskKind: payload.taskKind,
     completedRounds: roundsCount,
+  })
+}
+
+async function refreshParentTaskAfterFeedbackAcceptance(client, {
+  feedbackTask,
+  fallbackDesigner = null,
+}) {
+  const parentPageId = feedbackTask?.parentPageId
+  if (!parentPageId) return
+
+  const parentTask = await getTask(parentPageId)
+  if (!parentTask?.slackChannelId || !parentTask?.slackMessageTs) return
+
+  const departmentKey = parentTask.departmentKey || feedbackTask.departmentKey || 'design'
+  const [readiness, roundsCount] = await Promise.all([
+    getTaskAcceptanceReadiness(parentPageId, departmentKey),
+    getRoundsCount(parentPageId),
+  ])
+  const parentDesigner = parentTask.lastDesignerName || parentTask.lastDesignerUserId
+    ? {
+        name: parentTask.lastDesignerName || null,
+        userId: parentTask.lastDesignerUserId || null,
+      }
+    : fallbackDesigner
+
+  await updateRootTaskMessage(client, {
+    channelId: parentTask.slackChannelId,
+    messageTs: parentTask.slackMessageTs,
+    taskName: parentTask.taskName,
+    departmentKey,
+    status: readiness.status || parentTask.lastStatus || 'Comments',
+    responsible: parentTask.lastAssignee || null,
+    pageUrl: parentTask.pageUrl,
+    resultUrl: parentTask.lastFinalProjectUrl,
+    taskKind: parentTask.taskKind || 'task',
+    completedRounds: roundsCount,
+    pageId: parentPageId,
+    roundNumber: roundsCount + 1,
+    designer: parentDesigner,
+    canAcceptResult: readiness.canAccept,
+    requestType: parentTask.requestType,
+    deadline: parentTask.lastDeadline,
   })
 }
 
@@ -301,6 +343,17 @@ export async function handleTaskAcceptance({ body, client }) {
     const shouldSendSurvey = !isFeedbackTask(taskKind) && !existingFeedback?.feedbackSubmittedAt
     await updateSourceMessage(client, body, acceptanceText)
     await updateAcceptedTaskRootMessage(client, body, payload, taskName, acceptedStatus, roundsCount)
+
+    if (isFeedbackTask(taskKind)) {
+      try {
+        await refreshParentTaskAfterFeedbackAcceptance(client, {
+          feedbackTask: storedTask,
+          fallbackDesigner: result.designer,
+        })
+      } catch (refreshError) {
+        console.error(`Failed to refresh parent task after feedback acceptance for page ${pageId}:`, refreshError)
+      }
+    }
 
     if (!result.commentCreated) {
       await postUserMessage(

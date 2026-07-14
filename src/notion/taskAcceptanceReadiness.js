@@ -32,8 +32,13 @@ export function isAcceptableSubtaskStatus(status) {
   return normalizedStatus === 'ready' ||
     normalizedStatus.includes('ready') ||
     normalizedStatus.includes('реді') ||
+    normalizedStatus === 'done' ||
+    normalizedStatus.includes('done') ||
+    normalizedStatus.includes('complete') ||
+    normalizedStatus.includes('готов') ||
+    normalizedStatus.includes('виконан') ||
     normalizedStatus === 'правка done' ||
-    (normalizedStatus.includes('правка') && normalizedStatus.includes('done'))
+    (normalizedStatus.includes('правк') && normalizedStatus.includes('done'))
 }
 
 export function getChildTasks(currentTasks, parentPageId) {
