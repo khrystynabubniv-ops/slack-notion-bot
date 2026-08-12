@@ -291,7 +291,15 @@ async function resolveSlackPerson(client, { userId, userName }) {
       email: normalizeEmail(userInfo.user?.profile?.email),
     }
   } catch (slackUserErr) {
-    console.error('Slack users.info failed, fallback to body.user.name:', slackUserErr)
+    const reason = slackUserErr?.data?.error
+    if (reason === 'missing_scope') {
+      console.error(
+        'Slack users.info missing_scope — users:read.email is likely not authorized/reinstalled yet, Slack Person matching will fail:',
+        slackUserErr
+      )
+    } else {
+      console.error('Slack users.info failed, fallback to body.user.name:', slackUserErr)
+    }
     return {
       name: userName || userId,
       email: null,

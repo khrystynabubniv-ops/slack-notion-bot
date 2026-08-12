@@ -17,7 +17,7 @@ const notionTemplateApi = new Client({
 })
 const TEMPLATE_TIMEZONE = process.env.NOTION_TEMPLATE_TIMEZONE?.trim() || 'Europe/Kiev'
 const databaseSchemaPromises = new Map()
-const notionUserIdByEmailPromises = new Map()
+let notionPeoplePromise = null
 
 function clampText(value, limit = 2000) {
   return value?.slice(0, limit) || ''
@@ -27,27 +27,12 @@ function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase() || null
 }
 
-async function resolveNotionUserIdByEmail(email) {
-  const normalizedEmail = normalizeEmail(email)
-  if (!normalizedEmail) return null
-
-  if (!notionUserIdByEmailPromises.has(normalizedEmail)) {
-    const userPromise = findNotionUserIdByEmail(normalizedEmail)
-    notionUserIdByEmailPromises.set(normalizedEmail, userPromise)
-  }
-
-  try {
-    const notionUserId = await notionUserIdByEmailPromises.get(normalizedEmail)
-    if (!notionUserId) notionUserIdByEmailPromises.delete(normalizedEmail)
-    return notionUserId
-  } catch (error) {
-    notionUserIdByEmailPromises.delete(normalizedEmail)
-    console.warn(`Failed to resolve Notion user by email ${normalizedEmail}:`, error)
-    return null
-  }
+function normalizeName(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ') || null
 }
 
-async function findNotionUserIdByEmail(email) {
+async function listNotionPeople() {
+  const people = []
   let startCursor
 
   do {
@@ -58,16 +43,62 @@ async function findNotionUserIdByEmail(email) {
       }),
       'notion users list'
     )
-    const matchingUser = (response.results || []).find((user) => {
-      return user?.type === 'person' && normalizeEmail(user.person?.email) === email
-    })
 
-    if (matchingUser?.id) return matchingUser.id
+    people.push(
+      ...(response.results || [])
+        .filter((user) => user?.type === 'person')
+        .map((user) => ({
+          id: user.id,
+          normalizedName: normalizeName(user.name),
+          email: normalizeEmail(user.person?.email),
+        }))
+    )
 
     startCursor = response.has_more ? response.next_cursor : null
   } while (startCursor)
 
-  return null
+  return people
+}
+
+// Cached at module scope: the workspace member list rarely changes within a run,
+// so every task created during this process reuses the same lookup instead of
+// re-paginating notion.users.list() per submission.
+async function getNotionPeople() {
+  if (!notionPeoplePromise) {
+    notionPeoplePromise = listNotionPeople().catch((error) => {
+      notionPeoplePromise = null
+      throw error
+    })
+  }
+  return notionPeoplePromise
+}
+
+// Matches a Slack requester to a Notion workspace member. Tries email first
+// (requires the Notion integration to have the "read email addresses"
+// capability enabled), then falls back to a unique display-name match so a
+// missing/mismatched email doesn't leave the requester completely unmatched.
+// Mirrors the fallback already used by scripts/backfillSlackPersonPeople.js.
+async function resolveNotionUserId({ email, names = [] } = {}) {
+  try {
+    const people = await getNotionPeople()
+    const normalizedEmail = normalizeEmail(email)
+
+    if (normalizedEmail) {
+      const match = people.find((person) => person.email === normalizedEmail)
+      if (match) return match.id
+    }
+
+    const normalizedNames = [...new Set(names.map(normalizeName).filter(Boolean))]
+    for (const normalizedName of normalizedNames) {
+      const matches = people.filter((person) => person.normalizedName === normalizedName)
+      if (matches.length === 1) return matches[0].id
+    }
+
+    return null
+  } catch (error) {
+    console.warn('Failed to resolve Notion user for Slack Person/Owner:', error)
+    return null
+  }
 }
 
 async function applyTemplateToPage(pageId, department) {
@@ -480,7 +511,10 @@ export async function createNotionPage({
   addPropertyIfType(properties, databaseProperties, 'Team', ['select'], {
     select: { name: department.team },
   })
-  const requesterNotionUserId = await resolveNotionUserIdByEmail(slackPersonEmail)
+  const requesterNotionUserId = await resolveNotionUserId({
+    email: slackPersonEmail,
+    names: [slackPersonName].filter(Boolean),
+  })
   const ownerId = requesterNotionUserId || department.ownerId
   if (ownerId) {
     addPropertyIfType(properties, databaseProperties, 'Owner', ['people'], {
@@ -555,6 +589,17 @@ export async function createNotionPage({
   })
   if (slackPersonProperty) properties['Slack Person'] = slackPersonProperty
 
+  // If "Slack Person" is a `people` property and we couldn't match the Slack
+  // requester to a Notion account (no email/name match), buildSlackPersonProperty
+  // returns null above and the property is skipped entirely — there's no way to
+  // put raw text into a `people` property. Keep the requester's name/email from
+  // being lost by noting it in the page body instead, so it can be triaged later.
+  const slackPersonUnmatched = Boolean(
+    databaseProperties['Slack Person']?.type === 'people' &&
+    !requesterNotionUserId &&
+    (slackPersonName || slackPersonEmail)
+  )
+
   if (description) {
     addPropertyIfType(properties, databaseProperties, 'Description', ['rich_text'], {
       rich_text: buildRichText(description),
@@ -569,6 +614,15 @@ export async function createNotionPage({
     `page create (${department.key})`
   )
 
+  // Applying a Notion page template re-seeds the page's properties from the
+  // template's own defaults, which silently wipes out values we just set on
+  // create (most importantly 'Slack Person' and 'Owner') whenever the template
+  // itself leaves those properties empty. Re-apply them in a follow-up patch
+  // so a configured template can't erase the requester match.
+  const propertiesToRestoreAfterTemplate = {}
+  if (properties['Owner']) propertiesToRestoreAfterTemplate['Owner'] = properties['Owner']
+  if (properties['Slack Person']) propertiesToRestoreAfterTemplate['Slack Person'] = properties['Slack Person']
+
   let templateApplied = false
 
   try {
@@ -577,10 +631,36 @@ export async function createNotionPage({
     console.error('Notion template apply failed:', error)
   }
 
+  if (templateApplied && Object.keys(propertiesToRestoreAfterTemplate).length) {
+    try {
+      await notionRequest(
+        () => notion.pages.update({
+          page_id: response.id,
+          properties: propertiesToRestoreAfterTemplate,
+        }),
+        'restore properties after template apply'
+      )
+    } catch (error) {
+      console.error('Notion restore-properties-after-template-apply failed:', error)
+    }
+  }
+
   try {
     await appendBriefBodyBlocks(response.id, briefBodyBlocks)
   } catch (error) {
     console.error('Notion brief body append failed:', error)
+  }
+
+  if (slackPersonUnmatched) {
+    try {
+      await appendBriefBodyBlocks(response.id, [
+        buildParagraphBlock(
+          `⚠️ Slack requester not matched to a Notion account: ${slackPersonName || '—'} (${slackPersonEmail || 'email unknown'})`
+        ),
+      ])
+    } catch (error) {
+      console.error('Notion unmatched-requester note append failed:', error)
+    }
   }
 
   return {
