@@ -146,6 +146,44 @@ async function getDatabaseProperties(department) {
   return databaseSchemaPromises.get(databaseId)
 }
 
+// Notion (current API version) rejects writing a select/multi_select value that
+// isn't already one of the property's configured options — it no longer
+// auto-creates missing options on page write, it requires the database schema
+// to be updated first. This adds any genuinely new option names to the
+// property's schema before the page create/update call that uses them, then
+// invalidates the cached schema so the caller re-fetches it with the option in place.
+async function ensureSelectOptionsExist(department, databaseProperties, propertyName, values) {
+  const propertyConfig = databaseProperties[propertyName]
+  const propertyType = propertyConfig?.type
+  if (!propertyType || !['select', 'multi_select'].includes(propertyType)) return databaseProperties
+
+  const existingNames = new Set(getDatabaseOptionNames(databaseProperties, propertyName))
+  const missingNames = [...new Set((Array.isArray(values) ? values : [values]).filter(Boolean))]
+    .filter((name) => !existingNames.has(name))
+  if (!missingNames.length) return databaseProperties
+
+  const existingOptions = propertyConfig[propertyType]?.options || []
+  const nextOptions = [
+    ...existingOptions,
+    ...missingNames.map((name) => ({ name: String(name).slice(0, 100) })),
+  ]
+
+  await notionRequest(
+    () => notion.databases.update({
+      database_id: department.notionDataSourceId,
+      properties: {
+        [propertyName]: {
+          [propertyType]: { options: nextOptions },
+        },
+      },
+    }),
+    `add "${propertyName}" option(s) (${department.key})`
+  )
+
+  databaseSchemaPromises.delete(department.notionDataSourceId)
+  return getDatabaseProperties(department)
+}
+
 function buildSlackPersonProperty(propertyConfig, { slackPersonName, notionUserId } = {}) {
   if (!propertyConfig) return null
 
@@ -447,6 +485,7 @@ export async function createNotionPage({
   fieldAnswers = [],
   artifacts = {},
   isLate = false,
+  domain = null,
   slackPersonName,
   slackPersonEmail,
 }) {
@@ -473,7 +512,7 @@ export async function createNotionPage({
   })
   const taskTypeRelationId = getTaskTypeRelationId(taskType, department.key)
   const notionPlatform = resolvePlatform(platform)
-  const databaseProperties = await getDatabaseProperties(department)
+  let databaseProperties = await getDatabaseProperties(department)
   const titlePropertyName = resolveTitlePropertyName(databaseProperties)
   const statusPropertyName = resolveStatusPropertyName(databaseProperties, department.key)
 
@@ -511,6 +550,10 @@ export async function createNotionPage({
   addPropertyIfType(properties, databaseProperties, 'Team', ['select'], {
     select: { name: department.team },
   })
+  if (domain) {
+    databaseProperties = await ensureSelectOptionsExist(department, databaseProperties, 'domain', domain)
+    addPropertyByDatabaseType(properties, databaseProperties, ['domain'], domain)
+  }
   const requesterNotionUserId = await resolveNotionUserId({
     email: slackPersonEmail,
     names: [slackPersonName].filter(Boolean),

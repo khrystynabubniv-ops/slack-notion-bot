@@ -19,7 +19,11 @@ import {
   saveTask,
 } from '../redis/store.js'
 import { formatDesignerForSlack } from '../slack/designerMentions.js'
-import { buildTaskComplexityPickerView, buildTaskTypePickerView } from '../slack/taskEntry.js'
+import {
+  buildDesignDomainPickerView,
+  buildTaskComplexityPickerView,
+  buildTaskTypePickerView,
+} from '../slack/taskEntry.js'
 import { getModalBlocks } from './modalBlocks.js'
 
 const QUEUE_WORKER_INTERVAL_MS = Number.parseInt(
@@ -554,6 +558,7 @@ async function createTaskFromSubmissionPayload(client, payload) {
     artifacts,
     isLate,
     leadTimeWarning,
+    domain,
   } = payload
   const departmentKey = resolveDepartmentKey(rawDepartmentKey)
   const department = getDepartment(departmentKey)
@@ -586,6 +591,7 @@ async function createTaskFromSubmissionPayload(client, payload) {
     fieldAnswers,
     artifacts,
     isLate,
+    domain,
     slackPersonName: slackPerson.name,
     slackPersonEmail: slackPerson.email,
   })
@@ -836,6 +842,7 @@ export function registerSubmissionHandlers(app) {
     departmentKey = DEFAULT_DEPARTMENT_KEY,
     taskType,
     taskTypeLabel,
+    domain = null,
     values = {},
     leadTimeWarning = false,
   }) {
@@ -844,7 +851,7 @@ export function registerSubmissionHandlers(app) {
     return {
       type: 'modal',
       callback_id: 'submit_task',
-      private_metadata: JSON.stringify({ departmentKey: department.key, taskType, taskTypeLabel }),
+      private_metadata: JSON.stringify({ departmentKey: department.key, taskType, taskTypeLabel, domain }),
       title: { type: 'plain_text', text: '📋 Бриф задачі' },
       submit: { type: 'plain_text', text: 'Створити задачу' },
       close: { type: 'plain_text', text: 'Скасувати' },
@@ -872,7 +879,9 @@ export function registerSubmissionHandlers(app) {
 
       await ack({
         response_action: 'update',
-        view: buildTaskTypePickerView(departmentKey),
+        view: departmentKey === DEFAULT_DEPARTMENT_KEY
+          ? buildDesignDomainPickerView({ departmentKey })
+          : buildTaskTypePickerView(departmentKey),
       })
     } catch (error) {
       logModalStepError('select_department', error, {
@@ -889,11 +898,47 @@ export function registerSubmissionHandlers(app) {
     }
   })
 
+  // Крок 1.5 (тільки Design) — юзер обрав напрямок, з якого прийшов запит
+  app.view('select_design_domain', async ({ ack, view }) => {
+    try {
+      const metadata = parsePrivateMetadata(view.private_metadata)
+      const departmentKey = resolveDepartmentKey(metadata.departmentKey)
+      const selectedDomain = view.state.values.domain_block?.domain?.selected_option
+      if (!selectedDomain?.value) {
+        await ack({
+          response_action: 'errors',
+          errors: {
+            domain_block: 'Обери напрямок.',
+          },
+        })
+        return
+      }
+
+      await ack({
+        response_action: 'update',
+        view: buildTaskTypePickerView(departmentKey, { domain: selectedDomain.value }),
+      })
+    } catch (error) {
+      logModalStepError('select_design_domain', error, {
+        viewId: view?.id || null,
+        callbackId: view?.callback_id || null,
+      })
+
+      await ack({
+        response_action: 'errors',
+        errors: {
+          domain_block: 'Не вдалося перейти далі. Спробуй ще раз або напиши адміну.',
+        },
+      })
+    }
+  })
+
   // Крок 1 — юзер вибрав тип задачі, відкриваємо форму з полями
   app.view('select_task_type', async ({ ack, body, client, view }) => {
     try {
       const metadata = parsePrivateMetadata(view.private_metadata)
       const departmentKey = resolveDepartmentKey(metadata.departmentKey)
+      const domain = metadata.domain || null
       const selectedTaskType = view.state.values.task_type_block?.task_type?.selected_option
       if (!selectedTaskType?.value) {
         await ack({
@@ -912,14 +957,14 @@ export function registerSubmissionHandlers(app) {
       if (complexityOptions.length > 0) {
         await ack({
           response_action: 'update',
-          view: buildTaskComplexityPickerView({ departmentKey, taskType, taskTypeLabel }),
+          view: buildTaskComplexityPickerView({ departmentKey, taskType, taskTypeLabel, domain }),
         })
         return
       }
 
       await ack({
         response_action: 'update',
-        view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel }),
+        view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel, domain }),
       })
     } catch (error) {
       logModalStepError('select_task_type', error, {
@@ -940,6 +985,7 @@ export function registerSubmissionHandlers(app) {
     try {
       const metadata = parsePrivateMetadata(view.private_metadata)
       const departmentKey = resolveDepartmentKey(metadata.departmentKey)
+      const domain = metadata.domain || null
       const categoryTaskType = metadata.taskType
       const categoryTaskTypeLabel = metadata.taskTypeLabel
       const selectedComplexity = view.state.values.complexity_block?.complexity?.selected_option
@@ -959,7 +1005,7 @@ export function registerSubmissionHandlers(app) {
 
       await ack({
         response_action: 'update',
-        view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel }),
+        view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel, domain }),
       })
     } catch (error) {
       logModalStepError('select_task_complexity', error, {
@@ -979,7 +1025,7 @@ export function registerSubmissionHandlers(app) {
   app.action('platform', async ({ ack, body, client }) => {
     await ack()
 
-    const { departmentKey = DEFAULT_DEPARTMENT_KEY, taskType, taskTypeLabel } = parsePrivateMetadata(body.view.private_metadata)
+    const { departmentKey = DEFAULT_DEPARTMENT_KEY, taskType, taskTypeLabel, domain } = parsePrivateMetadata(body.view.private_metadata)
     const values = {
       ...body.view.state.values,
       platform_block: {
@@ -994,7 +1040,7 @@ export function registerSubmissionHandlers(app) {
     await client.views.update({
       view_id: body.view.id,
       hash: body.view.hash,
-      view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel, values }),
+      view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel, domain, values }),
     })
   })
 
@@ -1004,7 +1050,7 @@ export function registerSubmissionHandlers(app) {
       await ack()
       if (body.view?.callback_id !== 'submit_task') return
 
-      const { departmentKey = DEFAULT_DEPARTMENT_KEY, taskType, taskTypeLabel } = parsePrivateMetadata(body.view.private_metadata)
+      const { departmentKey = DEFAULT_DEPARTMENT_KEY, taskType, taskTypeLabel, domain } = parsePrivateMetadata(body.view.private_metadata)
       if (resolveDepartmentKey(departmentKey) === DEFAULT_DEPARTMENT_KEY) return
 
       const action = body.actions?.[0]
@@ -1021,7 +1067,7 @@ export function registerSubmissionHandlers(app) {
       await client.views.update({
         view_id: body.view.id,
         hash: body.view.hash,
-        view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel, values }),
+        view: buildTaskModalView({ departmentKey, taskType, taskTypeLabel, domain, values }),
       })
     }
   )
@@ -1032,6 +1078,7 @@ export function registerSubmissionHandlers(app) {
       departmentKey: rawDepartmentKey = DEFAULT_DEPARTMENT_KEY,
       taskType,
       taskTypeLabel,
+      domain,
     } = parsePrivateMetadata(view.private_metadata)
     const departmentKey = resolveDepartmentKey(rawDepartmentKey)
     const department = getDepartment(departmentKey)
@@ -1214,6 +1261,7 @@ export function registerSubmissionHandlers(app) {
       fieldAnswers,
       artifacts,
       isLate,
+      domain: domain || null,
       leadTimeWarning: isLate
         ? {
             minLeadDays: leadTimeViolation.minLeadDays,

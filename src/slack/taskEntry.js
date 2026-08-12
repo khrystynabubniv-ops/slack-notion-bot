@@ -49,13 +49,58 @@ export function buildDepartmentPickerView() {
   }
 }
 
-export function buildTaskTypePickerView(departmentKey = DEFAULT_DEPARTMENT_KEY) {
+export const DESIGN_DOMAIN_OPTIONS = [
+  'PR',
+  'SMM',
+  'Employer Brand',
+  'Команда Офісу',
+  'Рекрутинг/HR',
+  'Внутрішні комунікації',
+]
+
+export function buildDesignDomainPickerView({ departmentKey = DEFAULT_DEPARTMENT_KEY } = {}) {
+  const department = getDepartment(departmentKey)
+
+  return {
+    type: 'modal',
+    callback_id: 'select_design_domain',
+    private_metadata: JSON.stringify({ departmentKey: department.key }),
+    title: { type: 'plain_text', text: `${department.emoji || '📋'} Новий запит` },
+    submit: { type: 'plain_text', text: 'Далі' },
+    close: { type: 'plain_text', text: 'Скасувати' },
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: 'З якого ти напрямку?',
+        },
+      },
+      {
+        type: 'input',
+        block_id: 'domain_block',
+        label: { type: 'plain_text', text: 'Напрямок' },
+        element: {
+          type: 'static_select',
+          action_id: 'domain',
+          placeholder: { type: 'plain_text', text: 'Обери напрямок...' },
+          options: DESIGN_DOMAIN_OPTIONS.map((label) => ({
+            text: { type: 'plain_text', text: label },
+            value: label,
+          })),
+        },
+      },
+    ],
+  }
+}
+
+export function buildTaskTypePickerView(departmentKey = DEFAULT_DEPARTMENT_KEY, { domain } = {}) {
   const department = getDepartment(departmentKey)
 
   return {
     type: 'modal',
     callback_id: 'select_task_type',
-    private_metadata: JSON.stringify({ departmentKey: department.key }),
+    private_metadata: JSON.stringify({ departmentKey: department.key, domain: domain || null }),
     title: { type: 'plain_text', text: `${department.emoji || '📋'} Новий запит` },
     submit: { type: 'plain_text', text: 'Далі' },
     close: { type: 'plain_text', text: 'Скасувати' },
@@ -88,6 +133,7 @@ export function buildTaskComplexityPickerView({
   departmentKey = DEFAULT_DEPARTMENT_KEY,
   taskType,
   taskTypeLabel,
+  domain,
 }) {
   const department = getDepartment(departmentKey)
   const complexityOptions = getTaskTypeComplexityOptions(department.key, taskType)
@@ -95,7 +141,7 @@ export function buildTaskComplexityPickerView({
   return {
     type: 'modal',
     callback_id: 'select_task_complexity',
-    private_metadata: JSON.stringify({ departmentKey: department.key, taskType, taskTypeLabel }),
+    private_metadata: JSON.stringify({ departmentKey: department.key, taskType, taskTypeLabel, domain: domain || null }),
     title: { type: 'plain_text', text: '🎪 Складність' },
     submit: { type: 'plain_text', text: 'Далі' },
     close: { type: 'plain_text', text: 'Скасувати' },
@@ -130,7 +176,9 @@ export function buildTaskComplexityPickerView({
 }
 
 export function buildInitialTaskEntryView() {
-  return shouldShowDepartmentPicker()
-    ? buildDepartmentPickerView()
+  if (shouldShowDepartmentPicker()) return buildDepartmentPickerView()
+
+  return DEFAULT_DEPARTMENT_KEY === 'design'
+    ? buildDesignDomainPickerView({ departmentKey: DEFAULT_DEPARTMENT_KEY })
     : buildTaskTypePickerView(DEFAULT_DEPARTMENT_KEY)
 }
