@@ -1229,6 +1229,7 @@ export function registerSubmissionHandlers(app) {
           departmentKey,
           taskType,
           taskTypeLabel,
+          domain,
           values,
           leadTimeWarning: leadTimeViolation,
         }),
