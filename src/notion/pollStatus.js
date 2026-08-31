@@ -41,6 +41,14 @@ const pollingQueue = []
 const queuedPollingDepartmentKeys = new Set()
 let pollingQueueRunning = false
 let pollingPausedUntil = 0
+// Guard проти повторного виклику startPolling() у межах одного процесу —
+// без нього другий виклик підняв би незалежний другий набір
+// setTimeout/setInterval per department, що задвоює всі Slack-сповіщення.
+// Той самий патерн, що й queueWorkerStarted у handlers/submission.js.
+// Це НЕ захищає від кількох окремих Node-процесів/реплік одночасно —
+// для цього потрібен розподілений lock (напр. Redis SET NX), якого тут
+// немає. Див. docs/unified-bot-migration-handover.md, розділ 17, пункт 3.
+let pollingStarted = false
 const notionUserNameCache = new Map()
 const configuredPollingStartupStaggerMs = Number.parseInt(
   process.env.NOTION_POLL_STARTUP_STAGGER_MS || '',
@@ -1222,6 +1230,12 @@ async function runPollingCycle(slackClient, department) {
 }
 
 export async function startPolling(slackClient) {
+  if (pollingStarted) {
+    console.warn('startPolling() called again in the same process — ignoring, polling is already running.')
+    return
+  }
+  pollingStarted = true
+
   getAllDepartments().forEach((department, index) => {
     const intervalMs = Math.max(Number(department.pollIntervalSec || 180), 1) * 1000
     const firstRunDelayMs = intervalMs + (index * POLLING_STARTUP_STAGGER_MS)

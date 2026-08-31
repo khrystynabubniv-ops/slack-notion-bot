@@ -7,6 +7,7 @@
     "start": "node src/index.js",
     "verify:ids": "node src/scripts/verifyInteractionIds.js",
     "verify:department-key": "node src/scripts/verifyDepartmentKeyResolution.js",
+    "verify:polling-guard": "node src/scripts/verifyPollingSingletonGuard.js",
     "backfill:department-key": "node src/scripts/backfillDepartmentKey.js"
   },
   "dependencies": {
