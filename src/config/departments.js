@@ -1394,9 +1394,36 @@ function isDepartmentActive(department) {
   return Boolean(department && department.active !== false)
 }
 
+// Тільки для діагностики — щоб не заспамити логи, попереджаємо один раз на
+// процес per unresolved value, а не на кожен poll-цикл/Redis-читання.
+const warnedUnresolvedDepartmentKeys = new Set()
+
+function warnUnresolvedDepartmentKeyOnce(departmentKey) {
+  if (warnedUnresolvedDepartmentKeys.has(departmentKey)) return
+  warnedUnresolvedDepartmentKeys.add(departmentKey)
+
+  console.warn(
+    `resolveDepartmentKey: "${departmentKey}" не розпізнано або відділ неактивний — ` +
+      `запис трактується як "${DEFAULT_DEPARTMENT_KEY}". Це очікувано лише для legacy-` +
+      'записів без departmentKey; якщо ключ був явно заданий (напр. "smm"/"event"), ' +
+      'перевір конфіг відділу — задача може бути неправильно класифікована.'
+  )
+}
+
 export function resolveDepartmentKey(departmentKey) {
+  // Немає значення взагалі — це legit legacy-кейс (записи до Phase 2, коли
+  // departmentKey ще не існував у схемі). Мовчки й безпечно default в design.
+  if (!departmentKey) return DEFAULT_DEPARTMENT_KEY
+
   const department = departments[departmentKey]
-  return isDepartmentActive(department) ? department.key : DEFAULT_DEPARTMENT_KEY
+  if (isDepartmentActive(department)) return department.key
+
+  // Значення БУЛО задане, але не розпізнається (typo, видалений відділ,
+  // або відділ тимчасово неактивний) — це інший, підозріліший випадок:
+  // без цього попередження він мовчки й невідрізнювано зливався з legacy-
+  // кейсом вище. Див. docs/unified-bot-migration-handover.md, розділ 17, п.2.
+  warnUnresolvedDepartmentKeyOnce(departmentKey)
+  return DEFAULT_DEPARTMENT_KEY
 }
 
 export function getDepartment(departmentKey) {

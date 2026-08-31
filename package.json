@@ -5,7 +5,9 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "verify:ids": "node src/scripts/verifyInteractionIds.js"
+    "verify:ids": "node src/scripts/verifyInteractionIds.js",
+    "verify:department-key": "node src/scripts/verifyDepartmentKeyResolution.js",
+    "backfill:department-key": "node src/scripts/backfillDepartmentKey.js"
   },
   "dependencies": {
     "@slack/bolt": "^3.19.0",

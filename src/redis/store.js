@@ -500,6 +500,38 @@ export async function getAllTasks() {
   return tasks.filter(Boolean)
 }
 
+// Для backfill/аудит-скриптів (src/scripts/backfillDepartmentKey.js): на
+// відміну від getAllTasks(), НЕ пропускає departmentKey через
+// resolveDepartmentKey — потрібне саме сире значення, щоб відрізнити
+// "поля немає в Redis взагалі" від "значення є, але не розпізнається".
+export async function getAllTaskRecordsRaw() {
+  const keys = await redis.keys(redisKey('notion:*'))
+  if (!keys.length) return []
+  const records = await Promise.all(
+    keys.map(async (key) => {
+      const data = await redis.get(key)
+      const pageId = stripRedisKeyPrefix(key).replace('notion:', '')
+      const raw = parseStoredTask(data)
+      return raw ? { pageId, key, raw } : null
+    })
+  )
+
+  return records.filter(Boolean)
+}
+
+// Записує departmentKey буквально в Redis, але ТІЛЬКИ якщо його там ще
+// немає (перечитує запис перед записом, щоб не затерти конкурентну зміну
+// від живого бота між читанням і записом). Повертає true, якщо реально
+// щось поставили.
+export async function setDepartmentKeyIfMissing(key, departmentKey) {
+  const data = await redis.get(key)
+  const parsed = parseStoredTask(data)
+  if (!parsed || parsed.departmentKey) return false
+
+  await redis.set(key, JSON.stringify({ ...parsed, departmentKey }))
+  return true
+}
+
 export async function saveLaunchContext({ parentTaskId, parentPageName, payload }) {
   if (!parentTaskId) {
     throw new Error('parentTaskId is required')
