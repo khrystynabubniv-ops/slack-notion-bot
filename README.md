@@ -70,8 +70,8 @@ Phase 2 додає SMM-змінні поверх Design aliases і тестов�
 - `NOTION_SMM_OWNER_ID`, `NOTION_SMM_OWNER_LABEL`, `NOTION_SMM_TEAM=SMM`
 - `EVENT_DEPARTMENT_ENABLED=true` або `NOTION_EVENT_DATABASE_ID` — показати `Event` у Slack picker
 - `NOTION_EVENT_DATABASE_ID` або `NOTION_ACTIVITIES_DATABASE_ID`
-- `NOTION_EVENT_STATUS_PROPERTY`, default `SMM статус` для shared Activities sandbox
-- `NOTION_EVENT_INITIAL_STATUS=To do`
+- `NOTION_EVENT_STATUS_PROPERTY`, default `Status` (у production явно задано `Status`)
+- `NOTION_EVENT_INITIAL_STATUS`, default `Backlog` (у production явно задано `Backlog`; `.env.example` містить застарілий приклад `To do`)
 - `NOTION_EVENT_COMPLETED_STATUSES=Done,Completed,Canceled,Cancelled`
 - `NOTION_EVENT_HUB_URL`, `NOTION_EVENT_TASK_TEMPLATE_ID` / `NOTION_EVENT_TEMPLATE_ID`
 - `NOTION_EVENT_OWNER_ID`, `NOTION_EVENT_OWNER_LABEL`, `NOTION_EVENT_TEAM=Event`
@@ -157,11 +157,11 @@ Webhook приймає payload із Notion, шукає ID батьківсько
 - `Description`: для SMM пишеться коротке `Опис нижче в тілі задачі.`, а сам бриф додається у body сторінки з секціями `Базові поля` і `Специфічні поля`
 - `Late`: ставиться тільки коли користувач підтвердив запізний дедлайн у модалці
 
-`event` є sandbox route для Phase 3 і прихований, поки не задано `EVENT_DEPARTMENT_ENABLED=true` або `NOTION_EVENT_DATABASE_ID`:
+`event` початково задумувався як sandbox route для Phase 3, прихований поки не задано `EVENT_DEPARTMENT_ENABLED=true` або `NOTION_EVENT_DATABASE_ID`. Станом на зараз у production `EVENT_DEPARTMENT_ENABLED=true` — відділ уже активний, а не прихований:
 
 - `notionDataSourceId`: `NOTION_EVENT_DATABASE_ID`, або `NOTION_ACTIVITIES_DATABASE_ID`, або legacy `NOTION_DATABASE_ID`
-- `statusProperty`: `NOTION_EVENT_STATUS_PROPERTY`, default `SMM статус` для тестів у shared Activities
-- `initialStatus`: `NOTION_EVENT_INITIAL_STATUS`, default `To do`
+- `statusProperty`: `NOTION_EVENT_STATUS_PROPERTY`, default `Status` (у production явно задано `Status`)
+- `initialStatus`: `NOTION_EVENT_INITIAL_STATUS`, default `Backlog` (у production явно задано `Backlog`)
 - `completedStatuses`: `NOTION_EVENT_COMPLETED_STATUSES`, default `Done,Completed,Canceled,Cancelled`
 - `team`: `Event`
 - `useBodyBrief`: Event бриф пишеться в body сторінки, а `Description` лишається коротким

@@ -452,7 +452,7 @@ function getLeadTimeOverride(values) {
   return values.lead_time_override_block?.lead_time_override?.selected_option?.value || null
 }
 
-function getDaysUntil(dateString) {
+export function getDaysUntil(dateString) {
   if (!dateString) return null
 
   const target = new Date(`${dateString}T00:00:00`)
@@ -514,7 +514,7 @@ function getConfiguredLeadTime(taskConfig, values) {
   }
 }
 
-function getLeadTimeViolation({ departmentKey, taskType, deadline, values }) {
+export function getLeadTimeViolation({ departmentKey, taskType, deadline, values }) {
   const taskConfig = getDepartmentTaskType(departmentKey, taskType)
   const {
     minLeadDays,
@@ -783,6 +783,15 @@ async function processQueuedTaskSubmissions(client) {
     while (true) {
       const item = await getDueTaskSubmission()
       if (!item) break
+
+      if (item.missing) {
+        // Черга ще не порожня — просто цей конкретний item втратив свій
+        // payload (напр. TTL сплив, поки worker довго не піднімався).
+        // continue, а не break, інакше решта due items у черзі чекала б
+        // до наступного тіку worker'а (TASK_SUBMISSION_QUEUE_INTERVAL_MS).
+        console.warn(`Queued task submission ${item.id} had no stored payload (likely TTL-expired); skipped.`)
+        continue
+      }
 
       queueWorkerActiveItemIds.add(item.id)
       try {
@@ -1125,7 +1134,6 @@ export function registerSubmissionHandlers(app) {
         size_block: '📐 Розміри',
         print_size_block: '📐 Розміри',
         message_block: '💬 Ключове повідомлення',
-        accent_block: '🎯 Основний акцент',
         color_model_block: '🎨 Кольорова модель',
         output_format_block: '📄 Формат файлу на виході',
         video_format_block: '🎬 Фінальний формат відео',
@@ -1138,7 +1146,6 @@ export function registerSubmissionHandlers(app) {
         structure_block: '🗂 Структура',
         audience_block: '👥 Ціль і аудиторія',
         ai_description_block: '🤖 Що зобразити',
-        new_blocks_block: '➕ Нові блоки',
         custom_images_block: '🖼 Кастомні картинки',
         carrier_block: '👕 Тип носія',
         print_zone_block: '📍 Зони нанесення',
@@ -1158,13 +1165,10 @@ export function registerSubmissionHandlers(app) {
         qr_block: '🔗 QR / посилання',
         event_name_block: '🎪 Назва івенту',
         location_block: '📍 Локація',
-        character_block: '🎭 Характер івенту',
         carriers_list_block: '📋 Перелік носіїв',
         slide_list_block: '📋 Перелік слайдів для правок',
         can_shorten_block: '✂️ Можна скорочувати текст',
-        vacancy_block: '💼 Назва вакансії та умови',
         formats_list_block: '📐 Перелік форматів',
-        promo_desc_block: '💡 Опис задачі',
         selected_concept_block: '🎯 Обраний концепт',
         new_text_block: '📝 Новий текст',
         concept_only_block: '💡 Концепція',

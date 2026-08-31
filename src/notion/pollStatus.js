@@ -141,7 +141,7 @@ function getQualitySurveyStatusNames(department) {
     .filter(Boolean)
 }
 
-function isCompletedStatus(status, department) {
+export function isCompletedStatus(status, department) {
   const normalizedStatus = normalizeStatusName(status)
   const completedStatusNames = getCompletedStatusNames(department)
 
@@ -154,7 +154,7 @@ function isCompletedStatus(status, department) {
   )
 }
 
-function isQualitySurveyStatus(status, department) {
+export function isQualitySurveyStatus(status, department) {
   const normalizedStatus = normalizeStatusName(status)
   const surveyStatusNames = getQualitySurveyStatusNames(department)
 

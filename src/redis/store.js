@@ -170,6 +170,14 @@ export async function enqueueTaskSubmission(payload, { delayMs = 0, queueId } = 
   return { queueId: id, key, createdAt, nextAttemptAt }
 }
 
+// Повертає null лише коли черга дійсно порожня (немає due queueId). Якщо
+// queueId знайшовся і був успішно вилучений з ZSET (zrem), але сам STRING-
+// запис уже зник (напр. TTL FAILED_SUBMISSION_TTL_SECONDS сплив, поки
+// worker довго не піднімався) — повертає { id, key, missing: true } замість
+// null. Це дозволяє викликачу (processQueuedTaskSubmissions) відрізнити
+// "черга порожня, зупиняємось" від "цей конкретний item зіпсований,
+// пропускаємо і читаємо далі" — без цього одна осиротіла позиція
+// передчасно зупиняла обробку решти черги на весь цикл worker'а.
 export async function getDueTaskSubmission(now = Date.now()) {
   const queueIds = await redis.zrange(TASK_SUBMISSION_QUEUE_KEY, 0, now, {
     byScore: true,
@@ -187,7 +195,7 @@ export async function getDueTaskSubmission(now = Date.now()) {
   const data = await redis.get(key)
   const parsed = parseStoredTask(data)
 
-  if (!parsed) return null
+  if (!parsed) return { id: queueId, key, missing: true }
 
   return { ...parsed, key }
 }

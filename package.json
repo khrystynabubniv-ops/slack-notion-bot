@@ -9,6 +9,8 @@
     "verify:department-key": "node src/scripts/verifyDepartmentKeyResolution.js",
     "verify:polling-guard": "node src/scripts/verifyPollingSingletonGuard.js",
     "verify:notion-throttle": "node src/scripts/verifyNotionThrottleUsage.js",
+    "verify:pure-helpers": "node src/scripts/verifyPureHelpers.js",
+    "verify": "npm run verify:ids && npm run verify:department-key && npm run verify:polling-guard && npm run verify:notion-throttle && npm run verify:pure-helpers",
     "backfill:department-key": "node src/scripts/backfillDepartmentKey.js"
   },
   "dependencies": {
