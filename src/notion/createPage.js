@@ -17,7 +17,16 @@ const notionTemplateApi = new Client({
 })
 const TEMPLATE_TIMEZONE = process.env.NOTION_TEMPLATE_TIMEZONE?.trim() || 'Europe/Kiev'
 const databaseSchemaPromises = new Map()
-let notionPeoplePromise = null
+// Список людей Notion (для матчингу Slack requester → Owner/Slack Person)
+// кешується в пам'яті процесу, але не назавжди — оновлюється не рідше ніж
+// раз на NOTION_PEOPLE_CACHE_TTL_MS (default 24 год), щоб новий співробітник
+// у Notion підхопився без рестарту деплою. Див.
+// docs/unified-bot-migration-handover.md, розділ 17, пункт 14.
+const NOTION_PEOPLE_CACHE_TTL_MS = Number.parseInt(
+  process.env.NOTION_PEOPLE_CACHE_TTL_MS || `${24 * 60 * 60 * 1000}`,
+  10
+)
+let notionPeopleCache = null // { promise, fetchedAt }
 
 function clampText(value, limit = 2000) {
   return value?.slice(0, limit) || ''
@@ -60,17 +69,29 @@ async function listNotionPeople() {
   return people
 }
 
-// Cached at module scope: the workspace member list rarely changes within a run,
-// so every task created during this process reuses the same lookup instead of
-// re-paginating notion.users.list() per submission.
+// Виокремлено з getNotionPeople() як чисту функцію — щоб TTL-логіку можна
+// було покрити тестом (verify:pure-helpers) без реального NOTION_TOKEN.
+export function isNotionPeopleCacheStale(cache, now, ttlMs) {
+  return !cache || now - cache.fetchedAt >= ttlMs
+}
+
+// Cached at module scope so most task submissions reuse the same lookup
+// instead of re-paginating notion.users.list() every time — but refreshed
+// at least once per NOTION_PEOPLE_CACHE_TTL_MS, so a newly-added Notion
+// workspace member gets picked up without waiting for the next deploy.
 async function getNotionPeople() {
-  if (!notionPeoplePromise) {
-    notionPeoplePromise = listNotionPeople().catch((error) => {
-      notionPeoplePromise = null
+  const isStale = isNotionPeopleCacheStale(notionPeopleCache, Date.now(), NOTION_PEOPLE_CACHE_TTL_MS)
+
+  if (isStale) {
+    const fetchedAt = Date.now()
+    const promise = listNotionPeople().catch((error) => {
+      notionPeopleCache = null
       throw error
     })
+    notionPeopleCache = { promise, fetchedAt }
   }
-  return notionPeoplePromise
+
+  return notionPeopleCache.promise
 }
 
 // Matches a Slack requester to a Notion workspace member. Tries email first

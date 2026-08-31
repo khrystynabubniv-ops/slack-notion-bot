@@ -17,6 +17,7 @@ import { getDaysUntil, getLeadTimeViolation } from '../handlers/submission.js'
 import { isCompletedStatus, isQualitySurveyStatus } from '../notion/pollStatus.js'
 import { getDepartment } from '../config/departments.js'
 import { buildRichText } from '../notion/richText.js'
+import { isNotionPeopleCacheStale } from '../notion/createPage.js'
 
 let passed = 0
 let failed = false
@@ -184,6 +185,28 @@ check('дуже довгий текст обрізається з примітк
   const result = buildRichText(hugeText)
   assert.ok(result.length > 0)
   assert.ok(result.length <= 100, 'не має перевищувати RICH_TEXT_OBJECT_LIMIT')
+})
+
+console.log('\n5) isNotionPeopleCacheStale (денне оновлення кешу людей Notion — item 14)')
+const ONE_DAY_MS = 24 * 60 * 60 * 1000
+check('немає кешу взагалі — stale', () => {
+  assert.equal(isNotionPeopleCacheStale(null, Date.now(), ONE_DAY_MS), true)
+})
+check('кеш щойно оновлений — НЕ stale', () => {
+  const now = Date.now()
+  assert.equal(isNotionPeopleCacheStale({ fetchedAt: now }, now, ONE_DAY_MS), false)
+})
+check('кеш майже на межі TTL (на 1мс молодший) — ще НЕ stale', () => {
+  const now = Date.now()
+  assert.equal(isNotionPeopleCacheStale({ fetchedAt: now - (ONE_DAY_MS - 1) }, now, ONE_DAY_MS), false)
+})
+check('кеш рівно на межі TTL — вже stale (>=）', () => {
+  const now = Date.now()
+  assert.equal(isNotionPeopleCacheStale({ fetchedAt: now - ONE_DAY_MS }, now, ONE_DAY_MS), true)
+})
+check('кеш старший за добу — stale', () => {
+  const now = Date.now()
+  assert.equal(isNotionPeopleCacheStale({ fetchedAt: now - (ONE_DAY_MS + 60000) }, now, ONE_DAY_MS), true)
 })
 
 console.log(`\n${failed ? '❌ Є провалені перевірки' : `✅ Усі ${passed} перевірок пройшли`}`)
