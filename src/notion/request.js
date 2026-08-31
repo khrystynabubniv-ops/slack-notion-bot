@@ -1,3 +1,18 @@
+// КОНТРАКТ: notionRequest() нижче — ЄДИНИЙ санкціонований спосіб викликати
+// Notion API з цього процесу. Її internal queue (`queue`, `lastRequestStartedAt`)
+// шерена між УСІМА викликами, які проходять через цю функцію, — і тільки
+// через неї Notion-запити з різних модулів (createPage.js, pollStatus.js,
+// scripts/*.js тощо) реально тротляться одним спільним лічильником.
+//
+// Якщо десь у коді викликати notion.pages.create(...) / .databases.query(...)
+// тощо напряму, в обхід notionRequest(() => ..., 'label') — ці запити підуть
+// поза чергою, і сумарний rate до Notion може перевищити ліміт навіть якщо
+// кожен окремий модуль "виглядає" тротленим. Це особливо важливо, якщо цей
+// код мерджиться в бота, що ділить один Notion integration token з іншими
+// фічами — тоді throttle варто звести на рівень усього процесу, а не
+// перевинаходити per-модуль. Базову перевірку дисципліни (чи всі виклики в
+// src/ дійсно обгорнуті) робить npm run verify:notion-throttle. Див.
+// docs/unified-bot-migration-handover.md, розділ 17, пункт 4.
 const DEFAULT_MIN_INTERVAL_MS = 1000
 const DEFAULT_MAX_RETRIES = 4
 const DEFAULT_RETRY_DELAY_MS = 1500

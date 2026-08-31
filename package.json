@@ -8,6 +8,7 @@
     "verify:ids": "node src/scripts/verifyInteractionIds.js",
     "verify:department-key": "node src/scripts/verifyDepartmentKeyResolution.js",
     "verify:polling-guard": "node src/scripts/verifyPollingSingletonGuard.js",
+    "verify:notion-throttle": "node src/scripts/verifyNotionThrottleUsage.js",
     "backfill:department-key": "node src/scripts/backfillDepartmentKey.js"
   },
   "dependencies": {
