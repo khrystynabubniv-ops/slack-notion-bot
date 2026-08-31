@@ -1,4 +1,5 @@
 import { DEFAULT_DEPARTMENT_KEY, getTaskTypeGroups as getConfiguredTaskTypeGroups } from '../config/departments.js'
+import { ACTION_IDS, currentAndLegacyActionIdPattern, LEGACY_ACTION_IDS } from '../config/interactionIds.js'
 import { buildInitialTaskEntryView } from './taskEntry.js'
 
 export function registerHomeTab(app) {
@@ -29,7 +30,7 @@ export function registerHomeTab(app) {
               type: 'button',
               text: { type: 'plain_text', text: '➕ Створити запит', emoji: true },
               style: 'primary',
-              action_id: 'open_new_task_from_home',
+              action_id: ACTION_IDS.openNewTaskFromHome,
             },
           },
           { type: 'divider' },
@@ -102,14 +103,21 @@ export function registerHomeTab(app) {
     })
   })
 
-  // Handle button click from Home Tab
-  app.action('open_new_task_from_home', async ({ ack, body, client }) => {
-    await ack()
-    await client.views.open({
-      trigger_id: body.trigger_id,
-      view: buildInitialTaskEntryView(),
-    })
-  })
+  // Handle button click from Home Tab.
+  // App Home завжди перерендерюється при кожному app_home_opened, тому
+  // legacy-варіант тут не критичний (на відміну від DM-повідомлень), але
+  // regex тримаємо про всяк випадок — ціна нуль, а вікно між релізом і
+  // наступним відкриттям Home tab користувачем не гарантовано миттєве.
+  app.action(
+    currentAndLegacyActionIdPattern(ACTION_IDS.openNewTaskFromHome, LEGACY_ACTION_IDS.openNewTaskFromHome),
+    async ({ ack, body, client }) => {
+      await ack()
+      await client.views.open({
+        trigger_id: body.trigger_id,
+        view: buildInitialTaskEntryView(),
+      })
+    }
+  )
 }
 
 // Reusable task type select (same options as newTask.js)

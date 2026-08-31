@@ -1,3 +1,5 @@
+import { VIEW_CALLBACK_IDS } from '../config/interactionIds.js'
+
 function escapeMrkdwn(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -38,7 +40,7 @@ export async function openFeedbackModal({
     trigger_id: triggerId,
     view: {
       type: 'modal',
-      callback_id: 'feedback_submission',
+      callback_id: VIEW_CALLBACK_IDS.feedbackSubmission,
       private_metadata: JSON.stringify({
         pageId,
         taskName: normalizedTaskName,

@@ -9,6 +9,7 @@ import {
   resolveTaskTypeComplexity,
   resolveDepartmentKey,
 } from '../config/departments.js'
+import { ACTION_IDS, VIEW_CALLBACK_IDS, isSubmitTaskView } from '../config/interactionIds.js'
 import {
   completeTaskSubmission,
   enqueueTaskSubmission,
@@ -850,7 +851,7 @@ export function registerSubmissionHandlers(app) {
 
     return {
       type: 'modal',
-      callback_id: 'submit_task',
+      callback_id: VIEW_CALLBACK_IDS.submitTask,
       private_metadata: JSON.stringify({ departmentKey: department.key, taskType, taskTypeLabel, domain }),
       title: { type: 'plain_text', text: '📋 Бриф задачі' },
       submit: { type: 'plain_text', text: 'Створити задачу' },
@@ -862,7 +863,7 @@ export function registerSubmissionHandlers(app) {
     }
   }
 
-  app.view('select_department', async ({ ack, view }) => {
+  app.view(VIEW_CALLBACK_IDS.selectDepartment, async ({ ack, view }) => {
     try {
       const selectedDepartment = view.state.values.department_block?.department?.selected_option
       if (!selectedDepartment?.value) {
@@ -899,7 +900,7 @@ export function registerSubmissionHandlers(app) {
   })
 
   // Крок 1.5 (тільки Design) — юзер обрав напрямок, з якого прийшов запит
-  app.view('select_design_domain', async ({ ack, view }) => {
+  app.view(VIEW_CALLBACK_IDS.selectDesignDomain, async ({ ack, view }) => {
     try {
       const metadata = parsePrivateMetadata(view.private_metadata)
       const departmentKey = resolveDepartmentKey(metadata.departmentKey)
@@ -934,7 +935,7 @@ export function registerSubmissionHandlers(app) {
   })
 
   // Крок 1 — юзер вибрав тип задачі, відкриваємо форму з полями
-  app.view('select_task_type', async ({ ack, body, client, view }) => {
+  app.view(VIEW_CALLBACK_IDS.selectTaskType, async ({ ack, body, client, view }) => {
     try {
       const metadata = parsePrivateMetadata(view.private_metadata)
       const departmentKey = resolveDepartmentKey(metadata.departmentKey)
@@ -981,7 +982,7 @@ export function registerSubmissionHandlers(app) {
     }
   })
 
-  app.view('select_task_complexity', async ({ ack, view }) => {
+  app.view(VIEW_CALLBACK_IDS.selectTaskComplexity, async ({ ack, view }) => {
     try {
       const metadata = parsePrivateMetadata(view.private_metadata)
       const departmentKey = resolveDepartmentKey(metadata.departmentKey)
@@ -1022,15 +1023,20 @@ export function registerSubmissionHandlers(app) {
     }
   })
 
-  app.action('platform', async ({ ack, body, client }) => {
+  app.action(ACTION_IDS.platform, async ({ ack, body, client }) => {
     await ack()
+
+    // Guard: без цього хендлер спрацьовує на БУДЬ-яке поле з action_id
+    // "platform" у БУДЬ-якій відкритій модалці в workspace, включно з чужими
+    // (unified-бота), і псує їхній view через views.update нижче.
+    if (!isSubmitTaskView(body.view?.callback_id)) return
 
     const { departmentKey = DEFAULT_DEPARTMENT_KEY, taskType, taskTypeLabel, domain } = parsePrivateMetadata(body.view.private_metadata)
     const values = {
       ...body.view.state.values,
       platform_block: {
         ...body.view.state.values.platform_block,
-        platform: {
+        [ACTION_IDS.platform]: {
           ...body.actions[0],
           selected_option: body.actions[0].selected_option,
         },
@@ -1048,7 +1054,7 @@ export function registerSubmissionHandlers(app) {
     /^(structure_choice|ready_texts|visual_source|link_needed|title_description|thumbnail|ad_goal|fixed_budget|source_materials)$/,
     async ({ ack, body, client }) => {
       await ack()
-      if (body.view?.callback_id !== 'submit_task') return
+      if (!isSubmitTaskView(body.view?.callback_id)) return
 
       const { departmentKey = DEFAULT_DEPARTMENT_KEY, taskType, taskTypeLabel, domain } = parsePrivateMetadata(body.view.private_metadata)
       if (resolveDepartmentKey(departmentKey) === DEFAULT_DEPARTMENT_KEY) return
@@ -1073,7 +1079,7 @@ export function registerSubmissionHandlers(app) {
   )
 
   // Крок 2 — юзер заповнив бриф і натиснув "Створити задачу"
-  app.view('submit_task', async ({ ack, body, client, view }) => {
+  app.view(VIEW_CALLBACK_IDS.submitTask, async ({ ack, body, client, view }) => {
     const {
       departmentKey: rawDepartmentKey = DEFAULT_DEPARTMENT_KEY,
       taskType,
@@ -1111,7 +1117,7 @@ export function registerSubmissionHandlers(app) {
       antiref = values.antiref_block?.antiref?.value
       canEditText = values.can_edit_block?.can_edit?.selected_option?.value
       videoFormat = values.video_format_block?.video_format?.selected_option?.value
-      platform = values.platform_block?.platform?.selected_option?.value
+      platform = values.platform_block?.[ACTION_IDS.platform]?.selected_option?.value
       platformOther = values.platform_other_block?.platform_other?.value
       platforms = platform ? [platform] : []
 

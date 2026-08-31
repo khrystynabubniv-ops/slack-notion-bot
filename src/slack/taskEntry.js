@@ -5,6 +5,7 @@ import {
   getTaskTypeComplexityOptions,
   getTaskTypeGroups,
 } from '../config/departments.js'
+import { VIEW_CALLBACK_IDS } from '../config/interactionIds.js'
 
 export function shouldShowDepartmentPicker() {
   return getAllDepartments().length > 1
@@ -15,7 +16,7 @@ export function buildDepartmentPickerView() {
 
   return {
     type: 'modal',
-    callback_id: 'select_department',
+    callback_id: VIEW_CALLBACK_IDS.selectDepartment,
     private_metadata: JSON.stringify({}),
     title: { type: 'plain_text', text: 'Новий запит' },
     submit: { type: 'plain_text', text: 'Далі' },
@@ -63,7 +64,7 @@ export function buildDesignDomainPickerView({ departmentKey = DEFAULT_DEPARTMENT
 
   return {
     type: 'modal',
-    callback_id: 'select_design_domain',
+    callback_id: VIEW_CALLBACK_IDS.selectDesignDomain,
     private_metadata: JSON.stringify({ departmentKey: department.key }),
     title: { type: 'plain_text', text: `${department.emoji || '📋'} Новий запит` },
     submit: { type: 'plain_text', text: 'Далі' },
@@ -99,7 +100,7 @@ export function buildTaskTypePickerView(departmentKey = DEFAULT_DEPARTMENT_KEY, 
 
   return {
     type: 'modal',
-    callback_id: 'select_task_type',
+    callback_id: VIEW_CALLBACK_IDS.selectTaskType,
     private_metadata: JSON.stringify({ departmentKey: department.key, domain: domain || null }),
     title: { type: 'plain_text', text: `${department.emoji || '📋'} Новий запит` },
     submit: { type: 'plain_text', text: 'Далі' },
@@ -140,7 +141,7 @@ export function buildTaskComplexityPickerView({
 
   return {
     type: 'modal',
-    callback_id: 'select_task_complexity',
+    callback_id: VIEW_CALLBACK_IDS.selectTaskComplexity,
     private_metadata: JSON.stringify({ departmentKey: department.key, taskType, taskTypeLabel, domain: domain || null }),
     title: { type: 'plain_text', text: '🎪 Складність' },
     submit: { type: 'plain_text', text: 'Далі' },

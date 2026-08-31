@@ -1,6 +1,7 @@
 import { acceptTaskResult } from '../notion/acceptTask.js'
 import { syncQualityFeedbackToNotion } from '../notion/feedbackDatabase.js'
 import { getTaskAcceptanceReadiness } from '../notion/taskAcceptanceReadiness.js'
+import { VIEW_CALLBACK_IDS } from '../config/interactionIds.js'
 import {
   deleteTask,
   getQualityFeedback,
@@ -209,7 +210,7 @@ async function refreshParentTaskAfterFeedbackAcceptance(client, {
 function getQualityFeedbackModal(payload) {
   return {
     type: 'modal',
-    callback_id: 'quality_feedback_submission',
+    callback_id: VIEW_CALLBACK_IDS.qualityFeedbackSubmission,
     private_metadata: JSON.stringify(payload),
     title: { type: 'plain_text', text: 'Фідбек по задачі' },
     submit: { type: 'plain_text', text: 'Зберегти' },

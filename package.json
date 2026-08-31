@@ -4,7 +4,8 @@
   "type": "module",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "verify:ids": "node src/scripts/verifyInteractionIds.js"
   },
   "dependencies": {
     "@slack/bolt": "^3.19.0",

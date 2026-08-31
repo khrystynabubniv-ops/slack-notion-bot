@@ -10,6 +10,13 @@ import {
   handleTaskAcceptance,
 } from './handlers/resultAcceptance.js'
 import { registerSubmissionHandlers } from './handlers/submission.js'
+import {
+  ACTION_IDS,
+  LEGACY_ACTION_IDS,
+  VIEW_CALLBACK_IDS,
+  currentAndLegacyActionIdPattern,
+  qualityRatingActionIdPattern,
+} from './config/interactionIds.js'
 import { registerNotionLaunchWebhook } from './notion/launchWebhook.js'
 import { registerHomeTab } from './slack/home.js'
 import { registerThreadCommentSync } from './slack/threadComments.js'
@@ -153,46 +160,58 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
   registerSubmissionHandlers(app)
   registerThreadCommentSync(app)
 
-  app.action('open_feedback_modal', async ({ ack, body, client }) => {
-    await ack()
+  // accept_task_result / open_feedback_modal / quality_rating_N слухаються і під
+  // старим (пре-namespace), і під новим id: ці action_id "заморожені" всередині
+  // вже надісланих DM-повідомлень задач, які можуть бути в роботі тижнями
+  // (lead time для деяких типів задач — до 45-60 днів). Легасі-гілку прибрати,
+  // коли в Redis не лишиться жодної задачі, створеної до цього релізу.
+  // Див. src/config/interactionIds.js.
+  app.action(
+    currentAndLegacyActionIdPattern(ACTION_IDS.openFeedbackModal, LEGACY_ACTION_IDS.openFeedbackModal),
+    async ({ ack, body, client }) => {
+      await ack()
 
-    const payload = parseFeedbackActionValue(body.actions?.[0]?.value)
-    if (!payload.pageId) {
-      console.error('Cannot open feedback modal: missing pageId in action value.')
-      return
+      const payload = parseFeedbackActionValue(body.actions?.[0]?.value)
+      if (!payload.pageId) {
+        console.error('Cannot open feedback modal: missing pageId in action value.')
+        return
+      }
+
+      try {
+        await openFeedbackModal({
+          client,
+          triggerId: body.trigger_id,
+          pageId: payload.pageId,
+          taskName: payload.taskName,
+          roundNumber: payload.roundNumber,
+          sourceMessage: getActionMessageSource(body),
+        })
+      } catch (error) {
+        console.error('Failed to open feedback modal:', error)
+        await notifyFeedbackModalOpenFailure(client, body)
+      }
     }
+  )
 
-    try {
-      await openFeedbackModal({
-        client,
-        triggerId: body.trigger_id,
-        pageId: payload.pageId,
-        taskName: payload.taskName,
-        roundNumber: payload.roundNumber,
-        sourceMessage: getActionMessageSource(body),
-      })
-    } catch (error) {
-      console.error('Failed to open feedback modal:', error)
-      await notifyFeedbackModalOpenFailure(client, body)
-    }
-  })
-
-  app.view('feedback_submission', async ({ ack, body, view, client }) => {
+  app.view(VIEW_CALLBACK_IDS.feedbackSubmission, async ({ ack, body, view, client }) => {
     await ack()
     await handleFeedbackSubmission({ body, view, client })
   })
 
-  app.action('accept_task_result', async ({ ack, body, client }) => {
-    await ack()
-    await handleTaskAcceptance({ body, client })
-  })
+  app.action(
+    currentAndLegacyActionIdPattern(ACTION_IDS.acceptTaskResult, LEGACY_ACTION_IDS.acceptTaskResult),
+    async ({ ack, body, client }) => {
+      await ack()
+      await handleTaskAcceptance({ body, client })
+    }
+  )
 
-  app.action(/^quality_rating(?:_\d+)?$/, async ({ ack, body, client }) => {
+  app.action(qualityRatingActionIdPattern(), async ({ ack, body, client }) => {
     await ack()
     await handleQualityRating({ body, client })
   })
 
-  app.view('quality_feedback_submission', async ({ ack, body, view, client }) => {
+  app.view(VIEW_CALLBACK_IDS.qualityFeedbackSubmission, async ({ ack, body, view, client }) => {
     await ack()
     await handleQualityFeedbackSubmission({ body, view, client })
   })

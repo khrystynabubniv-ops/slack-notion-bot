@@ -1,5 +1,6 @@
 import { formatDesignerForSlackAsync } from './designerMentions.js'
 import { getDepartment } from '../config/departments.js'
+import { ACTION_IDS, buildQualityRatingActionId } from '../config/interactionIds.js'
 
 const STATUS_EMOJI = {
   Backlog: '🔄',
@@ -497,7 +498,7 @@ export async function sendQualitySurvey({
         elements: ratings.map((rating) => ({
           type: 'button',
           text: { type: 'plain_text', text: `⭐ ${rating}` },
-          action_id: `quality_rating_${rating}`,
+          action_id: buildQualityRatingActionId(rating),
           value: JSON.stringify({
             ...baseValue,
             rating,
@@ -876,7 +877,7 @@ function getStatusActionElements({
       elements.push({
         type: 'button',
         text: { type: 'plain_text', text: '✅ Прийняти правку' },
-        action_id: 'accept_task_result',
+        action_id: ACTION_IDS.acceptTaskResult,
         style: 'primary',
         value: buildAcceptActionValue({
           pageId,
@@ -927,7 +928,7 @@ function getStatusActionElements({
             ? '✅ Приймаю, більше правок немає'
             : '✅ Приймаю, правок немає',
         },
-        action_id: 'accept_task_result',
+        action_id: ACTION_IDS.acceptTaskResult,
         style: 'primary',
         value: buildAcceptActionValue({
           pageId,
@@ -947,7 +948,7 @@ function getStatusActionElements({
       elements.push({
         type: 'button',
         text: { type: 'plain_text', text: '✏️ Дати правки' },
-        action_id: 'open_feedback_modal',
+        action_id: ACTION_IDS.openFeedbackModal,
         style: 'primary',
         value: buildFeedbackActionValue({ pageId, taskName, roundNumber }),
       })

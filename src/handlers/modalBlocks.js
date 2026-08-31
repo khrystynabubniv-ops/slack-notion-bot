@@ -1,5 +1,6 @@
 // Базові поля — є у всіх типах задач
 import { DEFAULT_DEPARTMENT_KEY, getDepartment, getDepartmentTaskFields } from '../config/departments.js'
+import { ACTION_IDS } from '../config/interactionIds.js'
 
 const MATERIALS_HINT_TEXT = 'Будь ласка, перейдіть у таску в ноушин та додайте аттачменти у коментарі'
 const MATERIALS_HINT_BLOCK_IDS = new Set([
@@ -358,7 +359,7 @@ function getDynamicDepartmentBlocks(departmentKey, taskType, values = {}, option
 }
 
 function getPlatformOtherBlock(values = {}) {
-  const platformValue = getBlockValue(values, 'platform_block', 'platform')
+  const platformValue = getBlockValue(values, 'platform_block', ACTION_IDS.platform)
   if (platformValue !== 'Other') return null
 
   return {
@@ -505,7 +506,7 @@ const specificBlocks = {
       label: { type: 'plain_text', text: '📱 Платформа *' },
       element: {
         type: 'static_select',
-        action_id: 'platform',
+        action_id: ACTION_IDS.platform,
         placeholder: { type: 'plain_text', text: 'Вибери платформу...' },
         options: [
           { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
@@ -558,7 +559,7 @@ const specificBlocks = {
       label: { type: 'plain_text', text: '📱 Платформа *' },
       element: {
         type: 'static_select',
-        action_id: 'platform',
+        action_id: ACTION_IDS.platform,
         placeholder: { type: 'plain_text', text: 'Вибери платформу...' },
         options: [
           { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
@@ -651,7 +652,7 @@ const specificBlocks = {
       optional: true,
       element: {
         type: 'static_select',
-        action_id: 'platform',
+        action_id: ACTION_IDS.platform,
         placeholder: { type: 'plain_text', text: 'Вибери...' },
         options: [
           { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
@@ -1405,7 +1406,7 @@ const specificBlocks = {
       label: { type: 'plain_text', text: '📱 Платформа використання *' },
       element: {
         type: 'static_select',
-        action_id: 'platform',
+        action_id: ACTION_IDS.platform,
         placeholder: { type: 'plain_text', text: 'Вибери...' },
         options: [
           { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
@@ -1446,7 +1447,7 @@ const specificBlocks = {
       label: { type: 'plain_text', text: '📱 Платформа *' },
       element: {
         type: 'static_select',
-        action_id: 'platform',
+        action_id: ACTION_IDS.platform,
         placeholder: { type: 'plain_text', text: 'Вибери...' },
         options: [
           { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
@@ -1486,7 +1487,7 @@ const specificBlocks = {
       label: { type: 'plain_text', text: '📱 Платформа *' },
       element: {
         type: 'static_select',
-        action_id: 'platform',
+        action_id: ACTION_IDS.platform,
         placeholder: { type: 'plain_text', text: 'Вибери...' },
         options: [
           { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
@@ -1525,7 +1526,7 @@ const specificBlocks = {
       label: { type: 'plain_text', text: '📱 Платформа *' },
       element: {
         type: 'static_select',
-        action_id: 'platform',
+        action_id: ACTION_IDS.platform,
         placeholder: { type: 'plain_text', text: 'Вибери...' },
         options: [
           { text: { type: 'plain_text', text: 'Instagram' }, value: 'Instagram' },
