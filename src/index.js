@@ -1,6 +1,8 @@
 import 'dotenv/config'
 import pkg from '@slack/bolt'
 const { App, ExpressReceiver } = pkg
+import express from 'express'
+import { buildInitialTaskEntryView } from './slack/taskEntry.js'
 import { openFeedbackModal } from './handlers/feedbackModal.js'
 import { handleFeedbackSubmission } from './handlers/feedbackSubmission.js'
 import { registerNewTaskCommand } from './handlers/newTask.js'
@@ -214,6 +216,65 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
   app.view(VIEW_CALLBACK_IDS.qualityFeedbackSubmission, async ({ ack, body, view, client }) => {
     await ack()
     await handleQualityFeedbackSubmission({ body, view, client })
+  })
+
+  // ── Unity Hub Bot proxy ──────────────────────────────────────────────────────
+  // Slack більше не звертається до цього сервісу напряму: єдине Socket Mode
+  // з'єднання тримає Unity Hub Bot, який форвардить сюди релевантні payload'и.
+  //
+  // ВАЖЛИВО про express.json(): ExpressReceiver навішує свій body-parser (з
+  // перевіркою Slack-підпису) ТІЛЬКИ на endpoint /slack/events. Інші роути на
+  // receiver.router не отримують парсера взагалі, тому він потрібен тут явно.
+  const UNITYHUB_PROXY_SECRET = process.env.UNITYHUB_PROXY_SECRET
+
+  receiver.router.post('/internal/unityhub/slack', express.json({ limit: '1mb' }), async (req, res) => {
+    if (!UNITYHUB_PROXY_SECRET || req.get('X-Proxy-Secret') !== UNITYHUB_PROXY_SECRET) {
+      return res.status(401).json({ ok: false })
+    }
+
+    const { kind, payload } = req.body || {}
+
+    // Вхідна точка: Unity Hub Bot показує «PR&Comms Team» у своєму дропдауні і
+    // просить у нас перший view вашого візарда, щоб зробити views.update на
+    // вже відкритій модалці (trigger_id/view_id лишаються на його боці).
+    if (kind === 'entry') {
+      try {
+        return res.json({ ok: true, view: buildInitialTaskEntryView() })
+      } catch (error) {
+        console.error('Unity Hub proxy: failed to build entry view:', error)
+        return res.status(500).json({ ok: false })
+      }
+    }
+
+    if (!payload || typeof payload !== 'object') {
+      return res.status(400).json({ ok: false, error: 'missing payload' })
+    }
+
+    // Відповідаємо на момент ack(), а НЕ на завершення processEvent():
+    // processEvent резолвиться лише після того, як хендлер добіг до кінця
+    // (у tasksbot_submit_task це ще enqueue + chat.postMessage вже ПІСЛЯ ack),
+    // а Unity Hub Bot має вкластися у 3-секундне вікно Slack.
+    let resolveAck
+    const ackPromise = new Promise((resolve) => { resolveAck = resolve })
+    let acked = false
+    const ack = async (response) => {
+      if (acked) return
+      acked = true
+      resolveAck(response ?? {})
+    }
+
+    // .catch() обов'язковий: без нього помилка хендлера стане unhandled
+    // rejection і вб'є процес (у цього репо немає process.on('unhandledRejection')).
+    const processing = app.processEvent({ body: payload, ack }).catch((error) => {
+      console.error('Unity Hub proxy: processEvent failed:', error)
+      resolveAck({})
+    })
+
+    const guard = new Promise((resolve) => setTimeout(() => resolve({}), 2000))
+    const ackBody = await Promise.race([ackPromise, guard])
+
+    void processing // решта хендлера доїжджає у фоні
+    return res.json({ ok: true, ack: ackBody })
   })
 
   const port = process.env.PORT || 3000
