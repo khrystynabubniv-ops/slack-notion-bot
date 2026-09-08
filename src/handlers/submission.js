@@ -85,11 +85,14 @@ function buildFailedSubmissionPayload({
   canEditText,
   videoFormat,
   platform,
+  platforms,
   platformOther,
   specificFields,
   fieldAnswers,
   artifacts,
   isLate,
+  domain,
+  leadTimeWarning,
   values,
   error,
 }) {
@@ -106,8 +109,10 @@ function buildFailedSubmissionPayload({
       deadline: deadline || null,
       videoFormat: videoFormat || null,
       platform: platform || null,
+      platforms: Array.isArray(platforms) ? platforms : [],
       platformOther: platformOther || null,
       isLate: Boolean(isLate),
+      domain: domain || null,
     },
     answers: {
       context: context || null,
@@ -118,6 +123,7 @@ function buildFailedSubmissionPayload({
       fieldAnswers,
       artifacts,
     },
+    leadTimeWarning: leadTimeWarning || null,
     rawSlackValues: values,
     error: serializeTaskCreationError(error),
   }
@@ -536,7 +542,7 @@ export function getLeadTimeViolation({ departmentKey, taskType, deadline, values
   }
 }
 
-async function createTaskFromSubmissionPayload(client, payload) {
+export async function createTaskFromSubmissionPayload(client, payload) {
   const {
     departmentKey: rawDepartmentKey = DEFAULT_DEPARTMENT_KEY,
     userId,

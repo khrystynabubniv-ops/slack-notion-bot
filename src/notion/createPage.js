@@ -173,14 +173,25 @@ async function getDatabaseProperties(department) {
 // to be updated first. This adds any genuinely new option names to the
 // property's schema before the page create/update call that uses them, then
 // invalidates the cached schema so the caller re-fetches it with the option in place.
+//
+// Notion treats option NAMES as duplicates case-insensitively (e.g. an option
+// "внутрішні комунікації" already registered blocks adding "Внутрішні
+// комунікації" as a "new" option — it 400s as a duplicate). So the
+// missing-vs-existing check here has to be case-insensitive too, or it tries
+// to "add" an option that (case-insensitively) already exists and Notion
+// rejects the whole databases.update() call. See resolveExistingOptionCasing()
+// below, which callers use to rewrite the value to the already-registered
+// casing before writing the page property.
 async function ensureSelectOptionsExist(department, databaseProperties, propertyName, values) {
   const propertyConfig = databaseProperties[propertyName]
   const propertyType = propertyConfig?.type
   if (!propertyType || !['select', 'multi_select'].includes(propertyType)) return databaseProperties
 
-  const existingNames = new Set(getDatabaseOptionNames(databaseProperties, propertyName))
+  const existingNamesLower = new Set(
+    getDatabaseOptionNames(databaseProperties, propertyName).map((name) => name.toLowerCase())
+  )
   const missingNames = [...new Set((Array.isArray(values) ? values : [values]).filter(Boolean))]
-    .filter((name) => !existingNames.has(name))
+    .filter((name) => !existingNamesLower.has(String(name).toLowerCase()))
   if (!missingNames.length) return databaseProperties
 
   const existingOptions = propertyConfig[propertyType]?.options || []
@@ -203,6 +214,23 @@ async function ensureSelectOptionsExist(department, databaseProperties, property
 
   databaseSchemaPromises.delete(department.notionDataSourceId)
   return getDatabaseProperties(department)
+}
+
+// Rewrites `value` (string or array) to match the casing already registered
+// in the property's options, so a page write references the real existing
+// option instead of a differently-cased near-duplicate. Falls back to the
+// original casing for names with no existing match (genuinely new options,
+// just added above by ensureSelectOptionsExist).
+function resolveExistingOptionCasing(databaseProperties, propertyName, value) {
+  if (!value) return value
+
+  const existingNames = getDatabaseOptionNames(databaseProperties, propertyName)
+  const resolveOne = (name) => {
+    const match = existingNames.find((existing) => existing.toLowerCase() === String(name).toLowerCase())
+    return match || name
+  }
+
+  return Array.isArray(value) ? value.map(resolveOne) : resolveOne(value)
 }
 
 function buildSlackPersonProperty(propertyConfig, { slackPersonName, notionUserId } = {}) {
@@ -573,7 +601,8 @@ export async function createNotionPage({
   })
   if (domain) {
     databaseProperties = await ensureSelectOptionsExist(department, databaseProperties, 'domain', domain)
-    addPropertyByDatabaseType(properties, databaseProperties, ['domain'], domain)
+    const resolvedDomain = resolveExistingOptionCasing(databaseProperties, 'domain', domain)
+    addPropertyByDatabaseType(properties, databaseProperties, ['domain'], resolvedDomain)
   }
   const requesterNotionUserId = await resolveNotionUserId({
     email: slackPersonEmail,

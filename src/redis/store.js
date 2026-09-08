@@ -146,6 +146,17 @@ export async function saveFailedSubmission(payload) {
   return { draftId, key, createdAt }
 }
 
+export async function getFailedSubmission(draftId) {
+  const key = redisKey(`failed-submission:${draftId}`)
+  const data = await redis.get(key)
+  return parseStoredTask(data)
+}
+
+export async function deleteFailedSubmission(draftId) {
+  const key = redisKey(`failed-submission:${draftId}`)
+  await redis.del(key)
+}
+
 export async function enqueueTaskSubmission(payload, { delayMs = 0, queueId } = {}) {
   const now = Date.now()
   const id = queueId || `queued-${now}-${Math.random().toString(36).slice(2, 8)}`
