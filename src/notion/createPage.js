@@ -167,42 +167,99 @@ async function getDatabaseProperties(department) {
   return databaseSchemaPromises.get(databaseId)
 }
 
+// Option names are compared the way Notion does when it rejects duplicates:
+// surrounding whitespace and Unicode form don't make two names different.
+function normalizeOptionName(name) {
+  return String(name).normalize('NFC').trim().toLowerCase()
+}
+
+function isDuplicateOptionError(error) {
+  const message = error?.body?.message || error?.message || ''
+  return error?.code === 'validation_error' && /duplicate/i.test(message)
+}
+
 // Notion (current API version) rejects writing a select/multi_select value that
 // isn't already one of the property's configured options — it no longer
 // auto-creates missing options on page write, it requires the database schema
 // to be updated first. This adds any genuinely new option names to the
 // property's schema before the page create/update call that uses them, then
 // invalidates the cached schema so the caller re-fetches it with the option in place.
+//
+// The schema cache lives for the whole process, so it can miss an option that
+// a human or another bot instance added since. Writing the stale options list
+// plus the "missing" name makes Notion reject the update as a duplicate
+// ("Invalid multi_select option, duplicates not allowed"), so the schema is
+// re-fetched before any update, and a duplicate rejection is treated as
+// "option already exists".
 async function ensureSelectOptionsExist(department, databaseProperties, propertyName, values) {
-  const propertyConfig = databaseProperties[propertyName]
-  const propertyType = propertyConfig?.type
+  const propertyType = databaseProperties[propertyName]?.type
   if (!propertyType || !['select', 'multi_select'].includes(propertyType)) return databaseProperties
 
-  const existingNames = new Set(getDatabaseOptionNames(databaseProperties, propertyName))
-  const missingNames = [...new Set((Array.isArray(values) ? values : [values]).filter(Boolean))]
-    .filter((name) => !existingNames.has(name))
-  if (!missingNames.length) return databaseProperties
+  const requestedNames = [
+    ...new Map(
+      (Array.isArray(values) ? values : [values])
+        .filter(Boolean)
+        .map((name) => String(name).trim().slice(0, 100))
+        .filter(Boolean)
+        .map((name) => [normalizeOptionName(name), name])
+    ).values(),
+  ]
+  const findMissingNames = (properties) => {
+    const existingNames = new Set(getDatabaseOptionNames(properties, propertyName).map(normalizeOptionName))
+    return requestedNames.filter((name) => !existingNames.has(normalizeOptionName(name)))
+  }
 
-  const existingOptions = propertyConfig[propertyType]?.options || []
+  if (!findMissingNames(databaseProperties).length) return databaseProperties
+
+  databaseSchemaPromises.delete(department.notionDataSourceId)
+  const freshProperties = await getDatabaseProperties(department)
+  const freshType = freshProperties[propertyName]?.type
+  if (freshType !== propertyType) return freshProperties
+
+  const missingNames = findMissingNames(freshProperties)
+  if (!missingNames.length) return freshProperties
+
+  const existingOptions = freshProperties[propertyName][propertyType]?.options || []
   const nextOptions = [
     ...existingOptions,
-    ...missingNames.map((name) => ({ name: String(name).slice(0, 100) })),
+    ...missingNames.map((name) => ({ name })),
   ]
 
-  await notionRequest(
-    () => notion.databases.update({
-      database_id: department.notionDataSourceId,
-      properties: {
-        [propertyName]: {
-          [propertyType]: { options: nextOptions },
+  try {
+    await notionRequest(
+      () => notion.databases.update({
+        database_id: department.notionDataSourceId,
+        properties: {
+          [propertyName]: {
+            [propertyType]: { options: nextOptions },
+          },
         },
-      },
-    }),
-    `add "${propertyName}" option(s) (${department.key})`
-  )
+      }),
+      `add "${propertyName}" option(s) (${department.key})`
+    )
+  } catch (error) {
+    if (!isDuplicateOptionError(error)) throw error
+    console.warn(
+      `Notion reported "${propertyName}" option(s) ${JSON.stringify(missingNames)} as duplicates; ` +
+        `treating them as already existing (${department.key}).`
+    )
+  }
 
   databaseSchemaPromises.delete(department.notionDataSourceId)
   return getDatabaseProperties(department)
+}
+
+// Maps requested option names onto the exact spelling already configured in
+// the property (ignoring case/whitespace/Unicode form), so the page write
+// never introduces a near-duplicate option.
+function resolveExistingOptionNames(databaseProperties, propertyName, values) {
+  const existingByNormalizedName = new Map(
+    getDatabaseOptionNames(databaseProperties, propertyName)
+      .map((name) => [normalizeOptionName(name), name])
+  )
+  const resolve = (value) => existingByNormalizedName.get(normalizeOptionName(value)) || String(value).trim()
+
+  return Array.isArray(values) ? values.filter(Boolean).map(resolve) : resolve(values)
 }
 
 function buildSlackPersonProperty(propertyConfig, { slackPersonName, notionUserId } = {}) {
@@ -282,10 +339,21 @@ function buildPropertyForDatabaseType(propertyType, value) {
     }
     case 'select':
       return { select: { name: String(firstValue).slice(0, 100) } }
-    case 'multi_select':
-      return {
-        multi_select: values.map((item) => ({ name: String(item).slice(0, 100) })),
-      }
+    case 'multi_select': {
+      // Notion rejects the whole page write if one multi_select gets the same
+      // option twice ("duplicates not allowed").
+      const uniqueNames = [
+        ...new Map(
+          values
+            .map((item) => String(item).trim().slice(0, 100))
+            .filter(Boolean)
+            .map((name) => [normalizeOptionName(name), name])
+        ).values(),
+      ]
+      return uniqueNames.length
+        ? { multi_select: uniqueNames.map((name) => ({ name })) }
+        : null
+    }
     case 'date': {
       const dateValue = String(firstValue).trim()
       return /^\d{4}-\d{2}-\d{2}/.test(dateValue)
@@ -573,7 +641,12 @@ export async function createNotionPage({
   })
   if (domain) {
     databaseProperties = await ensureSelectOptionsExist(department, databaseProperties, 'domain', domain)
-    addPropertyByDatabaseType(properties, databaseProperties, ['domain'], domain)
+    addPropertyByDatabaseType(
+      properties,
+      databaseProperties,
+      ['domain'],
+      resolveExistingOptionNames(databaseProperties, 'domain', domain)
+    )
   }
   const requesterNotionUserId = await resolveNotionUserId({
     email: slackPersonEmail,
