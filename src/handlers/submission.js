@@ -69,30 +69,31 @@ function serializeTaskCreationError(error) {
   }
 }
 
-function buildFailedSubmissionPayload({
-  departmentKey = DEFAULT_DEPARTMENT_KEY,
-  userId,
-  userName,
-  slackPersonName,
-  taskType,
-  taskTypeLabel,
-  name,
-  priority,
-  deadline,
-  context,
-  style,
-  antiref,
-  canEditText,
-  videoFormat,
-  platform,
-  platformOther,
-  specificFields,
-  fieldAnswers,
-  artifacts,
-  isLate,
-  values,
-  error,
-}) {
+function buildFailedSubmissionPayload({ error, ...submissionPayload }) {
+  const {
+    departmentKey = DEFAULT_DEPARTMENT_KEY,
+    userId,
+    userName,
+    slackPersonName,
+    taskType,
+    taskTypeLabel,
+    name,
+    priority,
+    deadline,
+    context,
+    style,
+    antiref,
+    canEditText,
+    videoFormat,
+    platform,
+    platformOther,
+    specificFields,
+    fieldAnswers,
+    artifacts,
+    isLate,
+    values,
+  } = submissionPayload
+
   return {
     slackUserId: userId,
     slackUserName: userName || null,
@@ -119,6 +120,10 @@ function buildFailedSubmissionPayload({
       artifacts,
     },
     rawSlackValues: values,
+    // Оригінальний payload черги без змін — щоб src/scripts/restoreFailedSubmission.js
+    // міг поставити задачу назад у чергу без втрати полів (domain, platforms,
+    // leadTimeWarning), яких немає у структурованих task/answers вище.
+    submissionPayload,
     error: serializeTaskCreationError(error),
   }
 }

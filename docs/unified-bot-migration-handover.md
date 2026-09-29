@@ -93,7 +93,7 @@
 
 ### 2.7 Відновлення чернеток невдалих сабмітів
 
-Якщо Notion остаточно відхилив створення сторінки (після вичерпання ретраїв черги, або якщо сам запис у чергу не вдався), бот зберігає весь payload брифу в Redis під ключем `failed-submission:<draftId>` (TTL `FAILED_SUBMISSION_TTL_SECONDS`, за замовчуванням 30 днів) і повідомляє користувачу код `draftId` у Slack. Адмін може вручну дістати payload із Redis і відновити задачу без повторного заповнення форми користувачем.
+Якщо Notion остаточно відхилив створення сторінки (після вичерпання ретраїв черги, або якщо сам запис у чергу не вдався), бот зберігає весь payload брифу в Redis під ключем `failed-submission:<draftId>` (TTL `FAILED_SUBMISSION_TTL_SECONDS`, за замовчуванням 30 днів) і повідомляє користувачу код `draftId` у Slack. Адмін може вручну дістати payload із Redis і відновити задачу без повторного заповнення форми користувачем. Чернетка містить поле `submissionPayload` — оригінальний payload черги без змін; `npm run restore:failed-submission -- <draftId> [--write]` (`src/scripts/restoreFailedSubmission.js`) ставить його назад у `task-submission-queue` і позначає чернетку `restoredAt`/`restoredQueueId` (TTL зберігається).
 
 ---
 

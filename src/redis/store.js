@@ -146,6 +146,26 @@ export async function saveFailedSubmission(payload) {
   return { draftId, key, createdAt }
 }
 
+export async function getFailedSubmission(draftId) {
+  return parseStoredTask(await redis.get(redisKey(`failed-submission:${draftId}`)))
+}
+
+// Позначає чернетку як відновлену (не видаляє — payload лишається для аудиту
+// до спливання TTL), щоб повторний запуск restore-скрипта не створив дубль.
+export async function markFailedSubmissionRestored(draftId, { queueId }) {
+  const key = redisKey(`failed-submission:${draftId}`)
+  const draft = parseStoredTask(await redis.get(key))
+  if (!draft) return null
+
+  const updated = {
+    ...draft,
+    restoredAt: new Date().toISOString(),
+    restoredQueueId: queueId,
+  }
+  await saveWithRetry(key, JSON.stringify(updated), { keepTtl: true })
+  return updated
+}
+
 export async function enqueueTaskSubmission(payload, { delayMs = 0, queueId } = {}) {
   const now = Date.now()
   const id = queueId || `queued-${now}-${Math.random().toString(36).slice(2, 8)}`
