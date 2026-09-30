@@ -49,7 +49,8 @@ let pollingPausedUntil = 0
 // для цього потрібен розподілений lock (напр. Redis SET NX), якого тут
 // немає. Див. docs/unified-bot-migration-handover.md, розділ 17, пункт 3.
 let pollingStarted = false
-const notionUserNameCache = new Map()
+const notionUserCache = new Map()
+const slackUserEmailCache = new Map()
 const configuredPollingStartupStaggerMs = Number.parseInt(
   process.env.NOTION_POLL_STARTUP_STAGGER_MS || '',
   10
@@ -447,11 +448,13 @@ async function getOpenComments(pageId) {
 }
 
 async function formatComment(comment) {
-  const author = await resolveNotionUserName(comment.created_by)
+  const author = await resolveNotionUser(comment.created_by)
   return {
     id: comment.id,
     createdTime: comment.created_time,
-    author,
+    author: author.name,
+    authorId: author.id,
+    authorEmail: author.email,
     text: comment.rich_text
       ?.map((item) => item.plain_text || item.text?.content || '')
       .join('')
@@ -459,15 +462,18 @@ async function formatComment(comment) {
   }
 }
 
-async function resolveNotionUserName(createdBy) {
-  if (!createdBy) return null
-  if (createdBy.name) return createdBy.name
+async function resolveNotionUser(createdBy) {
+  if (!createdBy) return { id: null, name: null, email: null }
 
-  const userId = createdBy.id
-  if (!userId) return null
+  const userId = createdBy.id || null
+  const directEmail = createdBy.person?.email || null
+  if (createdBy.name && (directEmail || !userId)) {
+    return { id: userId, name: createdBy.name, email: directEmail }
+  }
+  if (!userId) return { id: null, name: createdBy.name || null, email: directEmail }
 
-  if (notionUserNameCache.has(userId)) {
-    return notionUserNameCache.get(userId)
+  if (notionUserCache.has(userId)) {
+    return notionUserCache.get(userId)
   }
 
   try {
@@ -475,14 +481,63 @@ async function resolveNotionUserName(createdBy) {
       () => notion.users.retrieve({ user_id: userId }),
       'user retrieve'
     )
-    const resolvedName = user?.name || user?.person?.email || userId
-    notionUserNameCache.set(userId, resolvedName)
-    return resolvedName
+    const resolved = {
+      id: userId,
+      name: user?.name || user?.person?.email || createdBy.name || userId,
+      email: user?.person?.email || directEmail,
+    }
+    notionUserCache.set(userId, resolved)
+    return resolved
   } catch (error) {
-    console.warn(`Failed to resolve Notion user name for ${userId}:`, error)
-    notionUserNameCache.set(userId, userId)
-    return userId
+    console.warn(`Failed to resolve Notion user for ${userId}:`, error)
+    const fallback = { id: userId, name: createdBy.name || userId, email: directEmail }
+    notionUserCache.set(userId, fallback)
+    return fallback
   }
+}
+
+// Slack-email одержувача сповіщення (task.slackUserId), щоб не слати людині
+// її власні коментарі, які вона написала прямо в Notion.
+async function getSlackUserEmail(slackClient, slackUserId) {
+  if (!slackClient?.users?.info || !slackUserId) return null
+  if (slackUserEmailCache.has(slackUserId)) return slackUserEmailCache.get(slackUserId)
+
+  try {
+    const response = await slackClient.users.info({ user: slackUserId })
+    const email = normalizeEmail(response.user?.profile?.email)
+    slackUserEmailCache.set(slackUserId, email)
+    return email
+  } catch (error) {
+    console.warn(`Failed to resolve Slack email for ${slackUserId}:`, error)
+    return null
+  }
+}
+
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase() || null
+}
+
+async function isCommentByNotificationRecipient(slackClient, comment, task) {
+  const authorEmail = normalizeEmail(comment.authorEmail)
+  if (authorEmail) {
+    const recipientEmail = await getSlackUserEmail(slackClient, task.slackUserId)
+    if (recipientEmail) return authorEmail === recipientEmail
+  }
+
+  // Fallback, коли Notion не віддає email (немає capability "Read user information
+  // including email addresses"): порівнюємо імена, а також local-part Slack-email,
+  // бо Notion інколи показує автора як "khrystyna.bubniv".
+  const authorName = normalizeLooseName(comment.author)
+  if (!authorName) return false
+
+  const recipientEmail = await getSlackUserEmail(slackClient, task.slackUserId)
+  return [task.requesterName, task.slackUserName, recipientEmail?.split('@')[0]]
+    .map(normalizeLooseName)
+    .some((name) => name && name === authorName)
+}
+
+function normalizeLooseName(value) {
+  return normalizePersonName(String(value || '').replace(/[._-]+/g, ' '))
 }
 
 function getNewComments(comments, task) {
@@ -1183,6 +1238,14 @@ async function runPollingCycle(slackClient, department) {
 
         for (const comment of newComments) {
           if (isMirroredSlackThreadComment(comment)) {
+            await updateLastComment(task.pageId, comment)
+            continue
+          }
+
+          if (await isCommentByNotificationRecipient(slackClient, comment, task)) {
+            console.log(
+              `🙈 Skipping own Notion comment for page ${task.pageId}: ${comment.id} (user ${task.slackUserId})`
+            )
             await updateLastComment(task.pageId, comment)
             continue
           }
