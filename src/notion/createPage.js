@@ -178,9 +178,14 @@ async function ensureSelectOptionsExist(department, databaseProperties, property
   const propertyType = propertyConfig?.type
   if (!propertyType || !['select', 'multi_select'].includes(propertyType)) return databaseProperties
 
-  const existingNames = new Set(getDatabaseOptionNames(databaseProperties, propertyName))
+  // Notion compares option names case-insensitively: adding "Внутрішні комунікації"
+  // when "внутрішні комунікації" already exists fails with
+  // "Invalid multi_select option, duplicates not allowed".
+  const existingNames = new Set(
+    getDatabaseOptionNames(databaseProperties, propertyName).map(normalizeOptionName)
+  )
   const missingNames = [...new Set((Array.isArray(values) ? values : [values]).filter(Boolean))]
-    .filter((name) => !existingNames.has(name))
+    .filter((name) => !existingNames.has(normalizeOptionName(name)))
   if (!missingNames.length) return databaseProperties
 
   const existingOptions = propertyConfig[propertyType]?.options || []
@@ -324,6 +329,21 @@ function getDatabaseOptionNames(databaseProperties, propertyName) {
   return (optionSource?.options || [])
     .map((option) => option.name)
     .filter(Boolean)
+}
+
+function normalizeOptionName(name) {
+  return String(name).trim().toLocaleLowerCase()
+}
+
+// Maps each value to the option's exact spelling in the schema when one matches
+// case-insensitively, so the page write reuses the existing option.
+function resolveExistingOptionNames(databaseProperties, propertyName, values) {
+  const existingByNormalized = new Map(
+    getDatabaseOptionNames(databaseProperties, propertyName)
+      .map((optionName) => [normalizeOptionName(optionName), optionName])
+  )
+  const resolve = (value) => existingByNormalized.get(normalizeOptionName(value)) || value
+  return Array.isArray(values) ? values.filter(Boolean).map(resolve) : resolve(values)
 }
 
 function resolveStatusValue(databaseProperties, statusPropertyName, preferredStatus) {
@@ -573,7 +593,12 @@ export async function createNotionPage({
   })
   if (domain) {
     databaseProperties = await ensureSelectOptionsExist(department, databaseProperties, 'domain', domain)
-    addPropertyByDatabaseType(properties, databaseProperties, ['domain'], domain)
+    addPropertyByDatabaseType(
+      properties,
+      databaseProperties,
+      ['domain'],
+      resolveExistingOptionNames(databaseProperties, 'domain', domain)
+    )
   }
   const requesterNotionUserId = await resolveNotionUserId({
     email: slackPersonEmail,
