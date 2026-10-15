@@ -146,6 +146,37 @@ export async function saveFailedSubmission(payload) {
   return { draftId, key, createdAt }
 }
 
+function failedSubmissionKey(draftId) {
+  return redisKey(`failed-submission:${draftId}`)
+}
+
+export async function getFailedSubmission(draftId) {
+  return parseStoredTask(await redis.get(failedSubmissionKey(draftId)))
+}
+
+// SET NX: лише перший клік «Відновити» отримує true — повторний/подвійний
+// клік не поставить ту саму задачу в чергу вдруге.
+export async function claimFailedSubmissionRestore(draftId) {
+  const result = await redis.set(redisKey(`failed-submission-restore-lock:${draftId}`), '1', {
+    nx: true,
+    ...getFailedSubmissionTtlOptions(),
+  })
+  return result === 'OK'
+}
+
+export async function markFailedSubmissionRestored(draft, { restoredBy, restoredQueueId }) {
+  await saveWithRetry(
+    failedSubmissionKey(draft.id),
+    JSON.stringify({
+      ...draft,
+      restoredAt: new Date().toISOString(),
+      restoredBy,
+      restoredQueueId,
+    }),
+    getFailedSubmissionTtlOptions()
+  )
+}
+
 export async function enqueueTaskSubmission(payload, { delayMs = 0, queueId } = {}) {
   const now = Date.now()
   const id = queueId || `queued-${now}-${Math.random().toString(36).slice(2, 8)}`

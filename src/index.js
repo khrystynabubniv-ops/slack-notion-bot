@@ -12,6 +12,7 @@ import {
   handleTaskAcceptance,
 } from './handlers/resultAcceptance.js'
 import { registerSubmissionHandlers } from './handlers/submission.js'
+import { registerFailedSubmissionRestoreHandler } from './handlers/failedSubmissionRestore.js'
 import {
   ACTION_IDS,
   LEGACY_ACTION_IDS,
@@ -160,6 +161,7 @@ if (!token || token.trim() === '' || token.trim() === 'placeholder') {
   registerHomeTab(app)
   registerNewTaskCommand(app)
   registerSubmissionHandlers(app)
+  registerFailedSubmissionRestoreHandler(app)
   registerThreadCommentSync(app)
 
   // accept_task_result / open_feedback_modal / quality_rating_N слухаються і під

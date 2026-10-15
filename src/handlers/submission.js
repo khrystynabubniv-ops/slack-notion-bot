@@ -20,6 +20,7 @@ import {
   saveTask,
 } from '../redis/store.js'
 import { formatDesignerForSlack } from '../slack/designerMentions.js'
+import { hasFailedSubmissionAdmins, notifyAdminsAboutFailedSubmission } from './failedSubmissionRestore.js'
 import {
   buildDesignDomainPickerView,
   buildTaskComplexityPickerView,
@@ -722,24 +723,49 @@ async function createTaskFromSubmissionPayload(client, payload) {
   return { pageId, pageUrl }
 }
 
-async function failQueuedSubmission(client, payload, error) {
-  const failedSubmissionPayload = buildFailedSubmissionPayload({
-    ...payload,
-    slackPersonName: payload.slackPersonName || payload.userName,
-    error,
-  })
+// Зберігає бриф як чернетку (разом з оригінальним payload черги — щоб
+// «Відновити» поставив у чергу рівно те саме, включно з Domain), пише адмінам
+// у особисті з кнопкою «Відновити» і повідомляє автора.
+async function saveFailedSubmissionDraft(client, submissionPayload, error, headline) {
+  const failedSubmissionPayload = {
+    ...buildFailedSubmissionPayload({
+      ...submissionPayload,
+      slackPersonName: submissionPayload.slackPersonName || submissionPayload.userName,
+      error,
+    }),
+    submissionPayload,
+  }
   const failedDraft = await saveFailedSubmission(failedSubmissionPayload)
+
+  await notifyAdminsAboutFailedSubmission(client, {
+    id: failedDraft.draftId,
+    createdAt: failedDraft.createdAt,
+    ...failedSubmissionPayload,
+  })
+
+  const nextStep = hasFailedSubmissionAdmins()
+    ? 'Адмін уже отримав сповіщення і відновить задачу — заповнювати бриф заново не треба.'
+    : 'Напиши адміну цей код, і ми відновимо задачу без повторного заповнення.'
 
   try {
     await client.chat.postMessage({
-      channel: payload.userId,
-      text:
-        `❌ Не вдалося створити задачу в Notion після повторних спроб.\n` +
-        `Бриф збережено як чернетку: \`${failedDraft.draftId}\`. Напиши адміну цей код, і ми відновимо задачу без повторного заповнення.`,
+      channel: submissionPayload.userId,
+      text: `${headline}\nБриф збережено як чернетку: \`${failedDraft.draftId}\`. ${nextStep}`,
     })
   } catch (slackErr) {
-    console.error(`Failed to notify ${payload.userId} about failed queued submission:`, slackErr)
+    console.error(`Failed to notify ${submissionPayload.userId} about failed submission:`, slackErr)
   }
+
+  return { failedDraft, failedSubmissionPayload }
+}
+
+async function failQueuedSubmission(client, payload, error) {
+  const { failedDraft, failedSubmissionPayload } = await saveFailedSubmissionDraft(
+    client,
+    payload,
+    error,
+    '❌ Не вдалося створити задачу в Notion після повторних спроб.'
+  )
 
   console.error(
     `Task submission draft saved after queued create failure: ${failedDraft.key}`,
@@ -1291,23 +1317,11 @@ export function registerSubmissionHandlers(app) {
     } catch (err) {
       console.error('Failed to queue task submission:', err)
 
-      const failedSubmissionPayload = buildFailedSubmissionPayload({
-        ...submissionPayload,
-        error: err,
-      })
-
       try {
-        const failedDraft = await saveFailedSubmission(failedSubmissionPayload)
-
-        await client.chat.postMessage({
-          channel: userId,
-          text:
-            `❌ Не вдалося поставити задачу в чергу.\n` +
-            `Бриф збережено як чернетку: \`${failedDraft.draftId}\`. Напиши адміну цей код, і ми відновимо задачу без повторного заповнення.`,
-        })
+        await saveFailedSubmissionDraft(client, submissionPayload, err, '❌ Не вдалося поставити задачу в чергу.')
       } catch (draftErr) {
         console.error('Failed to save task submission draft:', draftErr)
-        console.error('Unsaved task submission draft:', JSON.stringify(failedSubmissionPayload))
+        console.error('Unsaved task submission draft:', JSON.stringify(submissionPayload))
 
         await client.chat.postMessage({
           channel: userId,

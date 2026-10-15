@@ -115,6 +115,7 @@
 | Відкрити модалку правок | `tasksbot_open_feedback_modal` | `open_feedback_modal` | `src/index.js` | `currentAndLegacyActionIdPattern(...)` |
 | Quality rating (1–5) | `tasksbot_quality_rating_N` (`buildQualityRatingActionId(rating)`) | `quality_rating_N` | `src/index.js` | `qualityRatingActionIdPattern()` (regex, приймає обидва префікси + `_N`) |
 | Вибір Platform у Design-формі | `tasksbot_platform` | — (legacy-варіанта немає) | `src/handlers/submission.js` | точний match `ACTION_IDS.platform`, всередині гард `isSubmitTaskView(body.view?.callback_id)` |
+| Відновити задачу з чернетки (адмін-DM) | `tasksbot_restore_failed_submission` | — (legacy-варіанта немає) | `src/handlers/failedSubmissionRestore.js` | точний match; спрацьовує лише для ID з `FAILED_SUBMISSION_ADMIN_SLACK_IDS`, повторний клік блокує Redis-лок `failed-submission-restore-lock:<draftId>` |
 | SMM/Event умовні поля (`showWhen`-контролери) | regex `/^(structure_choice\|ready_texts\|visual_source\|link_needed\|title_description\|thumbnail\|ad_goal\|fixed_budget\|source_materials)$/` | — | `src/handlers/submission.js` | гард `isSubmitTaskView(...)` + `resolveDepartmentKey(departmentKey) === DEFAULT_DEPARTMENT_KEY` (спрацьовує тільки для НЕ-Design відділів) |
 
 Ці три пари (`accept_task_result`, `open_feedback_modal`, `quality_rating_N`) і `open_new_task_from_home` приймають одночасно і новий (`tasksbot_`-namespaced), і легасі (pre-namespace) action_id, тому що ці конкретні action_id "заморожені" всередині вже надісланих Slack-повідомлень (кнопки на задачах, які можуть перебувати в роботі тижнями — лід-тайм окремих типів задач сягає 45–60 днів). Перейменування коду не змінює текст уже надісланих повідомлень заднім числом, тому без legacy-гілки кнопки на цих старих повідомленнях стали б мертвими одразу після деплою з перейменуванням. Модалки (`app.view`) такої проблеми не мають — модалка живе лише в межах однієї сесії користувача, тому в жодного `VIEW_CALLBACK_IDS` legacy-варіанта немає.
@@ -935,6 +936,7 @@ User whitelist / data boundary:
 | `SLACK_EVENT_OWNER_ID` / `SLACK_MARIA_USER_ID` | Slack ID власника Event для `<@id>`-згадки | `.env.example`: `U0A2SF2NG8K` |
 | `REDIS_KEY_PREFIX` | Префікс усіх Redis-ключів (тестовий namespace) | `''` |
 | `TEST_TASK_PREFIX` | Префікс назв тестових задач (напр. `[ТЕСТ]`) | `''` |
+| `FAILED_SUBMISSION_ADMIN_SLACK_IDS` | Slack ID адмінів (через кому), яким бот шле в DM збережену чернетку з кнопкою «Відновити». Порожньо — сповіщень немає, користувач бачить «напиши адміну цей код» | `''` |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Доступ до Upstash Redis | — |
 
 ### 14.2 Notion — глобальні

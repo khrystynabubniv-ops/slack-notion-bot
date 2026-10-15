@@ -40,6 +40,7 @@ export const ACTION_IDS = Object.freeze({
   acceptTaskResult: `${NAMESPACE}_accept_task_result`,
   qualityRatingPrefix: `${NAMESPACE}_quality_rating`,
   platform: `${NAMESPACE}_platform`,
+  restoreFailedSubmission: `${NAMESPACE}_restore_failed_submission`,
 })
 
 // ---- Legacy (пре-namespace) action_id — ТІЛЬКИ для прослуховування (backward-compat) ----
